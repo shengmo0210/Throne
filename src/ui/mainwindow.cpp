@@ -85,11 +85,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
 
     // setup log
     ui->splitter->restoreState(DecodeB64IfValid(Configs::dataStore->splitter_state));
-    new SyntaxHighlighter(isDarkMode() || Configs::dataStore->theme.toLower() == "qdarkstyle", qvLogDocument);
+    new SyntaxHighlighter((isDarkMode() && Configs::dataStore->theme.toLower() != "windowsvista") || Configs::dataStore->theme.toLower() == "qdarkstyle", qvLogDocument);
     qvLogDocument->setUndoRedoEnabled(false);
     ui->masterLogBrowser->setUndoRedoEnabled(false);
     ui->masterLogBrowser->setDocument(qvLogDocument);
-    ui->masterLogBrowser->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    ui->masterLogBrowser->setFont(QFontDatabase::systemFont(QFontDatabase::GeneralFont));
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     connect(qApp->styleHints(), &QStyleHints::colorSchemeChanged, this, [=,this](const Qt::ColorScheme& scheme) {
