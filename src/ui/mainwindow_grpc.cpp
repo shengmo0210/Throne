@@ -141,7 +141,7 @@ void MainWindow::urltest_current_group(const QList<std::shared_ptr<Configs::Prox
     }
 
     runOnNewThread([this, profiles]() {
-        auto buildObject = Configs::BuildTestConfig(profiles);
+        auto buildObject = Configs::BuildTestConfig(profiles, ruleSetMap);
         if (!buildObject->error.isEmpty()) {
             MW_show_log(tr("Failed to build test config: ") + buildObject->error);
             speedtestRunning.unlock();
@@ -236,7 +236,7 @@ void MainWindow::speedtest_current_group(const QList<std::shared_ptr<Configs::Pr
     runOnNewThread([this, profiles, testCurrent]() {
         if (!testCurrent)
         {
-            auto buildObject = Configs::BuildTestConfig(profiles);
+            auto buildObject = Configs::BuildTestConfig(profiles, ruleSetMap);
             if (!buildObject->error.isEmpty()) {
                 MW_show_log(tr("Failed to build test config: ") + buildObject->error);
                 speedtestRunning.unlock();
@@ -420,7 +420,7 @@ void MainWindow::profile_start(int _id) {
     auto group = Configs::profileManager->GetGroup(ent->gid);
     if (group == nullptr || group->archive) return;
 
-    auto result = BuildConfig(ent, false, false);
+    auto result = BuildConfig(ent, ruleSetMap, false, false);
     if (!result->error.isEmpty()) {
         MessageBoxWarning(tr("BuildConfig return error"), result->error);
         return;
@@ -519,13 +519,12 @@ void MainWindow::profile_start(int _id) {
     auto restartMsgbox = new QMessageBox(QMessageBox::Question, software_name, tr("If there is no response for a long time, it is recommended to restart the software."),
                                          QMessageBox::Yes | QMessageBox::No, this);
     connect(restartMsgbox, &QMessageBox::accepted, this, [=,this] { MW_dialog_message("", "RestartProgram"); });
-    auto restartMsgboxTimer = new MessageBoxTimer(this, restartMsgbox, 5000);
+    auto restartMsgboxTimer = new MessageBoxTimer(this, restartMsgbox, 10000);
 
     runOnNewThread([=, this] {
         // stop current running
         if (running != nullptr) {
-            runOnUiThread([=,this] { profile_stop(false, true, true); });
-            sem_stopped.acquire();
+            profile_stop(false, true, true);
         }
         // do start
         MW_show_log(">>>>>>>> " + tr("Starting profile %1").arg(ent->bean->DisplayTypeAndName()));
@@ -564,12 +563,11 @@ void MainWindow::set_spmode_system_proxy(bool enable, bool save) {
     refresh_status();
 }
 
-void MainWindow::profile_stop(bool crash, bool sem, bool manual) {
-    auto id = Configs::dataStore->started_id;
-    if (id < 0) {
-        if (sem) sem_stopped.release();
+void MainWindow::profile_stop(bool crash, bool block, bool manual) {
+    if (running == nullptr) {
         return;
     }
+    auto id = running->id;
 
     auto profile_stop_stage2 = [=,this] {
         if (!crash) {
@@ -586,9 +584,10 @@ void MainWindow::profile_stop(bool crash, bool sem, bool manual) {
     };
 
     if (!mu_stopping.tryLock()) {
-        if (sem) sem_stopped.release();
         return;
     }
+    QMutex blocker;
+    if (block) blocker.lock();
 
     // timeout message
     auto restartMsgbox = new QMessageBox(QMessageBox::Question, software_name, tr("If there is no response for a long time, it is recommended to restart the software."),
@@ -612,7 +611,7 @@ void MainWindow::profile_stop(bool crash, bool sem, bool manual) {
     restartMsgboxTimer->deleteLater();
     restartMsgbox->deleteLater();
 
-    runOnNewThread([=, this] {
+    runOnNewThread([=, this, &blocker] {
         // do stop
         MW_show_log(">>>>>>>> " + tr("Stopping profile %1").arg(running->bean->DisplayTypeAndName()));
         if (!profile_stop_stage2()) {
@@ -623,13 +622,19 @@ void MainWindow::profile_stop(bool crash, bool sem, bool manual) {
         Configs::dataStore->need_keep_vpn_off = false;
         running = nullptr;
 
-        if (sem) sem_stopped.release();
+        if (block) blocker.unlock();
 
-        runOnUiThread([=, this] {
+        runOnUiThread([=, this, &blocker] {
             refresh_status();
             refresh_proxy_list_impl_refresh_data(id, true);
 
             mu_stopping.unlock();
         });
     });
+
+    if (block)
+    {
+        blocker.lock();
+        blocker.unlock();
+    }
 }

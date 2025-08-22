@@ -291,10 +291,6 @@ namespace Configs {
         _add(new configItem("ntp_server_address", &ntp_server_address, itemType::string));
         _add(new configItem("ntp_server_port", &ntp_server_port, itemType::integer));
         _add(new configItem("ntp_interval", &ntp_interval, itemType::string));
-        _add(new configItem("geoip_download_url", &geoip_download_url, itemType::string));
-        _add(new configItem("geosite_download_url", &geosite_download_url, itemType::string));
-        _add(new configItem("auto_reset_assets_idx", &auto_reset_assets_idx, itemType::integer));
-        _add(new configItem("last_asset_reset_unix_secs", &last_asset_reset_epoch_secs, itemType::integer64));
         _add(new configItem("enable_dns_server", &enable_dns_server, itemType::boolean));
         _add(new configItem("dns_server_listen_lan", &dns_server_listen_lan, itemType::boolean));
         _add(new configItem("dns_server_listen_port", &dns_server_listen_port, itemType::integer));
@@ -314,6 +310,8 @@ namespace Configs {
         _add(new configItem("enable_tun_routing", &enable_tun_routing, itemType::boolean));
         _add(new configItem("speed_test_mode", &speed_test_mode, itemType::integer));
         _add(new configItem("use_mozilla_certs", &use_mozilla_certs, itemType::boolean));
+        _add(new configItem("allow_beta_update", &allow_beta_update, itemType::boolean));
+        _add(new configItem("adblock_enable", &adblock_enable, itemType::boolean));
     }
 
     void DataStore::UpdateStartedId(int id) {
@@ -329,7 +327,7 @@ namespace Configs {
         if (isDefault) {
             QString version = SubStrBefore(NKR_VERSION, "-");
             if (!version.contains(".")) version = "2.0";
-            return "Throne" + version;
+            return "Throne" + version + " (Prefer ClashMeta Format)";
         }
         return user_agent;
     }
@@ -347,6 +345,7 @@ namespace Configs {
         _add(new configItem("domain_strategy", &this->domain_strategy, itemType::string));
         _add(new configItem("outbound_domain_strategy", &this->outbound_domain_strategy, itemType::string));
         _add(new configItem("sniffing_mode", &this->sniffing_mode, itemType::integer));
+        _add(new configItem("ruleset_mirror", &this->ruleset_mirror, itemType::integer));
         _add(new configItem("use_dns_object", &this->use_dns_object, itemType::boolean));
         _add(new configItem("dns_object", &this->dns_object, itemType::string));
         _add(new configItem("dns_final_out", &this->dns_final_out, itemType::string));
@@ -388,28 +387,5 @@ namespace Configs {
         if (dataStore->flag_use_appdata) return QStandardPaths::writableLocation(
               QStandardPaths::AppConfigLocation);
         return qApp->applicationDirPath();
-    }
-
-    QString GetCoreAssetDir(const QString &name) {
-        QStringList search = {
-            GetBasePath(),
-            QString("/usr/share/sing-geoip"),
-            QString("/usr/share/sing-geosite"),
-            QString("/usr/share/sing-box"),
-        };
-
-        for (const auto &dir: search) {
-            if (dir.isEmpty())
-                continue;
-
-            if (QFile(QString("%1/%2").arg(dir, name)).exists())
-                return dir;
-        }
-
-        return "";
-    }
-
-    bool NeedGeoAssets(){
-        return GetCoreAssetDir("geoip.db").isEmpty() || GetCoreAssetDir("geosite.db").isEmpty();
     }
 } // namespace Configs

@@ -24,6 +24,7 @@ namespace Configs {
         QString domain_strategy = "AsIs";
         QString outbound_domain_strategy = "AsIs";
         int sniffing_mode = SniffingMode::FOR_ROUTING;
+        int ruleset_mirror = Mirrors::CLOUDFLARE;
 
         explicit Routing(int preset = 0);
 
@@ -86,6 +87,7 @@ namespace Configs {
         int stats_tab = 0; // either connection or log
         int speed_test_mode = TestConfig::FULL;
         QString simple_dl_url = "http://cachefly.cachefly.net/1mb.test";
+        bool allow_beta_update = false;
 
         // Subscription
         QString user_agent = ""; // set at main.cpp
@@ -93,12 +95,6 @@ namespace Configs {
         bool sub_clear = false;
         bool sub_insecure = false;
         int sub_auto_update = -30;
-
-        // Assets
-        QString geoip_download_url = "";
-        QString geosite_download_url = "";
-        int auto_reset_assets_idx = 0;
-        long long last_asset_reset_epoch_secs = 0;
 
         // Security
         bool skip_cert = false;
@@ -121,6 +117,7 @@ namespace Configs {
         // Routing
         QString custom_route_global = "{\"rules\": []}";
         QString active_routing = "Default";
+        bool adblock_enable = false;
 
         // VPN
         bool fake_dns = false;

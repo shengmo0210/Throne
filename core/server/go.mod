@@ -4,12 +4,11 @@ go 1.23.6
 
 require (
 	github.com/Mahdi-zarei/speedtest-go v1.7.12
-	github.com/chai2010/protorpc v1.1.4
+	github.com/chai2010/protorpc v0.0.0-00010101000000-000000000000
 	github.com/dustin/go-humanize v1.0.1
 	github.com/gofrs/uuid/v5 v5.3.2
 	github.com/golang/protobuf v1.5.4
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
-	github.com/oschwald/maxminddb-golang v1.13.1
 	github.com/sagernet/sing v0.7.5
 	github.com/sagernet/sing-box v1.12.1
 	github.com/sagernet/sing-tun v0.7.0-beta.1
@@ -18,7 +17,7 @@ require (
 	google.golang.org/protobuf v1.36.6
 )
 
-replace github.com/sagernet/sing-box => github.com/throneproj/sing-box v1.11.16-0.20250812161550-beacf6c7532e
+replace github.com/sagernet/sing-box => github.com/throneproj/sing-box v1.11.16-0.20250819183645-8d5c0b1dcafb
 
 replace github.com/sagernet/wireguard-go => github.com/throneproj/wireguard-go v0.0.1-beta.7.0.20250728063157-408bba78ad26
 

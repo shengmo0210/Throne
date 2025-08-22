@@ -66,7 +66,7 @@ public:
 
     void profile_start(int _id = -1);
 
-    void profile_stop(bool crash = false, bool sem = false, bool manual = false);
+    void profile_stop(bool crash = false, bool block = false, bool manual = false);
 
     void set_spmode_system_proxy(bool enable, bool save = true);
 
@@ -83,10 +83,6 @@ public:
     void RegisterHotkey(bool unregister);
 
     bool StopVPNProcess();
-
-    void DownloadAssets(const QString &geoipUrl, const QString &geositeUrl);
-
-    void ResetAssets(const QString& geoipUrl, const QString& geositeUrl);
 
     void UpdateConnectionList(const QMap<QString, Stats::ConnectionMetadata>& toUpdate, const QMap<QString, Stats::ConnectionMetadata>& toAdd);
 
@@ -193,12 +189,9 @@ private:
     QMutex mu_starting;
     QMutex mu_stopping;
     QMutex mu_exit;
-    QSemaphore sem_stopped;
     int exit_reason = 0;
     //
-    QMutex mu_download_assets;
     QMutex mu_download_update;
-    QMutex mu_reset_assets;
     //
     int toolTipID;
     //
@@ -211,6 +204,8 @@ private:
     bool showDownloadData = false;
     libcore::SpeedTestResult currentTestResult;
     DownloadProgressReport currentDownloadReport; // could use a list, but don't think can show more than one anyways
+
+    std::map<std::string, std::string> ruleSetMap;
 
     QStringList remoteRouteProfiles;
     QMutex mu_remoteRouteProfiles;
