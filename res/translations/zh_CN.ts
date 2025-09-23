@@ -639,7 +639,7 @@ this rewrites the underlying(localhost) DNS in Tun Mode, normal mode, and also U
     <name>DialogManageGroups</name>
     <message>
         <source>Groups</source>
-        <translation>分组</translation>
+        <translation>分组设置</translation>
     </message>
     <message>
         <source>New group</source>
@@ -651,7 +651,7 @@ this rewrites the underlying(localhost) DNS in Tun Mode, normal mode, and also U
     </message>
     <message>
         <source>Confirmation</source>
-        <translation>确认</translation>
+        <translation>确定</translation>
     </message>
     <message>
         <source>Update all subscriptions?</source>
@@ -1837,7 +1837,7 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
     </message>
     <message>
         <source>Application</source>
-        <translation>应用程序</translation>
+        <translation>程序</translation>
     </message>
     <message>
         <source>Settings</source>
@@ -1845,7 +1845,7 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
     </message>
     <message>
         <source>Profiles</source>
-        <translation>配置档</translation>
+        <translation>配置</translation>
     </message>
     <message>
         <source>Routing</source>
@@ -2233,7 +2233,7 @@ Release note:
     </message>
     <message>
         <source>OK</source>
-        <translation>好的</translation>
+        <translation>确定</translation>
     </message>
 </context>
 <context>
