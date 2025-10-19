@@ -204,10 +204,21 @@ private:
     libcore::SpeedTestResult currentTestResult;
     DownloadProgressReport currentDownloadReport; // could use a list, but don't think can show more than one anyways
 
+    // shortcuts
+    QList<QShortcut*> hiddenMenuShortcuts;
+
     std::map<std::string, std::string> ruleSetMap;
 
     QStringList remoteRouteProfiles;
     QMutex mu_remoteRouteProfiles;
+
+    // search
+    bool searchEnabled = false;
+    QString searchString;
+
+    void setSearchState(bool enable);
+
+    QList<std::shared_ptr<Configs::ProxyEntity>> filterProfilesList(const QList<int>& profiles);
 
     QList<std::shared_ptr<Configs::ProxyEntity>> get_now_selected_list();
 
@@ -221,15 +232,27 @@ private:
 
     void refresh_table_item(int row, const std::shared_ptr<Configs::ProxyEntity>& profile, bool stopping);
 
+    void parseQrImage(const QPixmap *image);
+
     void keyPressEvent(QKeyEvent *event) override;
 
     void closeEvent(QCloseEvent *event) override;
+
+    void dragEnterEvent(QDragEnterEvent *event);
+
+    void dropEvent(QDropEvent* event) override;
 
     //
 
     void HotkeyEvent(const QString &key);
 
-    void RegisterShortcuts();
+    void RegisterHiddenMenuShortcuts(bool unregister = false);
+
+    void setActionsData();
+
+    QList<QAction*> getActionsForShortcut();
+
+    void loadShortcuts();
 
     // grpc
 
@@ -252,6 +275,10 @@ private:
     void CheckUpdate();
 
     void setupConnectionList();
+
+    void querySpeedtest(QDateTime lastProxyListUpdate, const QMap<QString, int>& tag2entID, bool testCurrent);
+
+    void queryCountryTest(const QMap<QString, int>& tag2entID, bool testCurrent);
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;

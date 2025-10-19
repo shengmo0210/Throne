@@ -1,6 +1,7 @@
 #pragma once
 
 #include "include/global/Configs.hpp"
+#include "include/global/CountryHelper.hpp"
 #include "include/stats/traffic/TrafficData.hpp"
 #include "include/configs/proxy/AbstractBean.hpp"
 #include "include/configs/proxy/ExtraCore.h"
@@ -41,6 +42,7 @@ namespace Configs {
         int latency = 0;
         QString dl_speed;
         QString ul_speed;
+        QString test_country;
         std::shared_ptr<Configs::AbstractBean> bean;
         std::shared_ptr<Stats::TrafficData> traffic_data = std::make_shared<Stats::TrafficData>("");
 

@@ -204,6 +204,9 @@
         </property>
        </widget>
       </item>
+      <item>
+       <widget class="QLineEdit" name="search_input"/>
+      </item>
      </layout>
     </item>
     <item>
@@ -569,7 +572,10 @@
      <addaction name="menu_spmode_vpn"/>
      <addaction name="menu_spmode_disabled"/>
     </widget>
+    <addaction name="actionHide_window"/>
+    <addaction name="separator"/>
     <addaction name="menu_add_from_clipboard2"/>
+    <addaction name="actionAdd_profile_from_File"/>
     <addaction name="menu_scan_qr"/>
     <addaction name="separator"/>
     <addaction name="actionStart_with_system"/>
@@ -1040,6 +1046,16 @@
   <action name="actionSpeedtest_Group">
    <property name="text">
     <string>Speedtest Group</string>
+   </property>
+  </action>
+  <action name="actionHide_window">
+   <property name="text">
+    <string>Hide window</string>
+   </property>
+  </action>
+  <action name="actionAdd_profile_from_File">
+   <property name="text">
+    <string>Add profile from File</string>
    </property>
   </action>
  </widget>

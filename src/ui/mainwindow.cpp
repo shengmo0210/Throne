@@ -49,7 +49,9 @@
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
 #include <QStyleHints>
 #endif
+#include <QFileDialog>
 #include <QToolTip>
+#include <QMimeData>
 #include <random>
 #include <3rdparty/QHotkey/qhotkey.h>
 #include <3rdparty/qv2ray/v2/proxy/QvProxyConfigurator.hpp>
@@ -66,6 +68,7 @@ void UI_InitMainWindow() {
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWindow) {
     mainwindow = this;
+    setAcceptDrops(true);
     MW_dialog_message = [=,this](const QString &a, const QString &b) {
         runOnUiThread([=,this]
         {
@@ -85,6 +88,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     }
     themeManager->ApplyTheme(Configs::dataStore->theme);
     ui->setupUi(this);
+
+    // init shortcuts
+    setActionsData();
+    loadShortcuts();
 
     // setup log
     ui->splitter->restoreState(DecodeB64IfValid(Configs::dataStore->splitter_state));
@@ -201,7 +208,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     ui->tabWidget->installEventFilter(this);
     //
     RegisterHotkey(false);
-    RegisterShortcuts();
     //
     auto last_size = Configs::dataStore->mw_size.split("x");
     if (last_size.length() == 2) {
@@ -320,12 +326,24 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     ui->proxyListTable->setTabKeyNavigation(false);
 
     // search box
+    setSearchState(false);
+    connect(shortcut_ctrl_f, &QShortcut::activated, this, [=, this]
+    {
+        setSearchState(true);
+        ui->search_input->setFocus();
+    });
+    connect(ui->search_input, &QLineEdit::textChanged, this, [=,this](const QString& currentText)
+    {
+       searchString = currentText;
+       refresh_proxy_list(-1);
+    });
     connect(shortcut_esc, &QShortcut::activated, this, [=,this] {
         if (select_mode) {
             emit profile_selected(-1);
             select_mode = false;
             refresh_status();
         }
+        if (searchEnabled) setSearchState(false);
     });
 
     // refresh
@@ -359,6 +377,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     ui->actionStart_with_system->setChecked(AutoRun_IsEnabled());
     ui->actionAllow_LAN->setChecked(QStringList{"::", "0.0.0.0"}.contains(Configs::dataStore->inbound_address));
 
+    connect(ui->actionHide_window, &QAction::triggered, this, [=, this](){ this->hide(); });
     connect(ui->menu_open_config_folder, &QAction::triggered, this, [=,this] { QDesktopServices::openUrl(QUrl::fromLocalFile(QDir::currentPath())); });
     connect(ui->menu_add_from_clipboard2, &QAction::triggered, ui->menu_add_from_clipboard, &QAction::trigger);
     connect(ui->actionRestart_Proxy, &QAction::triggered, this, [=,this] { if (Configs::dataStore->started_id>=0) profile_start(Configs::dataStore->started_id); });
@@ -400,10 +419,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
             refresh_status();
         }
     });
-    // only windows is supported for now
-#ifndef Q_OS_WIN
-    ui->system_dns->hide();
-#endif
+    if (Configs::dataStore->show_system_dns) ui->system_dns->show();
+    else ui->system_dns->hide();
 
     connect(ui->menu_server, &QMenu::aboutToShow, this, [=,this](){
         if (running)
@@ -572,6 +589,25 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
         ui->menu_export_config->setVisible(name == software_core_name);
         ui->menu_export_config->setText(tr("Export %1 config").arg(name));
     });
+    connect(ui->actionAdd_profile_from_File, &QAction::triggered, this, [=,this]()
+    {
+        auto path = QFileDialog::getOpenFileName();
+        if (path.isEmpty())
+        {
+            return;
+        }
+        auto file = QFile(path);
+        if (!file.exists()) return;
+        if (file.size() > 50 * 1024 * 1024)
+        {
+            MW_show_log("File too large, will not process it");
+            return;
+        }
+        file.open(QIODevice::ReadOnly);
+        auto contents = file.readAll();
+        file.close();
+        Subscription::groupUpdater->AsyncUpdate(contents);
+    });
 
     connect(qApp, &QGuiApplication::commitDataRequest, this, &MainWindow::on_commitDataRequest);
 
@@ -604,6 +640,55 @@ void MainWindow::closeEvent(QCloseEvent *event) {
     } else {
         on_menu_exit_triggered();
     }
+}
+
+void MainWindow::dragEnterEvent(QDragEnterEvent *event)
+{
+    if (event->mimeData()->hasUrls() || event->mimeData()->hasText()) {
+        event->acceptProposedAction();
+    } else {
+        event->ignore();
+    }
+}
+
+void MainWindow::dropEvent(QDropEvent* event)
+{
+    auto mimeData = event->mimeData();
+
+    if (mimeData->hasUrls()) {
+        QList<QUrl> urlList = mimeData->urls();
+        for (const QUrl &url : urlList) {
+            if (url.isLocalFile()) {
+                if (auto qpx = QPixmap(url.toLocalFile()); !qpx.isNull())
+                {
+                    parseQrImage(&qpx);
+                } else if (auto file = QFile(url.toLocalFile()); file.exists())
+                {
+                    file.open(QFile::ReadOnly);
+                    if (file.size() > 50 * 1024 * 1024)
+                    {
+                        file.close();
+                        MW_show_log("File size is larger than 50MB, will not parse it");
+                        event->acceptProposedAction();
+                        return;
+                    }
+                    auto contents = file.readAll();
+                    file.close();
+                    Subscription::groupUpdater->AsyncUpdate(contents);
+                }
+            }
+        }
+        event->acceptProposedAction();
+        return;
+    }
+
+    if (mimeData->hasText()) {
+        Subscription::groupUpdater->AsyncUpdate(mimeData->text());
+        event->acceptProposedAction();
+        return;
+    }
+
+    event->ignore();
 }
 
 MainWindow::~MainWindow() {
@@ -683,6 +768,11 @@ void MainWindow::dialog_message_impl(const QString &sender, const QString &info)
         if (info.contains("UpdateDisableTray")) {
             tray->setVisible(!Configs::dataStore->disable_tray);
         }
+        if (info.contains("UpdateSystemDns"))
+        {
+            if (Configs::dataStore->show_system_dns) ui->system_dns->show();
+            else ui->system_dns->hide();
+        }
         if (info.contains("NeedChoosePort"))
         {
             Configs::dataStore->inbound_socks_port = MkPort();
@@ -736,6 +826,10 @@ void MainWindow::dialog_message_impl(const QString &sender, const QString &info)
     }
     if (info == "NeedAdmin") {
         get_elevated_permissions();
+    }
+    if (info == "UpdateShortcuts")
+    {
+        loadShortcuts();
     }
     // sender
     if (sender == Dialog_DialogEditProfile) {
@@ -826,7 +920,15 @@ void MainWindow::on_menu_vpn_settings_triggered() {
 }
 
 void MainWindow::on_menu_hotkey_settings_triggered() {
-    USE_DIALOG(DialogHotkey)
+    if (dialog_is_using) return;
+    dialog_is_using = true;
+    auto dialog = new DialogHotkey(this, getActionsForShortcut());
+    connect(dialog, &QDialog::finished, this, [=,this]
+    {
+        dialog->deleteLater();
+        dialog_is_using = false;
+    });
+    dialog->show();
 }
 
 void MainWindow::on_commitDataRequest() {
@@ -867,6 +969,7 @@ void MainWindow::prepare_exit()
     tray->hide();
     Configs::dataStore->prepare_exit = true;
     //
+    RegisterHiddenMenuShortcuts(true);
     RegisterHotkey(true);
     if (Configs::dataStore->system_dns_set) set_system_dns(false, false);
     set_spmode_system_proxy(false, false);
@@ -895,7 +998,12 @@ void MainWindow::on_menu_exit_triggered() {
     //
     if (exit_reason == 1) {
         QDir::setCurrent(QApplication::applicationDirPath());
+#ifdef Q_OS_WIN
+        QFile::copy("./updater.exe", "./updater.old");
+        QProcess::startDetached("./updater.old", QStringList{});
+#else
         QProcess::startDetached("./updater", QStringList{});
+#endif
     } else if (exit_reason == 2 || exit_reason == 3 || exit_reason == 4) {
         QDir::setCurrent(QApplication::applicationDirPath());
 
@@ -973,9 +1081,8 @@ bool MainWindow::get_elevated_permissions(int reason) {
 #endif
 
 #ifdef Q_OS_MACOS
-    if (Configs::IsAdmin(true))
+    if (Configs::isSetuidSet(Configs::FindCoreRealPath().toStdString()))
     {
-        Configs::IsAdmin(true);
         StopVPNProcess();
         return true;
     }
@@ -1052,10 +1159,11 @@ void MainWindow::UpdateDataView(bool force)
     "<span style='color: #3299FF;'>Dl↓ %2</span>  "
     "<span style='color: #86C43F;'>Ul↑ %3</span>"
     "</div>"
-    "<p style='text-align:center;margin:0;'>Server: %4, %5</p>"
+    "<p style='text-align:center;margin:0;'>Server: %4%5, %6</p>"
         ).arg(currentSptProfileName,
             currentTestResult.dl_speed.value().c_str(),
             currentTestResult.ul_speed.value().c_str(),
+            CountryCodeToFlag(CountryNameToCode(QString::fromStdString(currentTestResult.server_country.value()))),
             currentTestResult.server_country.value().c_str(),
             currentTestResult.server_name.value().c_str());
     }
@@ -1209,6 +1317,47 @@ void MainWindow::UpdateConnectionListWithRecreate(const QList<Stats::ConnectionM
         row++;
     }
     ui->connections->setUpdatesEnabled(true);
+}
+
+void MainWindow::setSearchState(bool enable)
+{
+    searchEnabled = enable;
+    if (enable)
+    {
+        ui->data_view->hide();
+        ui->search_input->show();
+    } else
+    {
+        ui->search_input->blockSignals(true);
+        ui->search_input->clear();
+        ui->search_input->blockSignals(false);
+
+        ui->search_input->hide();
+        ui->data_view->show();
+        if (!searchString.isEmpty())
+        {
+            searchString.clear();
+            refresh_proxy_list(-1);
+        }
+    }
+}
+
+QList<std::shared_ptr<Configs::ProxyEntity>> MainWindow::filterProfilesList(const QList<int>& profiles)
+{
+    QList<std::shared_ptr<Configs::ProxyEntity>> res;
+    for (const auto& id : profiles)
+    {
+        auto profile = Configs::profileManager->GetProfile(id);
+        if (!profile)
+        {
+            MW_show_log("Null profile, maybe data is corrupted");
+            continue;
+        }
+        if (searchString.isEmpty() || profile->bean->name.contains(searchString, Qt::CaseInsensitive) || profile->bean->serverAddress.contains(searchString, Qt::CaseInsensitive)
+            || (searchString.startsWith("CODE:") && searchString.mid(5) == profile->test_country))
+            res.append(profile);
+    }
+    return res;
 }
 
 void MainWindow::refresh_status(const QString &traffic_update) {
@@ -1430,8 +1579,6 @@ void MainWindow::refresh_proxy_list_impl(const int &id, GroupSortAction groupSor
                 break;
             }
         }
-
-        ui->proxyListTable->setRowCount(currentGroup->profiles.count());
     }
 
     // refresh data
@@ -1448,15 +1595,21 @@ void MainWindow::refresh_proxy_list_impl_refresh_data(const int &id, bool stoppi
             ui->proxyListTable->setUpdatesEnabled(true);
             return;
         }
-        auto rowID = currentGroup->profiles.indexOf(id);
         auto profile = Configs::profileManager->GetProfile(id);
+        if (filterProfilesList({id}).isEmpty())
+        {
+            ui->proxyListTable->setUpdatesEnabled(true);
+            return;
+        }
+        auto rowID = currentGroup->profiles.indexOf(id);
         refresh_table_item(rowID, profile, stopping);
     } else
     {
         ui->proxyListTable->blockSignals(true);
         int row = 0;
-        for (const auto profileId : currentGroup->profiles) {
-            auto profile = Configs::profileManager->GetProfile(profileId);
+        auto profiles = filterProfilesList(currentGroup->profiles);
+        ui->proxyListTable->setRowCount(profiles.count());
+        for (const auto& profile : profiles) {
             refresh_table_item(row++, profile, stopping);
         }
         ui->proxyListTable->blockSignals(false);
@@ -1819,6 +1972,19 @@ QPixmap grabScreen(QScreen* screen, bool& ok)
         return screen->grabWindow(0, geom.x(), geom.y(), geom.width(), geom.height());
 }
 
+void MainWindow::parseQrImage(const QPixmap *image)
+{
+    const QVector<QString> texts = QrDecoder().decode(image->toImage().convertToFormat(QImage::Format_Grayscale8));
+    if (texts.isEmpty()) {
+        MessageBoxInfo(software_name, tr("QR Code not found"));
+    } else {
+        for (const QString &text : texts) {
+            show_log_impl("QR Code Result:\n" + text);
+            Subscription::groupUpdater->AsyncUpdate(text);
+        }
+    }
+}
+
 void MainWindow::on_menu_scan_qr_triggered() {
     hide();
     QThread::sleep(1);
@@ -1828,15 +1994,7 @@ void MainWindow::on_menu_scan_qr_triggered() {
 
     show();
     if (ok) {
-        const QVector<QString> texts = QrDecoder().decode(qpx.toImage().convertToFormat(QImage::Format_Grayscale8));
-        if (texts.isEmpty()) {
-            MessageBoxInfo(software_name, tr("QR Code not found"));
-        } else {
-            for (const QString &text : texts) {
-                show_log_impl("QR Code Result:\n" + text);
-                Subscription::groupUpdater->AsyncUpdate(text);
-            }
-        }
+        parseQrImage(&qpx);
     }
     else {
         MessageBoxInfo(software_name, tr("Unable to capture screen"));
@@ -2225,7 +2383,7 @@ void MainWindow::RegisterHotkey(bool unregister) {
         auto hk = RegisteredHotkey.takeFirst();
         hk->deleteLater();
     }
-    if (unregister) return;
+    if (unregister || Configs::dataStore->prepare_exit) return;
 
     QStringList regstr{
         Configs::dataStore->hotkey_mainwindow,
@@ -2252,13 +2410,73 @@ void MainWindow::RegisterHotkey(bool unregister) {
     }
 }
 
-void MainWindow::RegisterShortcuts() {
+void MainWindow::RegisterHiddenMenuShortcuts(bool unregister) {
+    for (const auto s : hiddenMenuShortcuts) s->deleteLater();
+    hiddenMenuShortcuts.clear();
+
+    if (unregister) return;
+
     for (const auto &action: ui->menuHidden_menu->actions()) {
-        new QShortcut(action->shortcut(), this, [=,this](){
-            action->trigger();
-        });
+        if (!action->shortcut().toString().isEmpty())
+        {
+            hiddenMenuShortcuts.append(new QShortcut(action->shortcut(), this, [=,this](){
+                action->trigger();
+            }));
+        }
     }
 }
+
+void MainWindow::setActionsData()
+{
+    // assign ids to menu actions so that we can save and restore them
+    ui->menu_add_from_input->setData(QString("m2"));
+    ui->menu_clear_test_result->setData(QString("m3"));
+    ui->menu_clone->setData(QString("m4"));
+    ui->menu_delete_repeat->setData(QString("m6"));
+    ui->menu_export_config->setData(QString("m7"));
+    ui->menu_qr->setData(QString("m8"));
+    ui->menu_remove_invalid->setData(QString("m9"));
+    ui->menu_remove_unavailable->setData(QString("m10"));
+    ui->menu_reset_traffic->setData(QString("m11"));
+    ui->menu_resolve_domain->setData(QString("m12"));
+    ui->menu_resolve_selected->setData(QString("m13"));
+    ui->menu_scan_qr->setData(QString("m14"));
+    ui->menu_stop_testing->setData(QString("m15"));
+    ui->menu_update_subscription->setData(QString("m16"));
+    ui->actionSpeedtest_Current->setData(QString("m18"));
+    ui->actionSpeedtest_Group->setData(QString("m19"));
+    ui->actionSpeedtest_Selected->setData(QString("m20"));
+    ui->actionUrl_Test_Group->setData(QString("m21"));
+    ui->actionUrl_Test_Selected->setData(QString("m22"));
+    ui->actionHide_window->setData(QString("m23"));
+    ui->actionAdd_profile_from_File->setData(QString("m24"));
+}
+
+QList<QAction*> MainWindow::getActionsForShortcut()
+{
+    QList<QAction*> list;
+    QList<QAction *> actions = findChildren<QAction *>();
+
+    for (QAction *action : actions) {
+        if (action->data().isNull() || action->data().toString().isEmpty()) continue;
+        list.append(action);
+    }
+    return list;
+}
+
+void MainWindow::loadShortcuts()
+{
+    auto mp = Configs::dataStore->shortcuts->shortcuts;
+    for (QList<QAction *> actions = findChildren<QAction *>(); QAction *action : actions)
+    {
+        if (action->data().isNull() || action->data().toString().isEmpty()) continue;
+        if (mp.count(action->data().toString()) == 0) action->setShortcut(QKeySequence());
+        else action->setShortcut(mp[action->data().toString()]);
+    }
+
+    RegisterHiddenMenuShortcuts();
+}
+
 
 void MainWindow::HotkeyEvent(const QString &key) {
     if (key.isEmpty()) return;

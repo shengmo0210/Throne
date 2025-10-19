@@ -43,6 +43,7 @@ void MainWindow::runURLTest(const QString& config, bool useDefault, const QStrin
     req.url = Configs::dataStore->test_latency_url.toStdString();
     req.use_default_outbound = useDefault;
     req.max_concurrency = Configs::dataStore->test_concurrent;
+    req.test_timeout_ms = Configs::dataStore->url_test_timeout_ms;
 
     auto done = new QMutex;
     done->lock();
@@ -51,7 +52,7 @@ void MainWindow::runURLTest(const QString& config, bool useDefault, const QStrin
         bool ok;
         while (true)
         {
-            QThread::msleep(1500);
+            QThread::msleep(200);
             if (done->try_lock()) break;
             auto resp = defaultClient->QueryURLTest(&ok);
             if (!ok || resp.results.empty())
@@ -266,6 +267,66 @@ void MainWindow::speedtest_current_group(const QList<std::shared_ptr<Configs::Pr
     });
 }
 
+void MainWindow::querySpeedtest(QDateTime lastProxyListUpdate, const QMap<QString, int>& tag2entID, bool testCurrent)
+{
+    bool ok;
+    auto res = defaultClient->QueryCurrentSpeedTests(&ok);
+    if (!ok || !res.is_running.value())
+    {
+        return;
+    }
+    auto profile = testCurrent ? running : Configs::profileManager->GetProfile(tag2entID[QString::fromStdString(res.result.value().outbound_tag.value())]);
+    if (profile == nullptr)
+    {
+        return;
+    }
+    runOnUiThread([=, this, &lastProxyListUpdate]
+    {
+        showSpeedtestData = true;
+        currentSptProfileName = profile->bean->name;
+        currentTestResult = res.result.value();
+        UpdateDataView();
+
+        if (res.result.value().error.value().empty() && !res.result.value().cancelled.value() && lastProxyListUpdate.msecsTo(QDateTime::currentDateTime()) >= 500)
+        {
+            if (!res.result.value().dl_speed.value().empty()) profile->dl_speed = QString::fromStdString(res.result.value().dl_speed.value());
+            if (!res.result.value().ul_speed.value().empty()) profile->ul_speed = QString::fromStdString(res.result.value().ul_speed.value());
+            if (profile->latency <= 0 && res.result.value().latency.value() > 0) profile->latency = res.result.value().latency.value();
+            if (!res.result->server_country.value().empty()) profile->test_country = CountryNameToCode(QString::fromStdString(res.result.value().server_country.value()));
+            refresh_proxy_list(profile->id);
+            lastProxyListUpdate = QDateTime::currentDateTime();
+        }
+    });
+}
+
+void MainWindow::queryCountryTest(const QMap<QString, int>& tag2entID, bool testCurrent)
+{
+    bool ok;
+    auto res = defaultClient->QueryCountryTestResults(&ok);
+    if (!ok || res.results.empty())
+    {
+        return;
+    }
+    for (const auto& result : res.results)
+    {
+        auto profile = testCurrent ? running : Configs::profileManager->GetProfile(tag2entID[QString::fromStdString(result.outbound_tag.value())]);
+        if (profile == nullptr)
+        {
+            return;
+        }
+        runOnUiThread([=, this]
+        {
+            if (result.error.value().empty() && !result.cancelled.value())
+            {
+                if (profile->latency <= 0 && result.latency.value() > 0) profile->latency = result.latency.value();
+                if (!result.server_country.value().empty()) profile->test_country = CountryNameToCode(QString::fromStdString(result.server_country.value()));
+                refresh_proxy_list(profile->id);
+            }
+        });
+    }
+}
+
+
 void MainWindow::runSpeedTest(const QString& config, bool useDefault, bool testCurrent, const QStringList& outboundTags, const QMap<QString, int>& tag2entID, int entID)
 {
     if (stopSpeedtest.load()) {
@@ -285,6 +346,9 @@ void MainWindow::runSpeedTest(const QString& config, bool useDefault, bool testC
     req.simple_download = speedtestConf == Configs::TestConfig::SIMPLEDL;
     req.simple_download_addr = Configs::dataStore->simple_dl_url.toStdString();
     req.test_current = testCurrent;
+    req.timeout_ms = Configs::dataStore->speed_test_timeout_ms;
+    req.only_country = speedtestConf == Configs::TestConfig::COUNTRY;
+    req.country_concurrency = Configs::dataStore->test_concurrent;
 
     // loop query result
     auto doneMu = new QMutex;
@@ -292,39 +356,19 @@ void MainWindow::runSpeedTest(const QString& config, bool useDefault, bool testC
     runOnNewThread([=,this]
     {
         QDateTime lastProxyListUpdate = QDateTime::currentDateTime();
-        bool ok;
         while (true) {
             QThread::msleep(100);
             if (doneMu->tryLock())
             {
                 break;
             }
-            auto res = defaultClient->QueryCurrentSpeedTests(&ok);
-            if (!ok || !res.is_running.value())
+            if (speedtestConf == Configs::TestConfig::COUNTRY)
             {
-                continue;
+                queryCountryTest(tag2entID, testCurrent);
+            } else
+            {
+                querySpeedtest(lastProxyListUpdate, tag2entID, testCurrent);
             }
-            auto profile = testCurrent ? running : Configs::profileManager->GetProfile(tag2entID[QString::fromStdString(res.result.value().outbound_tag.value())]);
-            if (profile == nullptr)
-            {
-                continue;
-            }
-            runOnUiThread([=, this, &lastProxyListUpdate]
-            {
-                showSpeedtestData = true;
-                currentSptProfileName = profile->bean->name;
-                currentTestResult = res.result.value();
-                UpdateDataView();
-
-                if (res.result.value().error.value().empty() && !res.result.value().cancelled.value() && lastProxyListUpdate.msecsTo(QDateTime::currentDateTime()) >= 500)
-                {
-                    if (!res.result.value().dl_speed.value().empty()) profile->dl_speed = QString::fromStdString(res.result.value().dl_speed.value());
-                    if (!res.result.value().ul_speed.value().empty()) profile->ul_speed = QString::fromStdString(res.result.value().ul_speed.value());
-                    if (profile->latency <= 0 && res.result.value().latency.value() > 0) profile->latency = res.result.value().latency.value();
-                    refresh_proxy_list(profile->id);
-                    lastProxyListUpdate = QDateTime::currentDateTime();
-                }
-            });
         }
         runOnUiThread([=, this]
         {
@@ -362,10 +406,12 @@ void MainWindow::runSpeedTest(const QString& config, bool useDefault, bool testC
             ent->dl_speed = QString::fromStdString(res.dl_speed.value());
             ent->ul_speed = QString::fromStdString(res.ul_speed.value());
             if (ent->latency <= 0 && res.latency.value() > 0) ent->latency = res.latency.value();
+            if (!res.server_country.value().empty()) ent->test_country = CountryNameToCode(QString::fromStdString(res.server_country.value()));
         } else {
             ent->dl_speed = "N/A";
             ent->ul_speed = "N/A";
             ent->latency = -1;
+            ent->test_country = "";
             MW_show_log(tr("[%1] speed test error: %2").arg(ent->bean->DisplayTypeAndName(), QString::fromStdString(res.error.value())));
         }
         ent->Save();

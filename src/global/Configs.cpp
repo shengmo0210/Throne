@@ -8,7 +8,10 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QKeySequence>
+#include <QNetworkAccessManager>
 #include <QStandardPaths>
+#include <utility>
 #include <include/api/RPC.h>
 
 #ifdef Q_OS_WIN
@@ -18,6 +21,8 @@
 #include <include/sys/linux/LinuxCap.h>
 #endif
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #endif
 
 namespace Configs_ConfigItem {
@@ -255,7 +260,7 @@ namespace Configs {
         _add(new configItem("theme", &theme, itemType::string));
         _add(new configItem("custom_inbound", &custom_inbound, itemType::string));
         _add(new configItem("custom_route", &custom_route_global, itemType::string));
-        _add(new configItem("sub_use_proxy", &sub_use_proxy, itemType::boolean));
+        _add(new configItem("net_use_proxy", &net_use_proxy, itemType::boolean));
         _add(new configItem("remember_id", &remember_id, itemType::integer));
         _add(new configItem("remember_enable", &remember_enable, itemType::boolean));
         _add(new configItem("language", &language, itemType::integer));
@@ -277,7 +282,7 @@ namespace Configs {
         _add(new configItem("vpn_ipv6", &vpn_ipv6, itemType::boolean));
         _add(new configItem("vpn_strict_route", &vpn_strict_route, itemType::boolean));
         _add(new configItem("sub_clear", &sub_clear, itemType::boolean));
-        _add(new configItem("sub_insecure", &sub_insecure, itemType::boolean));
+        _add(new configItem("net_insecure", &net_insecure, itemType::boolean));
         _add(new configItem("sub_auto_update", &sub_auto_update, itemType::integer));
         _add(new configItem("sub_send_hwid", &sub_send_hwid, itemType::boolean));
         _add(new configItem("start_minimal", &start_minimal, itemType::boolean));
@@ -313,6 +318,9 @@ namespace Configs {
         _add(new configItem("use_mozilla_certs", &use_mozilla_certs, itemType::boolean));
         _add(new configItem("allow_beta_update", &allow_beta_update, itemType::boolean));
         _add(new configItem("adblock_enable", &adblock_enable, itemType::boolean));
+        _add(new configItem("speed_test_timeout_ms", &speed_test_timeout_ms, itemType::integer));
+        _add(new configItem("url_test_timeout_ms", &url_test_timeout_ms, itemType::integer));
+        _add(new configItem("show_system_dns", &show_system_dns, itemType::boolean));
     }
 
     void DataStore::UpdateStartedId(int id) {
@@ -327,8 +335,8 @@ namespace Configs {
         }
         if (isDefault) {
             QString version = SubStrBefore(NKR_VERSION, "-");
-            if (!version.contains(".")) version = "2.0";
-            return "Throne" + version + " (Prefer ClashMeta Format)";
+            if (!version.contains(".")) version = "1.0.0";
+            return "Throne/" + version + " (Prefer ClashMeta Format)";
         }
         return user_agent;
     }
@@ -352,6 +360,35 @@ namespace Configs {
         _add(new configItem("dns_final_out", &this->dns_final_out, itemType::string));
     }
 
+    Shortcuts::Shortcuts() : JsonStore()
+    {
+        _add(new configItem("keyval", &keyVal, itemType::stringList));
+    }
+
+    bool Shortcuts::Save()
+    {
+        keyVal.clear();
+        auto mp = shortcuts.toStdMap();
+        for (const auto& [k, v] : mp)
+        {
+            if (v.isEmpty()) continue;
+            keyVal << k << v.toString();
+        }
+
+        return JsonStore::Save();
+    }
+
+    bool Shortcuts::Load() {
+        auto ret = JsonStore::Load();
+        if (!ret) return false;
+        if (keyVal.count()%2 != 0) return false;
+        for (int i=0;i<keyVal.size();i+=2)
+        {
+            shortcuts[keyVal[i]] = QKeySequence(keyVal[i+1]);
+        }
+        return ret;
+    }
+
     QStringList Routing::List() {
         return {"Default"};
     }
@@ -366,6 +403,24 @@ namespace Configs {
     }
 
     short isAdminCache = -1;
+
+    bool isSetuidSet(const std::string& path) {
+#ifdef Q_OS_MACOS
+        struct stat fileInfo;
+
+        if (stat(path.c_str(), &fileInfo) != 0) {
+            return false;
+        }
+
+        if (fileInfo.st_mode & S_ISUID) {
+            return true;
+        } else {
+            return false;
+        }
+#else
+        return false;
+#endif
+    }
 
     // IsAdmin 主要判断：有无权限启动 Tun
     bool IsAdmin(bool forceRenew) {

@@ -16,6 +16,8 @@
 #include <QTimer>
 #include <qfontdatabase.h>
 
+#include "include/ui/mainwindow.h"
+
 DialogBasicSettings::DialogBasicSettings(QWidget *parent)
     : QDialog(parent), ui(new Ui::DialogBasicSettings) {
     ui->setupUi(this);
@@ -36,7 +38,9 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
     D_LOAD_INT(test_concurrent)
     D_LOAD_STRING(test_latency_url)
     D_LOAD_BOOL(disable_tray)
+    ui->url_timeout->setText(Int2String(Configs::dataStore->url_test_timeout_ms));
     ui->speedtest_mode->setCurrentIndex(Configs::dataStore->speed_test_mode);
+    ui->test_timeout->setText(Int2String(Configs::dataStore->speed_test_timeout_ms));
     ui->simple_down_url->setText(Configs::dataStore->simple_dl_url);
     ui->allow_beta->setChecked(Configs::dataStore->allow_beta_update);
 
@@ -58,12 +62,21 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
     });
 
 #ifndef Q_OS_WIN
-    ui->proxy_scheme_box->hide();
+    ui->proxy_scheme_l->hide();
+    ui->proxy_scheme->hide();
     ui->windows_no_admin->hide();
 #endif
 
     // Style
     ui->connection_statistics->setChecked(Configs::dataStore->enable_stats);
+    ui->show_sys_dns->setChecked(Configs::dataStore->show_system_dns);
+    connect(ui->show_sys_dns, &QCheckBox::stateChanged, this, [=]
+    {
+        CACHE.updateSystemDns = true;
+    });
+#ifndef Q_OS_WIN
+    ui->show_sys_dns->hide();
+#endif
     //
     D_LOAD_BOOL(start_minimal)
     D_LOAD_INT(max_log_line)
@@ -114,9 +127,9 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
 
     ui->user_agent->setText(Configs::dataStore->user_agent);
     ui->user_agent->setPlaceholderText(Configs::dataStore->GetUserAgent(true));
-    D_LOAD_BOOL(sub_use_proxy)
+    D_LOAD_BOOL(net_use_proxy)
     D_LOAD_BOOL(sub_clear)
-    D_LOAD_BOOL(sub_insecure)
+    D_LOAD_BOOL(net_insecure)
     D_LOAD_BOOL(sub_send_hwid)
     D_LOAD_INT_ENABLE(sub_auto_update, sub_auto_update_enable)
     auto details = GetDeviceDetails();
@@ -184,6 +197,8 @@ void DialogBasicSettings::accept() {
     Configs::dataStore->proxy_scheme = ui->proxy_scheme->currentText().toLower();
     Configs::dataStore->speed_test_mode = ui->speedtest_mode->currentIndex();
     Configs::dataStore->simple_dl_url = ui->simple_down_url->text();
+    Configs::dataStore->url_test_timeout_ms = ui->url_timeout->text().toInt();
+    Configs::dataStore->speed_test_timeout_ms = ui->test_timeout->text().toInt();
     Configs::dataStore->allow_beta_update = ui->allow_beta->isChecked();
 
     // Style
@@ -192,6 +207,7 @@ void DialogBasicSettings::accept() {
     Configs::dataStore->language = ui->language->currentIndex();
     D_SAVE_BOOL(start_minimal)
     D_SAVE_INT(max_log_line)
+    Configs::dataStore->show_system_dns = ui->show_sys_dns->isChecked();
 
     if (Configs::dataStore->max_log_line <= 0) {
         Configs::dataStore->max_log_line = 200;
@@ -206,9 +222,9 @@ void DialogBasicSettings::accept() {
     }
 
     Configs::dataStore->user_agent = ui->user_agent->text();
-    D_SAVE_BOOL(sub_use_proxy)
+    D_SAVE_BOOL(net_use_proxy)
     D_SAVE_BOOL(sub_clear)
-    D_SAVE_BOOL(sub_insecure)
+    D_SAVE_BOOL(net_insecure)
     D_SAVE_BOOL(sub_send_hwid)
     D_SAVE_INT_ENABLE(sub_auto_update, sub_auto_update_enable)
 
@@ -238,6 +254,7 @@ void DialogBasicSettings::accept() {
     QStringList str{"UpdateDataStore"};
     if (CACHE.needRestart) str << "NeedRestart";
     if (CACHE.updateDisableTray) str << "UpdateDisableTray";
+    if (CACHE.updateSystemDns) str << "UpdateSystemDns";
     if (needChoosePort) str << "NeedChoosePort";
     MW_dialog_message(Dialog_DialogBasicSettings, str.join(","));
     QDialog::accept();

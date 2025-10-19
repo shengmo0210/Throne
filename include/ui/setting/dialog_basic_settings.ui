@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>728</width>
+    <width>767</width>
     <height>472</height>
    </rect>
   </property>
@@ -20,16 +20,6 @@
    <string>Basic Settings</string>
   </property>
   <layout class="QGridLayout" name="gridLayout">
-   <item row="8" column="3">
-    <widget class="QDialogButtonBox" name="buttonBox">
-     <property name="orientation">
-      <enum>Qt::Orientation::Horizontal</enum>
-     </property>
-     <property name="standardButtons">
-      <set>QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok</set>
-     </property>
-    </widget>
-   </item>
    <item row="0" column="3">
     <widget class="QTabWidget" name="tabWidget">
      <property name="minimumSize">
@@ -47,77 +37,98 @@
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_2">
        <item>
-        <layout class="QHBoxLayout" name="hlayout_l1">
-         <item>
-          <widget class="QGroupBox" name="horizontalGroupBox_3">
-           <layout class="QHBoxLayout" name="horizontalLayout_19">
-            <item>
-             <widget class="QLabel" name="label">
-              <property name="text">
-               <string>Listen Address</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLineEdit" name="inbound_address"/>
-            </item>
-           </layout>
-          </widget>
-         </item>
-         <item>
-          <widget class="QGroupBox" name="horizontalGroupBox_2">
-           <layout class="QHBoxLayout" name="horizontalLayout_13">
-            <item>
-             <widget class="QLabel" name="inbound_socks_port_l">
-              <property name="toolTip">
-               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Socks
+        <widget class="QGroupBox" name="groupBox_5">
+         <property name="title">
+          <string>Basic Settings</string>
+         </property>
+         <layout class="QGridLayout" name="gridLayout_9">
+          <item row="2" column="2">
+           <widget class="QCheckBox" name="allow_beta">
+            <property name="text">
+             <string>Allow updating to beta versions</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="label_11">
+            <property name="text">
+             <string>Custom Inbound</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="4">
+           <widget class="QLineEdit" name="inbound_socks_port">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="3">
+           <widget class="QLabel" name="inbound_socks_port_l">
+            <property name="toolTip">
+             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Socks
                                                                 + HTTP Proxy&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;
                                                             </string>
-              </property>
-              <property name="text">
-               <string>Listen Port</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLineEdit" name="inbound_socks_port">
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-                <horstretch>0</horstretch>
-                <verstretch>0</verstretch>
-               </sizepolicy>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QCheckBox" name="random_listen_port">
-              <property name="toolTip">
-               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Selects a random available port on every run&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
-              </property>
-              <property name="text">
-               <string>Random port</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </widget>
-         </item>
-        </layout>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="proxy_scheme_box">
-         <property name="title">
-          <string/>
-         </property>
-         <layout class="QGridLayout" name="gridLayout_7">
+            </property>
+            <property name="text">
+             <string>Listen Port</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1" colspan="2">
+           <widget class="QPushButton" name="custom_inbound_edit">
+            <property name="text">
+             <string>Edit</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QCheckBox" name="disable_tray">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="toolTip">
+             <string>Prevents the app from minimizing to the tray when the window is closed. The app will exit instead</string>
+            </property>
+            <property name="text">
+             <string>Disable tray</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1" colspan="2">
+           <widget class="QLineEdit" name="inbound_address"/>
+          </item>
+          <item row="0" column="5">
+           <widget class="QCheckBox" name="random_listen_port">
+            <property name="toolTip">
+             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Selects a random available port on every run&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+            </property>
+            <property name="text">
+             <string>Random port</string>
+            </property>
+           </widget>
+          </item>
           <item row="0" column="0">
-           <widget class="QLabel" name="label_10">
+           <widget class="QLabel" name="label">
+            <property name="text">
+             <string>Listen Address</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="3">
+           <widget class="QLabel" name="proxy_scheme_l">
             <property name="text">
              <string>Proxy Format</string>
             </property>
            </widget>
           </item>
-          <item row="0" column="1">
+          <item row="1" column="4" colspan="2">
            <widget class="QComboBox" name="proxy_scheme">
             <item>
              <property name="text">
@@ -140,141 +151,131 @@
         </widget>
        </item>
        <item>
-        <layout class="QHBoxLayout" name="hlayout_l2">
-         <item>
-          <widget class="QGroupBox" name="groupbox_custom_inbound">
-           <layout class="QHBoxLayout" name="horizontalLayout_10">
-            <item>
-             <widget class="QLabel" name="label_11">
-              <property name="text">
-               <string>Custom Inbound</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="custom_inbound_edit">
-              <property name="text">
-               <string>Edit</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </widget>
-         </item>
-        </layout>
+        <widget class="QGroupBox" name="groupBox_3">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="title">
+          <string>Network Settings</string>
+         </property>
+         <layout class="QHBoxLayout" name="horizontalLayout_11">
+          <item>
+           <widget class="QCheckBox" name="net_use_proxy">
+            <property name="text">
+             <string>Use proxy</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="net_insecure">
+            <property name="text">
+             <string>Ignore TLS errors</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
        </item>
        <item>
         <widget class="QGroupBox" name="groupBox1">
-         <layout class="QHBoxLayout" name="horizontalLayout_9" stretch="0,8,1,1">
-          <item>
+         <property name="title">
+          <string>Test Settings</string>
+         </property>
+         <layout class="QGridLayout" name="gridLayout_3" columnstretch="0,2,0,1">
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="test_concurrent"/>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="label_16">
+            <property name="text">
+             <string>Simple Download URL</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QComboBox" name="speedtest_mode">
+            <item>
+             <property name="text">
+              <string>Download + Upload</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Only Download</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Only Upload</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Simple Download</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Only Country</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="0" column="0">
            <widget class="QLabel" name="label_13">
             <property name="text">
              <string>Latency Test URL</string>
             </property>
            </widget>
           </item>
-          <item>
-           <widget class="QLineEdit" name="test_latency_url"/>
+          <item row="2" column="0">
+           <widget class="QLabel" name="label_12">
+            <property name="text">
+             <string>Speedtest mode</string>
+            </property>
+           </widget>
           </item>
-          <item>
+          <item row="1" column="0">
            <widget class="QLabel" name="label_14">
             <property name="text">
              <string>Concurrent</string>
             </property>
            </widget>
           </item>
-          <item>
-           <widget class="QLineEdit" name="test_concurrent"/>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="horizontalGroupBox_1_5">
-         <layout class="QHBoxLayout" name="horizontalLayout_1_5">
-          <item>
-           <widget class="QCheckBox" name="disable_tray">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
+          <item row="2" column="2">
+           <widget class="QLabel" name="label_19">
             <property name="toolTip">
-             <string>Prevents the app from minimizing to the tray when the window is closed. The app will exit instead</string>
+             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;timeout in milliseconds&lt;br/&gt;applies to all tests individually&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
             </property>
             <property name="text">
-             <string>Disable tray</string>
+             <string>Timeout</string>
             </property>
            </widget>
           </item>
-          <item>
-           <widget class="QCheckBox" name="allow_beta">
+          <item row="1" column="3">
+           <widget class="QLineEdit" name="url_timeout"/>
+          </item>
+          <item row="1" column="2">
+           <widget class="QLabel" name="label_22">
+            <property name="toolTip">
+             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Timeout for URLtest in ms&lt;br/&gt;Note that muxed connections take a much longer time for their initial request, and setting this value too low will cause the test to falsely report that the config is not working&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+            </property>
             <property name="text">
-             <string>Allow updating to beta versions</string>
+             <string>Timeout</string>
             </property>
            </widget>
           </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="QFrame" name="frame">
-         <property name="frameShape">
-          <enum>QFrame::Shape::StyledPanel</enum>
-         </property>
-         <property name="frameShadow">
-          <enum>QFrame::Shadow::Raised</enum>
-         </property>
-         <layout class="QVBoxLayout" name="verticalLayout_5">
-          <item>
-           <layout class="QHBoxLayout" name="horizontalLayout_7">
-            <item>
-             <widget class="QLabel" name="label_12">
-              <property name="text">
-               <string>Speedtest mode</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QComboBox" name="speedtest_mode">
-              <item>
-               <property name="text">
-                <string>Download + Upload</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>Only Download</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>Only Upload</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>Simple Download</string>
-               </property>
-              </item>
-             </widget>
-            </item>
-           </layout>
+          <item row="2" column="3">
+           <widget class="QLineEdit" name="test_timeout"/>
           </item>
-          <item>
-           <layout class="QHBoxLayout" name="horizontalLayout_3">
-            <item>
-             <widget class="QLabel" name="label_16">
-              <property name="text">
-               <string>Simple Download URL</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLineEdit" name="simple_down_url"/>
-            </item>
-           </layout>
+          <item row="0" column="1" colspan="3">
+           <widget class="QLineEdit" name="test_latency_url"/>
+          </item>
+          <item row="3" column="1" colspan="3">
+           <widget class="QLineEdit" name="simple_down_url"/>
           </item>
          </layout>
         </widget>
@@ -364,7 +365,7 @@
         <layout class="QHBoxLayout" name="style_h_3">
          <item>
           <widget class="QGroupBox" name="horizontalGroupBox_5">
-           <layout class="QHBoxLayout" name="horizontalLayout_6">
+           <layout class="QVBoxLayout" name="verticalLayout_5">
             <item>
              <widget class="QCheckBox" name="start_minimal">
               <property name="sizePolicy">
@@ -375,6 +376,13 @@
               </property>
               <property name="text">
                <string>Hide dashboard at startup</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="show_sys_dns">
+              <property name="text">
+               <string>Show System DNS option</string>
               </property>
              </widget>
             </item>
@@ -492,7 +500,7 @@
       <attribute name="title">
        <string>Subscription</string>
       </attribute>
-      <layout class="QGridLayout" name="gridLayout_3">
+      <layout class="QGridLayout" name="gridLayout_7">
        <item row="0" column="1">
         <layout class="QHBoxLayout" name="horizontalLayout_5">
          <item>
@@ -530,28 +538,14 @@
        <item row="1" column="1">
         <widget class="MyLineEdit" name="user_agent"/>
        </item>
-       <item row="2" column="1">
-        <widget class="QCheckBox" name="sub_use_proxy">
-         <property name="text">
-          <string>Use proxy when updating subscription</string>
-         </property>
-        </widget>
-       </item>
-       <item row="3" column="1">
-        <widget class="QCheckBox" name="sub_insecure">
-         <property name="text">
-          <string>Ignore TLS errors when updating subscription</string>
-         </property>
-        </widget>
-       </item>
-       <item row="4" column="1">
+       <item row="2" column="0" colspan="2">
         <widget class="QCheckBox" name="sub_clear">
          <property name="text">
           <string>Clear servers before updating subscription</string>
          </property>
         </widget>
        </item>
-       <item row="5" column="1">
+       <item row="3" column="0" colspan="2">
         <widget class="QCheckBox" name="sub_send_hwid">
          <property name="toolTip">
           <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;HWID=%1&lt;/p&gt;&lt;p&gt;OS=%2&lt;/p&gt;&lt;p&gt;OS Version=%3&lt;/p&gt;&lt;p&gt;Model=%4&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
@@ -842,6 +836,16 @@
        </item>
       </layout>
      </widget>
+    </widget>
+   </item>
+   <item row="9" column="3">
+    <widget class="QDialogButtonBox" name="buttonBox">
+     <property name="orientation">
+      <enum>Qt::Orientation::Horizontal</enum>
+     </property>
+     <property name="standardButtons">
+      <set>QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok</set>
+     </property>
     </widget>
    </item>
   </layout>

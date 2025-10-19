@@ -65,6 +65,7 @@ set(PROJECT_SOURCES
         src/global/Utils.cpp
         src/global/HTTPRequestHelper.cpp
         src/global/DeviceDetailsHelper.cpp
+        src/global/CountryHelper.cpp
 
         3rdparty/base64.cpp
         3rdparty/qrcodegen.cpp
@@ -221,6 +222,13 @@ set(PROJECT_SOURCES
         src/dataStore/Group.cpp
         src/dataStore/ProxyEntity.cpp
 )
+
+if (NOT APPLE AND Qt6_VERSION VERSION_GREATER_EQUAL 6.9.0)
+    list(APPEND PROJECT_SOURCES res/EmojiFont.qrc)
+    if (WIN32)
+        list(APPEND PROJECT_SOURCES res/EmojiFontWin.qrc)
+    endif ()
+endif ()
 
 # Qt exe
 qt_add_executable(Throne

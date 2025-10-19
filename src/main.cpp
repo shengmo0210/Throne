@@ -18,9 +18,12 @@
 #ifdef Q_OS_WIN
 #include "include/sys/windows/MiniDump.h"
 #include "include/sys/windows/eventHandler.h"
+#include "include/sys/windows/WinVersion.h"
+#include <qfontdatabase.h>
 #endif
 #ifdef Q_OS_LINUX
 #include "include/sys/linux/desktopinfo.h"
+#include <qfontdatabase.h>
 #endif
 
 void signal_handler(int signum) {
@@ -66,6 +69,23 @@ int main(int argc, char* argv[]) {
     QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
     QApplication::setQuitOnLastWindowClosed(false);
     QApplication a(argc, argv);
+
+#if !defined(Q_OS_MACOS) && (QT_VERSION >= QT_VERSION_CHECK(6,9,0))
+    // Load the emoji fonts
+#ifdef Q_OS_WIN
+    int fontId = QFontDatabase::addApplicationFont(WinVersion::IsBuildNumGreaterOrEqual(BuildNumber::Windows_11_22H2) ? ":/font/notoEmoji" : ":/font/Twemoji");
+#else
+    int fontId = QFontDatabase::addApplicationFont(":/font/notoEmoji");
+#endif
+    if (fontId >= 0)
+    {
+        QStringList fontFamilies = QFontDatabase::applicationFontFamilies(fontId);
+        QFontDatabase::setApplicationEmojiFontFamilies(fontFamilies);
+    } else
+    {
+        qDebug() << "could not load emoji font!";
+    }
+#endif
 
     // Clean
     QDir::setCurrent(QApplication::applicationDirPath());
@@ -171,12 +191,19 @@ int main(int argc, char* argv[]) {
     // Datastore & Flags
     if (Configs::dataStore->start_minimal) Configs::dataStore->flag_tray = true;
 
-    // load routing
+    // load routing and shortcuts
     Configs::dataStore->routing = std::make_unique<Configs::Routing>();
     Configs::dataStore->routing->fn = ROUTES_PREFIX + "Default";
     isLoaded = Configs::dataStore->routing->Load();
     if (!isLoaded) {
         Configs::dataStore->routing->Save();
+    }
+
+    Configs::dataStore->shortcuts = std::make_unique<Configs::Shortcuts>();
+    Configs::dataStore->shortcuts->fn = "shortcuts.json";
+    isLoaded = Configs::dataStore->shortcuts->Load();
+    if (!isLoaded) {
+        Configs::dataStore->shortcuts->Save();
     }
 
     // Translate

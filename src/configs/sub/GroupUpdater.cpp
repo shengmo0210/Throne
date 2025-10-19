@@ -84,6 +84,13 @@ namespace Subscription {
             return;
         }
 
+        // Wireguard Config
+        if (str.contains("[Interface]") && str.contains("[Peer]"))
+        {
+            updateWireguardFileConfig(str);
+            return;
+        }
+
         // Multi line
         if (str.count("\n") > 0 && needParse) {
             auto list = Disect(str);
@@ -345,6 +352,15 @@ namespace Subscription {
         }
     }
 
+    void RawUpdater::updateWireguardFileConfig(const QString& str)
+    {
+        auto ent = Configs::ProfileManager::NewProxyEntity("wireguard");
+        auto ok = ent->WireguardBean()->TryParseLink(str);
+        if (!ok) return;
+        updated_order += ent;
+    }
+
+
     QString Node2QString(const fkyaml::node &n, const QString &def = "") {
         try {
             return n.as_str().c_str();
@@ -501,7 +517,7 @@ namespace Subscription {
                     } else {
                         bean->password = Node2QString(proxy["password"]);
                     }
-                    if (Node2Bool(proxy["tls"])) bean->stream->security = "tls";
+                    bean->stream->security = "tls";
                     bean->stream->network = Node2QString(proxy["network"], "tcp");
                     bean->stream->sni = FIRST_OR_SECOND(Node2QString(proxy["sni"]), Node2QString(proxy["servername"]));
                     bean->stream->alpn = Node2QStringList(proxy["alpn"]).join(",");
@@ -522,7 +538,10 @@ namespace Subscription {
                         if (headers.is_mapping()) {
                             for (auto header: headers.as_map()) {
                                 if (Node2QString(header.first).toLower() == "host") {
-                                    bean->stream->host = Node2QString(header.second);
+                                    if (header.second.is_string())
+                                        bean->stream->host = Node2QString(header.second);
+                                    else if (header.second.is_sequence() && header.second[0].is_string())
+                                        bean->stream->host = Node2QString(header.second[0]);
                                     break;
                                 }
                             }
@@ -541,13 +560,6 @@ namespace Subscription {
                     if (reality.is_mapping()) {
                         bean->stream->reality_pbk = Node2QString(reality["public-key"]);
                         bean->stream->reality_sid = Node2QString(reality["short-id"]);
-                    }
-
-                    if (bean->stream->network == "tcp" && bean->stream->security.isEmpty()) {
-                        if (bean->stream->header_type.isEmpty())
-                            bean->stream->header_type = "http";
-                        if (bean->stream->path.isEmpty())
-                            bean->stream->path = "/";
                     }
                 } else if (type == "vmess") {
                     needFix = true;
@@ -624,11 +636,8 @@ namespace Subscription {
                         auto paths = tcp_http["path"];
                         if (paths.is_string())
                             bean->stream->path = Node2QString(paths);
-                        else if (paths.is_sequence())
-                            for (auto path: paths) {
-                                bean->stream->path = Node2QString(path);
-                                break;
-                            }
+                        else if (paths.is_sequence() && paths[0].is_string())
+                            bean->stream->path = Node2QString(paths[0]);
                     }
                 } else if (type == "anytls") {
                     needFix = true;
@@ -814,7 +823,7 @@ namespace Subscription {
             auto groupName = group == nullptr ? content : group->name;
             MW_show_log(">>>>>>>> " + QObject::tr("Requesting subscription: %1").arg(groupName));
 
-            auto resp = NetworkRequestHelper::HttpGet(content);
+            auto resp = NetworkRequestHelper::HttpGet(content, Configs::dataStore->sub_send_hwid);
             if (!resp.error.isEmpty()) {
                 MW_show_log("<<<<<<<< " + QObject::tr("Requesting subscription %1 error: %2").arg(groupName, resp.error + "\n" + resp.data));
                 return;
