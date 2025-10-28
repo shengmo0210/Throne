@@ -423,12 +423,8 @@ namespace Configs {
     QJsonObject BuildDnsObject(QString address, bool tunEnabled)
     {
         bool usingSystemdResolved = false;
-        bool isDarwin = false;
 #ifdef Q_OS_LINUX
         usingSystemdResolved = ReadFileText("/etc/resolv.conf").contains("systemd-resolved");
-#endif
-#ifdef Q_OS_MACOS
-        isDarwin = true;
 #endif
         if (address.startsWith("local"))
         {
@@ -438,11 +434,11 @@ namespace Configs {
                     {"type", "underlying"}
                 };
             }
-            if (tunEnabled && isDarwin)
+            if (tunEnabled && getOS() == Darwin)
             {
-                MW_show_log(R"(DNS has been overriden to dhcp, if it does not work, please change both "Routing settings->Direct DNS" and "basic settings->Core->Core options->underlying dns" to something other than local)");
                 return {
-                        {"type", "dhcp"}
+                    {"type", "udp"},
+                    {"server", dataStore->core_box_underlying_dns}
                 };
             }
             return {
@@ -533,6 +529,12 @@ namespace Configs {
             }
         }
         routeChain->Save();
+
+        if (getOS() == Darwin && dataStore->core_box_underlying_dns.isEmpty() && dataStore->spmode_vpn)
+        {
+            status->result->error = QObject::tr("Local DNS and Tun mode do not work together, please set an IP to be used as the Local DNS server in the Routing Settings -> Local override");
+            return;
+        }
         
         // copy for modification
         routeChain = std::make_shared<RoutingChain>(*routeChain);
@@ -800,7 +802,7 @@ namespace Configs {
                         };
                     }
             }
-            if (Configs::dataStore->adblock_enable) {
+            if (dataStore->adblock_enable) {
                 ruleSetArray += QJsonObject{
                     {"type", "remote"},
                     {"tag", "throne-adblocksingbox"},
@@ -936,7 +938,7 @@ namespace Configs {
             };
         }
 
-        // Underlying 100% Working DNS
+        // Underlying DNS
         auto dnsLocalAddress = dataStore->core_box_underlying_dns.isEmpty() ? "local" : dataStore->core_box_underlying_dns;
         auto dnsLocalObj = BuildDnsObject(dnsLocalAddress, dataStore->spmode_vpn);
         dnsLocalObj["tag"] = "dns-local";

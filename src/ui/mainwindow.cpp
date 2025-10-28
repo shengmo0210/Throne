@@ -26,7 +26,6 @@
 #else
 #ifdef Q_OS_LINUX
 #include "include/sys/linux/LinuxCap.h"
-#include "include/sys/linux/desktopinfo.h"
 #include <QDBusInterface>
 #include <QDBusReply>
 #include <QUuid>
@@ -979,15 +978,10 @@ void MainWindow::prepare_exit()
     Configs::dataStore->save_control_no_save = true; // don't change datastore after this line
     profile_stop(false, true);
 
-    QMutex coreKillMu;
-    coreKillMu.lock();
-    runOnThread([=, this, &coreKillMu]()
+    runOnThread([=, this]()
     {
         core_process->Kill();
-        coreKillMu.unlock();
-    }, DS_cores);
-    coreKillMu.lock();
-    coreKillMu.unlock();
+    }, DS_cores, true);
 
     mu_exit.unlock();
     qDebug() << "prepare exit done!";
@@ -1915,8 +1909,7 @@ QPixmap grabScreen(QScreen* screen, bool& ok)
     QPixmap p;
     QRect geom = screen->geometry();
 #ifdef Q_OS_LINUX
-    DesktopInfo m_info;
-    if (m_info.waylandDetected()) {
+    if (qEnvironmentVariable("XDG_SESSION_TYPE") == "wayland" || qEnvironmentVariable("WAYLAND_DISPLAY").contains("wayland", Qt::CaseInsensitive)) {
         QDBusInterface screenshotInterface(
           QStringLiteral("org.freedesktop.portal.Desktop"),
           QStringLiteral("/org/freedesktop/portal/desktop"),
