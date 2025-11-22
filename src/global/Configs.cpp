@@ -27,9 +27,12 @@
 
 namespace Configs_ConfigItem {
 
-    // 添加关联
     void JsonStore::_add(configItem *item) {
         _map.insert(item->name, std::shared_ptr<configItem>(item));
+    }
+
+    void JsonStore::_remove(const QString &key) {
+        _map.remove(key);
     }
 
     QString JsonStore::_name(void *p) {
@@ -40,7 +43,6 @@ namespace Configs_ConfigItem {
     }
 
     std::shared_ptr<configItem> JsonStore::_get(const QString &name) {
-        // 直接 [] 会设置一个 nullptr ，所以先判断是否存在
         if (_map.contains(name)) {
             return _map[name];
         }
@@ -321,6 +323,8 @@ namespace Configs {
         _add(new configItem("speed_test_timeout_ms", &speed_test_timeout_ms, itemType::integer));
         _add(new configItem("url_test_timeout_ms", &url_test_timeout_ms, itemType::integer));
         _add(new configItem("show_system_dns", &show_system_dns, itemType::boolean));
+        _add(new configItem("main_window_geometry", &mainWindowGeometry, itemType::string));
+        _add(new configItem("use_custom_icons", &use_custom_icons, itemType::boolean));
     }
 
     void DataStore::UpdateStartedId(int id) {

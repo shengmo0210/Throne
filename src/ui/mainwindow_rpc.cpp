@@ -1,7 +1,6 @@
 #include "include/ui/mainwindow.h"
 
 #include "include/dataStore/Database.hpp"
-#include "include/configs/ConfigBuilder.hpp"
 #include "include/stats/traffic/TrafficLooper.hpp"
 #include "include/api/RPC.h"
 #include "include/ui/utils//MessageBoxTimer.h"
@@ -12,11 +11,14 @@
 #include <QDesktopServices>
 #include <QMessageBox>
 
-// grpc
+#include "include/configs/generate.h"
+#include "include/sys/Process.hpp"
+
+// rpc
 
 using namespace API;
 
-void MainWindow::setup_grpc() {
+void MainWindow::setup_rpc() {
     // Setup Connection
     defaultClient = new Client(
         [=](const QString &errStr) {
@@ -81,7 +83,7 @@ void MainWindow::runURLTest(const QString& config, bool useDefault, const QStrin
                         QString::fromStdString(res.error.value()).contains("context canceled")) ent->latency=0;
                     else {
                         ent->latency = -1;
-                        MW_show_log(tr("[%1] test error: %2").arg(ent->bean->DisplayTypeAndName(), QString::fromStdString(res.error.value())));
+                        MW_show_log(tr("[%1] test error: %2").arg(ent->outbound->DisplayTypeAndName(), QString::fromStdString(res.error.value())));
                     }
                 }
                 ent->Save();
@@ -125,7 +127,7 @@ void MainWindow::runURLTest(const QString& config, bool useDefault, const QStrin
                 QString::fromStdString(res.error.value()).contains("context canceled")) ent->latency=0;
             else {
                 ent->latency = -1;
-                MW_show_log(tr("[%1] test error: %2").arg(ent->bean->DisplayTypeAndName(), QString::fromStdString(res.error.value())));
+                MW_show_log(tr("[%1] test error: %2").arg(ent->outbound->DisplayTypeAndName(), QString::fromStdString(res.error.value())));
             }
         }
         ent->Save();
@@ -142,7 +144,7 @@ void MainWindow::urltest_current_group(const QList<std::shared_ptr<Configs::Prox
     }
 
     runOnNewThread([this, profiles]() {
-        auto buildObject = Configs::BuildTestConfig(profiles, ruleSetMap);
+        auto buildObject = Configs::BuildTestConfig(profiles);
         if (!buildObject->error.isEmpty()) {
             MW_show_log(tr("Failed to build test config: ") + buildObject->error);
             speedtestRunning.unlock();
@@ -237,7 +239,7 @@ void MainWindow::speedtest_current_group(const QList<std::shared_ptr<Configs::Pr
     runOnNewThread([this, profiles, testCurrent]() {
         if (!testCurrent)
         {
-            auto buildObject = Configs::BuildTestConfig(profiles, ruleSetMap);
+            auto buildObject = Configs::BuildTestConfig(profiles);
             if (!buildObject->error.isEmpty()) {
                 MW_show_log(tr("Failed to build test config: ") + buildObject->error);
                 speedtestRunning.unlock();
@@ -283,7 +285,7 @@ void MainWindow::querySpeedtest(QDateTime lastProxyListUpdate, const QMap<QStrin
     runOnUiThread([=, this, &lastProxyListUpdate]
     {
         showSpeedtestData = true;
-        currentSptProfileName = profile->bean->name;
+        currentSptProfileName = profile->outbound->name;
         currentTestResult = res.result.value();
         UpdateDataView();
 
@@ -412,7 +414,7 @@ void MainWindow::runSpeedTest(const QString& config, bool useDefault, bool testC
             ent->ul_speed = "N/A";
             ent->latency = -1;
             ent->test_country = "";
-            MW_show_log(tr("[%1] speed test error: %2").arg(ent->bean->DisplayTypeAndName(), QString::fromStdString(res.error.value())));
+            MW_show_log(tr("[%1] speed test error: %2").arg(ent->outbound->DisplayTypeAndName(), QString::fromStdString(res.error.value())));
         }
         ent->Save();
     }
@@ -466,7 +468,7 @@ void MainWindow::profile_start(int _id) {
     auto group = Configs::profileManager->GetGroup(ent->gid);
     if (group == nullptr || group->archive) return;
 
-    auto result = BuildConfig(ent, ruleSetMap, false, false);
+    auto result = Configs::BuildSingBoxConfig(ent);
     if (!result->error.isEmpty()) {
         MessageBoxWarning(tr("BuildConfig return error"), result->error);
         return;
@@ -552,7 +554,7 @@ void MainWindow::profile_start(int _id) {
     if (!Configs::dataStore->core_running) {
         runOnThread(
             [=, this] {
-                MW_show_log(tr("Try to start the config, but the core has not listened to the grpc port, so restart it..."));
+                MW_show_log(tr("Try to start the config, but the core has not listened to the RPC port, so restart it..."));
                 core_process->start_profile_when_core_is_up = ent->id;
                 core_process->Restart();
             },
@@ -576,9 +578,9 @@ void MainWindow::profile_start(int _id) {
             }, true);
         }
         // do start
-        MW_show_log(">>>>>>>> " + tr("Starting profile %1").arg(ent->bean->DisplayTypeAndName()));
+        MW_show_log(">>>>>>>> " + tr("Starting profile %1").arg(ent->outbound->DisplayTypeAndName()));
         if (!profile_start_stage2()) {
-            MW_show_log("<<<<<<<< " + tr("Failed to start profile %1").arg(ent->bean->DisplayTypeAndName()));
+            MW_show_log("<<<<<<<< " + tr("Failed to start profile %1").arg(ent->outbound->DisplayTypeAndName()));
         }
         mu_starting.unlock();
         // cancel timeout
@@ -662,7 +664,7 @@ void MainWindow::profile_stop(bool crash, bool block, bool manual) {
 
     runOnNewThread([=, this, &blocker] {
         // do stop
-        MW_show_log(">>>>>>>> " + tr("Stopping profile %1").arg(running->bean->DisplayTypeAndName()));
+        MW_show_log(">>>>>>>> " + tr("Stopping profile %1").arg(running->outbound->DisplayTypeAndName()));
         if (!profile_stop_stage2()) {
             MW_show_log("<<<<<<<< " + tr("Failed to stop, please restart the program."));
         }
@@ -673,7 +675,7 @@ void MainWindow::profile_stop(bool crash, bool block, bool manual) {
 
         if (block) blocker.unlock();
 
-        runOnUiThread([=, this, &blocker] {
+        runOnUiThread([=, this] {
             refresh_status();
             refresh_proxy_list_impl_refresh_data(id, true);
 

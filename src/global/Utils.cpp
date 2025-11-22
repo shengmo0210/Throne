@@ -49,6 +49,13 @@ QByteArray DecodeB64IfValid(const QString &input, QByteArray::Base64Options opti
     return {};
 }
 
+QStringList SplitAndTrim(QString raw, QString separator) {
+    QStringList result;
+    auto spl = raw.split(separator);
+    for (auto str : spl) result << str.trimmed();
+    return result;
+}
+
 QString QStringList2Command(const QStringList &list) {
     QStringList new_list;
     for (auto str: list) {
@@ -150,6 +157,12 @@ QJsonObject QMapString2QJsonObject(const QMap<QString,QString> &mp) {
     }
 
     return res;
+}
+
+QList<QString> QListInt2QListString(const QList<int> &list) {
+    QList<QString> resp;
+    for (int item : list) resp << Int2String(item);
+    return resp;
 }
 
 QByteArray ReadFile(const QString &path) {

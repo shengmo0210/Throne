@@ -2,7 +2,8 @@
 
 namespace Configs
 {
-    ProxyEntity::ProxyEntity(Configs::AbstractBean *bean, const QString &type_) {
+    ProxyEntity::ProxyEntity(Configs::outbound *outbound, Configs::AbstractBean *bean, const QString &type_)
+    {
         if (type_ != nullptr) this->type = type_;
 
         _add(new configItem("type", &type, itemType::string));
@@ -15,11 +16,16 @@ namespace Configs
         _add(new configItem("country", &test_country, itemType::string));
 
         if (bean != nullptr) {
-            this->bean = std::shared_ptr<Configs::AbstractBean>(bean);
+            this->_bean = std::shared_ptr<Configs::AbstractBean>(bean);
             _add(new configItem("bean", dynamic_cast<JsonStore *>(bean), itemType::jsonStore));
+        }
+
+        if (outbound != nullptr) {
+            this->outbound = std::shared_ptr<Configs::outbound>(outbound);
+            _add(new configItem("outbound", dynamic_cast<JsonStore *>(outbound), itemType::jsonStore));
             _add(new configItem("traffic", dynamic_cast<JsonStore *>(traffic_data.get()), itemType::jsonStore));
         }
-    };
+    }
 
     QString ProxyEntity::DisplayTestResult() const {
         QString result;

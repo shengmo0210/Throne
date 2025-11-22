@@ -77,6 +77,7 @@ namespace Configs {
         // Saved
 
         // Misc
+        QString mainWindowGeometry;
         QString log_level = "info";
         QString test_latency_url = "http://cp.cloudflare.com/";
         int url_test_timeout_ms = 3000;
@@ -104,6 +105,7 @@ namespace Configs {
         QString simple_dl_url = "http://cachefly.cachefly.net/1mb.test";
         bool allow_beta_update = false;
         bool show_system_dns = false;
+        bool use_custom_icons = false;
 
         // Network
         bool net_use_proxy = false;

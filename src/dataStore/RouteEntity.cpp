@@ -191,7 +191,7 @@ namespace Configs {
                             MW_show_log("The outbound described in the rule chain is missing, maybe your data is corrupted");
                             return {};
                         }
-                        obj["outbound"] = prof->bean->DisplayName();
+                        obj["outbound"] = prof->outbound->DisplayName();
                     }
                 } else {
                     if (!outboundTag.isEmpty()) obj["outbound"] = outboundTag;
@@ -511,7 +511,7 @@ namespace Configs {
         if (name == "proxy") return -1;
         if (name == "direct") return -2;
         for (const auto& item: profileManager->profiles) {
-            if (item.second->bean->name == name) return item.first;
+            if (item.second->outbound->name == name) return item.first;
         }
 
         return INVALID_ID;
@@ -784,17 +784,16 @@ namespace Configs {
 
     bool RoutingChain::add_simple_process_rule(const QString& content, const std::shared_ptr<RouteRule>& rule, ruleType type)
     {
-        auto sp = content.split(":");
-        if (sp.size() != 2) return false;
-        const QString& address = sp[1];
-        const QString& subType = sp[0];
-        if (subType == "processName" && type == simpleProcessName)
-        {
-            if (!rule->process_name.contains(address)) rule->process_name.append(address);
-            return true;
-        } else if (subType == "processPath" && type == simpleProcessPath)
+        if (!content.contains(":")) return false;
+        auto prefix = content.first(content.indexOf(':'));
+        const QString& address = content.section(':', 1);
+        if (prefix == "processPath" && type == simpleProcessPath)
         {
             if (!rule->process_path.contains(address)) rule->process_path.append(address);
+            return true;
+        } else if (prefix == "processName" && type == simpleProcessName)
+        {
+            if (!rule->process_name.contains(address)) rule->process_name.append(address);
             return true;
         } else
         {

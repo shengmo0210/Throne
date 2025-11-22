@@ -97,7 +97,6 @@ set(PROJECT_SOURCES
         src/dataStore/Database.cpp
         src/stats/traffic/TrafficLooper.cpp
         src/dataStore/ProfileFilter.cpp
-        src/configs/ConfigBuilder.cpp
 
         src/configs/proxy/AbstractBean.cpp
         src/configs/proxy/Bean2CoreObj_box.cpp
@@ -116,7 +115,7 @@ set(PROJECT_SOURCES
         src/ui/setting/ThemeManager.cpp
         src/ui/setting/Icon.cpp
 
-        src/ui/mainwindow_grpc.cpp
+        src/ui/mainwindow_rpc.cpp
         src/ui/mainwindow.cpp
         include/ui/mainwindow.h
         include/ui/mainwindow.ui
@@ -131,18 +130,15 @@ set(PROJECT_SOURCES
         include/ui/profile/edit_chain.h
         src/ui/profile/edit_chain.cpp
         include/ui/profile/edit_chain.ui
-        include/ui/profile/edit_socks_http.h
-        src/ui/profile/edit_socks_http.cpp
-        include/ui/profile/edit_socks_http.ui
         include/ui/profile/edit_shadowsocks.h
         src/ui/profile/edit_shadowsocks.cpp
         include/ui/profile/edit_shadowsocks.ui
         include/ui/profile/edit_vmess.h
         src/ui/profile/edit_vmess.cpp
         include/ui/profile/edit_vmess.ui
-        include/ui/profile/edit_trojan_vless.h
-        src/ui/profile/edit_trojan_vless.cpp
-        include/ui/profile/edit_trojan_vless.ui
+        include/ui/profile/edit_vless.h
+        src/ui/profile/edit_vless.cpp
+        include/ui/profile/edit_vless.ui
         include/ui/profile/edit_anytls.h
         src/ui/profile/edit_anytls.cpp
         include/ui/profile/edit_anytls.ui
@@ -150,10 +146,21 @@ set(PROJECT_SOURCES
         src/ui/profile/edit_tailscale.cpp
         include/ui/profile/edit_tailscale.ui
         include/configs/proxy/Tailscale.hpp
-
-        include/ui/profile/edit_quic.h
-        src/ui/profile/edit_quic.cpp
-        include/ui/profile/edit_quic.ui
+        include/ui/profile/edit_trojan.h
+        src/ui/profile/edit_trojan.cpp
+        include/ui/profile/edit_trojan.ui
+        include/ui/profile/edit_http.h
+        src/ui/profile/edit_http.cpp
+        include/ui/profile/edit_http.ui
+        include/ui/profile/edit_socks.h
+        src/ui/profile/edit_socks.cpp
+        include/ui/profile/edit_socks.ui
+        include/ui/profile/edit_hysteria.h
+        src/ui/profile/edit_hysteria.cpp
+        include/ui/profile/edit_hysteria.ui
+        include/ui/profile/edit_tuic.h
+        src/ui/profile/edit_tuic.cpp
+        include/ui/profile/edit_tuic.ui
 
         include/ui/profile/edit_custom.h
         src/ui/profile/edit_custom.cpp
@@ -221,6 +228,68 @@ set(PROJECT_SOURCES
         include/sys/windows/eventHandler.h
         src/dataStore/Group.cpp
         src/dataStore/ProxyEntity.cpp
+        include/configs/baseConfig.h
+        include/configs/common/DialFields.h
+        include/configs/common/TLS.h
+        include/configs/common/multiplex.h
+        include/configs/common/transport.h
+        include/configs/common/Outbound.h
+        
+        # common impl
+        src/configs/common/DialFields.cpp
+        src/configs/common/TLS.cpp
+        src/configs/common/multiplex.cpp
+        src/configs/common/transport.cpp
+        src/configs/common/Outbound.cpp
+        include/configs/outbounds/socks.h
+        include/configs/outbounds/http.h
+        include/configs/outbounds/shadowsocks.h
+        include/configs/outbounds/vmess.h
+        include/configs/outbounds/trojan.h
+        include/configs/outbounds/hysteria.h
+        include/configs/outbounds/vless.h
+        include/configs/outbounds/tuic.h
+        include/configs/outbounds/anyTLS.h
+        include/configs/outbounds/ssh.h
+        
+        # outbounds impl
+        src/configs/outbounds/anyTLS.cpp
+        src/configs/outbounds/http.cpp
+        src/configs/outbounds/hysteria.cpp
+        src/configs/outbounds/shadowsocks.cpp
+        src/configs/outbounds/socks.cpp
+        src/configs/outbounds/ssh.cpp
+        src/configs/outbounds/tailscale.cpp
+        src/configs/outbounds/trojan.cpp
+        src/configs/outbounds/tuic.cpp
+        src/configs/outbounds/vless.cpp
+        src/configs/outbounds/vmess.cpp
+        src/configs/outbounds/wireguard.cpp
+        include/configs/generate.h
+        src/configs/generate.cpp
+        include/configs/common/utils.h
+        src/configs/common/utils.cpp
+        include/configs/outbounds/custom.h
+        include/configs/outbounds/chain.h
+        include/configs/outbounds/extracore.h
+        include/ui/profile/edit_socks.h
+        src/ui/profile/edit_socks.cpp
+        include/ui/profile/edit_socks.ui
+        include/ui/profile/edit_http.h
+        src/ui/profile/edit_http.cpp
+        include/ui/profile/edit_http.ui
+        include/ui/profile/edit_trojan.h
+        src/ui/profile/edit_trojan.cpp
+        include/ui/profile/edit_trojan.ui
+        include/ui/profile/edit_hysteria.h
+        src/ui/profile/edit_hysteria.cpp
+        include/ui/profile/edit_hysteria.ui
+        include/ui/profile/edit_tuic.h
+        src/ui/profile/edit_tuic.cpp
+        include/ui/profile/edit_tuic.ui
+        include/ui/profile/edit_advanced.h
+        src/ui/profile/edit_advanced.cpp
+        include/ui/profile/edit_advanced.ui
 )
 
 if (NOT APPLE AND Qt6_VERSION VERSION_GREATER_EQUAL 6.9.0)
@@ -257,7 +326,6 @@ set_target_properties(Throne PROPERTIES
         MACOSX_BUNDLE_GUI_IDENTIFIER moe.Throne.macosx
         MACOSX_BUNDLE TRUE
         WIN32_EXECUTABLE TRUE
-
 )
 
 # Target Source Translations

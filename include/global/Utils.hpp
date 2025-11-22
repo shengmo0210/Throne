@@ -57,6 +57,8 @@ QStringList SplitLines(const QString &_string);
 
 QStringList SplitLinesSkipSharp(const QString &_string, int maxLine = 0);
 
+QStringList SplitAndTrim(QString raw, QString seperator);
+
 // Base64
 
 QByteArray DecodeB64IfValid(const QString &input, QByteArray::Base64Options options = QByteArray::Base64Option::Base64Encoding);
@@ -89,6 +91,8 @@ QJsonArray QListStr2QJsonArray(const QList<QString> &list);
 QList<int> QJsonArray2QListInt(const QJsonArray &arr);
 
 QJsonObject QMapString2QJsonObject(const QMap<QString,QString> &mp);
+
+QList<QString> QListInt2QListString(const QList<int> &list);
 
 #define QJSONARRAY_ADD(arr, add) \
     for (const auto &a: (add)) { \
