@@ -620,7 +620,7 @@ namespace Configs {
                 ctx->error = "Ent is nullptr after cast to chain, data is corrupted";
                 return;
             }
-            entIDs << chain->list;
+            for (int idx = chain->list.size()-1; idx >=0; idx--) entIDs.append(chain->list[idx]);
         } else
         {
             entIDs.append(ctx->ent->id);
@@ -729,6 +729,7 @@ namespace Configs {
         route["rules"] = routeRules;
         route["rule_set"] = ruleSetArray;
         route["final"] = outboundIDToString(routeChain->defaultOutboundID);
+        if (dataStore->enable_stats)  route["find_process"] = true;
         route["default_domain_resolver"] = QJsonObject{
                                 {"server", "dns-direct"},
                                 {"strategy", dataStore->routing->outbound_domain_strategy}};
