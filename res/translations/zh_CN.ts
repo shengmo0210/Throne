@@ -1536,7 +1536,7 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
     </message>
     <message>
         <source>Groups</source>
-        <translation>分组</translation>
+        <translation>分组设置</translation>
     </message>
     <message>
         <source>Stop</source>
