@@ -28,17 +28,14 @@ namespace Configs {
 
     class xrayReality : public baseConfig {
         public:
-        QString target;
-        QString privateKey;
-        QString fingerprint;
         QString serverName;
+        QString fingerprint;
         QString password;
         QString shortId;
         QString spiderX;
 
         xrayReality() {
-            _add(new configItem("target", &target, string));
-            _add(new configItem("privateKey", &privateKey, string));
+            _add(new configItem("serverName", &serverName, string));
             _add(new configItem("fingerprint", &fingerprint, string));
             _add(new configItem("serverName", &serverName, string));
             _add(new configItem("password", &password, string));
@@ -57,21 +54,22 @@ namespace Configs {
         public:
         QString host;
         QString path;
-        QString mode;
+        QString mode = "auto";
         // extra
         QStringList headers;
         QString xPaddingBytes;
         bool noGRPCHeader = false;
-        int scMaxEachPostBytes = 1000000; // packet-up only
-        int scMinPostsIntervalMs = 30; // packet-up only
+        QString scMaxEachPostBytes; // packet-up only
+        QString scMinPostsIntervalMs; // packet-up only
         // extra/xmux
         QString maxConcurrency;
-        int maxConnections;
-        int cMaxReuseTimes;
+        QString maxConnections;
+        QString cMaxReuseTimes;
         QString hMaxRequestTimes;
         QString hMaxReusableSecs;
-        int hKeepAlivePeriod;
-        // todo do we need to add downloadsettings or is it useless?
+        long long hKeepAlivePeriod = 0;
+        // extra/downloadSettings
+        QString downloadSettings;
 
         xrayXHTTP() {
             _add(new configItem("host", &host, string));
@@ -80,16 +78,22 @@ namespace Configs {
             _add(new configItem("headers", &headers, stringList));
             _add(new configItem("xPaddingBytes", &xPaddingBytes, string));
             _add(new configItem("noGRPCHeader", &noGRPCHeader, boolean));
-            _add(new configItem("scMaxEachPostBytes", &scMaxEachPostBytes, integer));
-            _add(new configItem("scMinPostsIntervalMs", &scMinPostsIntervalMs, integer));
+            _add(new configItem("scMaxEachPostBytes", &scMaxEachPostBytes, string));
+            _add(new configItem("scMinPostsIntervalMs", &scMinPostsIntervalMs, string));
             _add(new configItem("maxConcurrency", &maxConcurrency, string));
-            _add(new configItem("maxConnections", &maxConnections, integer));
-            _add(new configItem("cMaxReuseTimes", &cMaxReuseTimes, integer));
+            _add(new configItem("maxConnections", &maxConnections, string));
+            _add(new configItem("cMaxReuseTimes", &cMaxReuseTimes, string));
             _add(new configItem("hMaxRequestTimes", &hMaxRequestTimes, string));
             _add(new configItem("hMaxReusableSecs", &hMaxReusableSecs, string));
-            _add(new configItem("hKeepAlivePeriod", &hKeepAlivePeriod, integer));
+            _add(new configItem("hKeepAlivePeriod", &hKeepAlivePeriod, integer64));
+            _add(new configItem("downloadSettings", &downloadSettings, string));
         }
 
+        QString getHeadersString();
+
+        QStringList getHeaderPairs(QString rawHeader);
+
+        bool ParseExtraJson(QString str);
         bool ParseFromLink(const QString& link) override;
         bool ParseFromJson(const QJsonObject& object) override;
         QString ExportToLink() override;
@@ -99,8 +103,8 @@ namespace Configs {
 
     class xrayStreamSetting : public baseConfig {
         public:
-        QString network;
-        QString security;
+        QString network = "raw";
+        QString security = "none";
         std::shared_ptr<xrayTLS> TLS = std::make_shared<xrayTLS>();
         std::shared_ptr<xrayReality> reality = std::make_shared<xrayReality>();
         std::shared_ptr<xrayXHTTP> xhttp = std::make_shared<xrayXHTTP>();

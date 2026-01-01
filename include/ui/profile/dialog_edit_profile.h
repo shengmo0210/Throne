@@ -20,12 +20,17 @@ public:
 
     ~DialogEditProfile() override;
 
+    void toggleSingboxWidgets(bool show);
+
+    void toggleXrayWidgets(bool show);
+
 public slots:
 
     void accept() override;
 
 private slots:
     void on_certificate_edit_clicked();
+    void on_xray_downloadsettings_edit_clicked();
 private:
     Ui::DialogEditProfile *ui;
 
@@ -43,6 +48,7 @@ private:
 
     struct {
         QStringList certificate;
+        QString XrayDownloadSettings;
     } CACHE;
 
     void typeSelected(const QString &newType);

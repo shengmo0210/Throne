@@ -62,7 +62,7 @@ namespace Configs {
     {
         auto url = QUrl(link);
         if (!url.isValid()) return false;
-        auto query = QUrlQuery(url.query(QUrl::ComponentFormattingOption::FullyDecoded));
+        auto query = QUrlQuery(url.query());
 
         if (query.hasQueryItem("type"))
         {
@@ -73,14 +73,14 @@ namespace Configs {
             }
         }
         if (query.hasQueryItem("host")) host = query.queryItemValue("host");
-        if (query.hasQueryItem("path")) path = query.queryItemValue("path");
+        if (query.hasQueryItem("path")) path = query.queryItemValue("path", QUrl::FullyDecoded);
         if (query.hasQueryItem("method")) method = query.queryItemValue("method");
-        if (query.hasQueryItem("headers")) headers = query.queryItemValue("headers").split(",");
+        if (query.hasQueryItem("headers")) headers = query.queryItemValue("headers", QUrl::FullyDecoded).split(",");
         if (query.hasQueryItem("idle_timeout")) idle_timeout = query.queryItemValue("idle_timeout");
         if (query.hasQueryItem("ping_timeout")) ping_timeout = query.queryItemValue("ping_timeout");
         if (query.hasQueryItem("max_early_data")) max_early_data = query.queryItemValue("max_early_data").toInt();
         if (query.hasQueryItem("early_data_header_name")) early_data_header_name = query.queryItemValue("early_data_header_name");
-        if (query.hasQueryItem("serviceName")) service_name = query.queryItemValue("serviceName");
+        if (query.hasQueryItem("serviceName")) service_name = query.queryItemValue("serviceName", QUrl::FullyDecoded);
         return true;
     }
     bool Transport::ParseFromJson(const QJsonObject& object)
@@ -93,8 +93,19 @@ namespace Configs {
         if (object.contains("headers") && object["headers"].isObject()) {
             auto headerObj = object["headers"].toObject();
             if (type == "ws") {
-                if (headerObj.contains("Host")) host = headerObj["Host"].toString();
-                headerObj.remove("Host");
+                if (headerObj.contains("Host")) {
+                    if (headerObj["Host"].isString()) {
+                        host = headerObj["Host"].toString();
+                    } else if (headerObj["Host"].isArray()) {
+                        for (const auto& v : headerObj["Host"].toArray()) {
+                            if (v.isString()) {
+                                host = v.toString();
+                                break;
+                            }
+                        }
+                    }
+                    headerObj.remove("Host");
+                }
             }
             headers = jsonObjectToQStringList(headerObj);
         }
