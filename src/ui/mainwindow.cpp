@@ -105,7 +105,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
 
     // setup log
     ui->splitter->restoreState(DecodeB64IfValid(Configs::dataManager->settingsRepo->splitter_state));
-    new SyntaxHighlighter(isDarkMode() || Configs::dataManager->settingsRepo->theme.toLower() != "qdarkstyle", qvLogDocument);
+    // new SyntaxHighlighter(isDarkMode() || Configs::dataManager->settingsRepo->theme.toLower() != "qdarkstyle", qvLogDocument);
+	new SyntaxHighlighter((isDarkMode() && Configs::dataManager->settingsRepo->theme.toLower() != "windowsvista") || Configs::dataManager->settingsRepo->theme.toLower() == "qdarkstyle", qvLogDocument);
     qvLogDocument->setUndoRedoEnabled(false);
     ui->masterLogBrowser->setUndoRedoEnabled(false);
     ui->masterLogBrowser->setDocument(qvLogDocument);
