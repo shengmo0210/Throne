@@ -110,7 +110,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     qvLogDocument->setMaximumBlockCount(Configs::dataManager->settingsRepo->max_log_line);
     ui->masterLogBrowser->setUndoRedoEnabled(false);
     ui->masterLogBrowser->setDocument(qvLogDocument);
-    ui->masterLogBrowser->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    ui->masterLogBrowser->setFont(QFontDatabase::systemFont(QFontDatabase::GeneralFont));
     updateLogFilterFields();
     runOnThread([=, this] {
         log_process_loop();
