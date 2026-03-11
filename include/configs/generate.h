@@ -1,22 +1,11 @@
 #pragma once
 #include <QJsonArray>
 #include <QJsonObject>
-#include <include/stats/traffic/TrafficData.hpp>
-
-
 
 #include "include/database/entities/Profile.h"
 
 namespace Configs
 {
-    enum OSType
-    {
-        Unknown = 0,
-        Linux = 1,
-        Windows = 2,
-        Darwin = 3,
-    };
-
     class ExtraCoreData
     {
         public:
@@ -75,12 +64,14 @@ namespace Configs
     class BuildConfigResult {
     public:
         QString error;
+        bool isChained = false;
         QJsonObject coreConfig;
+        QString tunIPv4CIDR;
         bool isXrayNeeded = false;
         QJsonObject xrayConfig;
         std::shared_ptr<ExtraCoreData> extraCoreData = std::make_shared<ExtraCoreData>();
 
-        QList<std::shared_ptr<Profile>> outboundEntsForTraffic;
+        QList<std::pair<std::shared_ptr<Profile>, QString>> outboundEntsForTraffic;
     };
 
     class BuildSingBoxConfigContext
@@ -92,7 +83,7 @@ namespace Configs
         bool isResolvedUsed = false;
         std::shared_ptr<Profile> ent = std::make_shared<Profile>(nullptr, nullptr);
         std::shared_ptr<BuildPrerequisities> buildPrerequisities = std::make_shared<BuildPrerequisities>();
-        OSType os;
+        osType os;
 
         QString error;
         QStringList warnings;
@@ -134,6 +125,9 @@ namespace Configs
         }
         return link;
     }
+
+    constexpr int warpProfileID = -2408;
+    std::shared_ptr<Profile> getWarpProfile();
 
     void CalculatePrerequisities(std::shared_ptr<BuildSingBoxConfigContext> &ctx);
 

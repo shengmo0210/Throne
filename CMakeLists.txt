@@ -71,7 +71,6 @@ set(PROJECT_SOURCES
         src/global/DeviceDetailsHelper.cpp
         src/global/CountryHelper.cpp
 
-        3rdparty/base64.cpp
         3rdparty/qrcodegen.cpp
         3rdparty/QtExtKeySequenceEdit.cpp
         3rdparty/QrDecoder.cpp
@@ -106,6 +105,7 @@ set(PROJECT_SOURCES
 
         include/configs/sub/GroupUpdater.hpp
         src/configs/sub/GroupUpdater.cpp
+        src/configs/sub/clash.cpp
 
         include/sys/Process.hpp
         src/sys/Process.cpp
@@ -125,6 +125,7 @@ set(PROJECT_SOURCES
         src/ui/utils/ProfilesTableView.cpp
         include/ui/utils/ProfilesTableVerticalHeader.h
         src/ui/utils/ProfilesTableVerticalHeader.cpp
+        include/ui/utils/ProfilesTableFilterHeader.h
 
         include/ui/profile/dialog_edit_profile.h
         src/ui/profile/dialog_edit_profile.cpp
@@ -326,6 +327,8 @@ set(PROJECT_SOURCES
         src/database/SettingsRepo.cpp
         include/sys/linux/systemChecks.h
         src/sys/linux/systemChecks.cpp
+        include/configs/sub/warp.h
+        src/configs/sub/warp.cpp
 )
 
 if (NOT APPLE AND Qt6_VERSION VERSION_GREATER_EQUAL 6.9.0)

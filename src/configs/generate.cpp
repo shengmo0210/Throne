@@ -1,7 +1,6 @@
 #include "include/configs/generate.h"
 #include "include/api/RPC.h"
 #include "include/global/Configs.hpp"
-#include "include/global/Utils.hpp"
 
 #include <QApplication>
 #include <QFileInfo>
@@ -45,20 +44,6 @@ namespace Configs {
         }
     }
 
-    inline OSType getOS()
-    {
-#ifdef Q_OS_MACOS
-        return Darwin;
-#endif
-#ifdef Q_OS_LINUX
-        return Linux;
-#endif
-#ifdef Q_OS_WIN
-        return Windows;
-#endif
-        return Unknown;
-    }
-
     QStringList getChainDomains (const std::shared_ptr<Profile>& ent, QString &error)
     {
         QStringList domains;
@@ -96,6 +81,28 @@ namespace Configs {
         }
 
         return domains;
+    }
+
+    std::shared_ptr<Profile> getWarpProfile() {
+        auto warpProfile = std::make_shared<Profile>();
+        warpProfile->name = "warp";
+        warpProfile->id = warpProfileID;
+        warpProfile->type = "wireguard";
+        auto outbound = std::make_shared<wireguard>();
+        outbound->name = "warp";
+        outbound->server = dataManager->settingsRepo->warp_ep.contains(":") ? SubStrBefore(dataManager->settingsRepo->warp_ep, ":") : dataManager->settingsRepo->warp_ep;
+        outbound->server_port = dataManager->settingsRepo->warp_ep.contains(":") ? SubStrAfter(dataManager->settingsRepo->warp_ep, ":").toInt() : 2408;
+        outbound->private_key = dataManager->settingsRepo->warp_private_key;
+        outbound->address = dataManager->settingsRepo->warp_ifc_addrs;
+        auto peer = std::make_shared<Peer>();
+        peer->public_key = dataManager->settingsRepo->warp_public_key;
+        peer->address = outbound->server;
+        peer->port = outbound->server_port;
+        outbound->peer = peer;
+        outbound->mtu = 1280;
+
+        warpProfile->outbound = outbound;
+        return warpProfile;
     }
 
     void CalculatePrerequisities(std::shared_ptr<BuildSingBoxConfigContext> &ctx) {
@@ -505,11 +512,14 @@ namespace Configs {
             inboundObj["stack"] = Configs::dataManager->settingsRepo->vpn_implementation;
             inboundObj["strict_route"] = Configs::dataManager->settingsRepo->vpn_strict_route;
             if (ctx->os == Linux) inboundObj["auto_redirect"] = true;
-            auto tunAddress = QJsonArray{"172.19.0.1/24"};
-            if (Configs::dataManager->settingsRepo->vpn_ipv6) tunAddress += "fdfe:dcba:9876::1/96";
+            const auto tunIPv4CIDR = Configs::dataManager->settingsRepo->vpn_tun_ipv4_cidr;
+            const auto tunIPv6CIDR = Configs::dataManager->settingsRepo->vpn_tun_ipv6_cidr;
+            ctx->buildConfigResult->tunIPv4CIDR = tunIPv4CIDR;
+            auto tunAddress = QJsonArray{tunIPv4CIDR};
+            if (Configs::dataManager->settingsRepo->vpn_ipv6) tunAddress += tunIPv6CIDR;
             inboundObj["address"] = tunAddress;
 
-            if (ctx->buildPrerequisities->routingDeps->defaultOutboundID == proxyID && Configs::dataManager->settingsRepo->enable_tun_routing)
+            if (Configs::dataManager->settingsRepo->enable_tun_routing)
             {
                 QJsonArray routeExcludeAddrs = {"127.0.0.0/8"};
                 QJsonArray routeExcludeSets;
@@ -559,6 +569,10 @@ namespace Configs {
         bool hasXray = false;
         for (auto id : entIDs)
         {
+            if (id == warpProfileID) {
+                ents.append(getWarpProfile());
+                continue;
+            }
             auto ent = Configs::dataManager->profilesRepo->GetProfile(id);
             if (ent == nullptr)
             {
@@ -571,7 +585,7 @@ namespace Configs {
                 return;
             }
             if (ent->type == "extracore") hasExtracore = true;
-            if (ent->type == "custom") hasCustom = true;
+            if (ent->type == "custom" && ent->Custom()->type == "fullconfig") hasCustom = true;
             if (ent->outbound->IsXray()) hasXray = true;
             ents.append(ent);
         }
@@ -632,9 +646,7 @@ namespace Configs {
             {
                 ctx->outbounds.append(object);
             }
-            ent->traffic_data->id = ent->id;
-            ent->traffic_data->tag = tag.toStdString();
-            ctx->buildConfigResult->outboundEntsForTraffic += ent;
+            ctx->buildConfigResult->outboundEntsForTraffic.append({ent, tag});
         }
     }
 
@@ -663,6 +675,9 @@ namespace Configs {
             entIDs.append(ctx->ent->id);
         }
         if (group->front_proxy_id >= 0 && !noChain) entIDs.append(group->front_proxy_id);
+        if (dataManager->settingsRepo->enable_warp) {
+            entIDs.prepend(warpProfileID);
+        }
         buildOutboundChain(ctx, entIDs, "config", true, true);
 
         // Now, build the outbounds needed by the route profile
@@ -674,6 +689,7 @@ namespace Configs {
         {"tag", "direct"}
         });
 
+        if (entIDs.size() > 1) ctx->buildConfigResult->isChained = true;
         ctx->buildConfigResult->coreConfig["endpoints"] = ctx->endpoints;
         ctx->buildConfigResult->coreConfig["outbounds"] = ctx->outbounds;
     }
@@ -834,16 +850,26 @@ namespace Configs {
         QJsonArray inbounds;
         QJsonArray outbounds;
         QJsonArray routeRules;
+        int dnsPort = dataManager->settingsRepo->core_dns_in_port;
 
-        dnsObj = {
-            {"servers", QJsonArray{
-                QJsonObject{
-                    {"address", "127.0.0.1"},
-                    {"port", dataManager->settingsRepo->core_dns_in_port},
-                    {"skipFallBack", true}
-                }
-            }}
-        };
+        if (!ctx->forTest) {
+            dnsObj = {
+                {"servers", QJsonArray{
+                    QJsonObject{
+                        {"address", "127.0.0.1"},
+                        {"port", dnsPort},
+                        {"queryStrategy", "UseIPv4"},
+                        {"skipFallBack", true}
+                    },
+                    QJsonObject{
+                            {"address", "127.0.0.1"},
+                            {"port", dnsPort},
+                            {"queryStrategy", "UseIPv6"},
+                            {"skipFallBack", true}
+                    }
+                }}
+            };
+        }
 
         for (auto [port, outboundObj] : ctx->xrayOutbounds) {
             auto inboundTag = outboundObj["tag"].toString() + "-inbound";
@@ -863,16 +889,18 @@ namespace Configs {
         }
 
         // dnsRouting
-        outbounds << QJsonObject{
-            {"tag", "direct"},
-            {"protocol", "freedom"},
-        };
-        routeRules << QJsonObject{
-            {"type", "field"},
-            {"ip", QJsonArray{"127.0.0.1"}},
-            {"port", dataManager->settingsRepo->core_dns_in_port},
-            {"outboundTag", "direct"},
-        };
+        if (!ctx->forTest) {
+            outbounds << QJsonObject{
+                {"tag", "direct"},
+                {"protocol", "freedom"},
+            };
+            routeRules << QJsonObject{
+                {"type", "field"},
+                {"ip", QJsonArray{"127.0.0.1"}},
+                {"port", dnsPort},
+                {"outboundTag", "direct"},
+            };
+        }
 
         ctx->buildConfigResult->xrayConfig["log"] = QJsonObject{
         {"loglevel", Configs::dataManager->settingsRepo->xray_log_level},
@@ -1017,6 +1045,7 @@ namespace Configs {
                 };
         }
         bool ok;
+        conf.insert("log", QJsonObject{{"level", dataManager->settingsRepo->log_level}});
         auto resp = API::defaultClient->CheckConfig(&ok, QJsonObject2QString(conf, true));
         if (!ok)
         {
@@ -1130,4 +1159,3 @@ namespace Configs {
         return res;
     }
 }
-

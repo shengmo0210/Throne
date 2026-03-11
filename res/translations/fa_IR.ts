@@ -2,7 +2,7 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="fa_IR" sourcelanguage="en">
 <context>
-    <name></name>
+    <name>QObject</name>
     <message>
         <source>Request with proxy but no profile started.</source>
         <translation type="unfinished">درخواست با پروکسی اما هیچ نمایه‌ای شروع نشده است.</translation>
@@ -1195,6 +1195,34 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
     <message>
         <source>Enable Tun Routing</source>
         <translation>فعال کردن مسیریابی Tun</translation>
+    </message>
+    <message>
+        <source>Tun Address</source>
+        <translation>آدرس Tun</translation>
+    </message>
+    <message>
+        <source>Restore default addresses</source>
+        <translation>بازگردانی آدرس‌های پیش‌فرض</translation>
+    </message>
+    <message>
+        <source>IPv4 CIDR</source>
+        <translation>CIDR IPv4</translation>
+    </message>
+    <message>
+        <source>IPv6 CIDR</source>
+        <translation>CIDR IPv6</translation>
+    </message>
+    <message>
+        <source>Invalid Tun Address</source>
+        <translation>آدرس Tun نامعتبر است</translation>
+    </message>
+    <message>
+        <source>IPv4 CIDR is invalid.</source>
+        <translation>CIDR IPv4 نامعتبر است.</translation>
+    </message>
+    <message>
+        <source>IPv6 CIDR is invalid.</source>
+        <translation>CIDR IPv6 نامعتبر است.</translation>
     </message>
 </context>
 <context>

@@ -43,7 +43,8 @@ namespace Configs {
             "skip_delete_confirmation",
             "log_enable_include",
             "log_enable_exclude",
-        "enable_dns_in"
+            "enable_dns_in",
+            "enable_warp"
         };
 
         const QSet<QString> intKeys = {
@@ -82,7 +83,8 @@ namespace Configs {
             "log_include_keyword",
             "log_include_regex",
             "log_exclude_keyword",
-            "log_exclude_regex"
+            "log_exclude_regex",
+            "warp_ifc_addrs"
         };
 
         const QSet<QString> stringKeys = {
@@ -103,6 +105,8 @@ namespace Configs {
             "active_routing",
             "mw_size",
             "vpn_impl",
+            "vpn_tun_ipv4_cidr",
+            "vpn_tun_ipv6_cidr",
             "sub_custom_hwid_params",
             "splitter_state",
             "utlsFingerprint",
@@ -125,7 +129,10 @@ namespace Configs {
             "dns_final_out",
             "domain_strategy",
             "outbound_domain_strategy",
-            "simple_dl_url"
+            "simple_dl_url",
+            "warp_private_key",
+            "warp_public_key",
+            "warp_ep"
         };
 
     SettingsRepo::SettingsRepo(Database& database) : db(database) {
@@ -306,6 +313,8 @@ namespace Configs {
                 else if (key == "vpn_mtu") vpn_mtu = varValue.toInt();
                 else if (key == "vpn_ipv6") vpn_ipv6 = varValue.toBool();
                 else if (key == "vpn_strict_route") vpn_strict_route = varValue.toBool();
+                else if (key == "vpn_tun_ipv4_cidr") vpn_tun_ipv4_cidr = varValue.toString();
+                else if (key == "vpn_tun_ipv6_cidr") vpn_tun_ipv6_cidr = varValue.toString();
                 else if (key == "disable_privilege_req") disable_privilege_req = varValue.toBool();
                 else if (key == "enable_ntp") enable_ntp = varValue.toBool();
                 else if (key == "ntp_server_address") ntp_server_address = varValue.toString();
@@ -338,6 +347,11 @@ namespace Configs {
                 else if (key == "skip_delete_confirmation") skip_delete_confirmation = varValue.toBool();
                 else if (key == "xray_vless_preference") xray_vless_preference = static_cast<Xray::XrayVlessPreference>(varValue.toInt());
                 else if (key == "core_dns_in_port") core_dns_in_port = varValue.toInt();
+                else if (key == "enable_warp") enable_warp = varValue.toBool();
+                else if (key == "warp_private_key") warp_private_key = varValue.toString();
+                else if (key == "warp_public_key") warp_public_key = varValue.toString();
+                else if (key == "warp_ifc_addrs") warp_ifc_addrs = varValue.toStringList();
+                else if (key == "warp_ep") warp_ep = varValue.toString();
             }
         }
     }
@@ -425,6 +439,8 @@ namespace Configs {
             {"vpn_mtu", vpn_mtu},
             {"vpn_ipv6", vpn_ipv6},
             {"vpn_strict_route", vpn_strict_route},
+            {"vpn_tun_ipv4_cidr", vpn_tun_ipv4_cidr},
+            {"vpn_tun_ipv6_cidr", vpn_tun_ipv6_cidr},
             {"disable_privilege_req", disable_privilege_req},
             {"enable_ntp", enable_ntp},
             {"ntp_server_address", ntp_server_address},
@@ -456,7 +472,12 @@ namespace Configs {
             {"extra_core_paths", extraCorePaths},
             {"skip_delete_confirmation", skip_delete_confirmation},
             {"xray_vless_preference", xray_vless_preference},
-            {"core_dns_in_port", core_dns_in_port}
+            {"core_dns_in_port", core_dns_in_port},
+            {"enable_warp", enable_warp},
+            {"warp_private_key", warp_private_key},
+            {"warp_public_key", warp_public_key},
+            {"warp_ifc_addrs", warp_ifc_addrs},
+            {"warp_ep", warp_ep}
         };
 
         std::vector<std::pair<std::string, std::string>> keyValues;
@@ -486,7 +507,7 @@ namespace Configs {
         if (isDefault) {
             QString version = SubStrBefore(NKR_VERSION, "-");
             if (!version.contains(".")) version = "1.0.0";
-            return "Throne/" + version + " (Prefer ClashMeta Format)";
+            return "Throne/" + version;
         }
         return user_agent;
     }

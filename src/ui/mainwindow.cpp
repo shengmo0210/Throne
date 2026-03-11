@@ -25,7 +25,7 @@
 
 #include "include/database/RoutesRepo.h"
 
-
+#include "include/ui/utils/ProfilesTableFilterHeader.h"
 
 #include "include/ui/group/dialog_edit_group.h"
 
@@ -223,6 +223,14 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     ui->splitter->installEventFilter(this);
     ui->tabWidget->installEventFilter(this);
     //
+    auto btnFilter = new QToolButton(this);
+    btnFilter->setIcon(QIcon(":/icon/filter.png"));
+    btnFilter->setToolTip(QString("%1\n%2").arg(tr("Enable Filter"), QKeySequence(QKeySequence::Find).toString(QKeySequence::NativeText)));
+    btnFilter->setShortcut(QKeySequence::Find);
+    btnFilter->setCheckable(true);
+    connect(btnFilter, &QToolButton::toggled, static_cast<ProfilesTableFilterHeader*>(ui->profilesTableView->horizontalHeader()), &ProfilesTableFilterHeader::setFiltersVisible);
+    ui->tabWidget->setCornerWidget(btnFilter, Qt::TopRightCorner);
+    //
     RegisterHotkey(false);
     //
     auto last_size = Configs::dataManager->settingsRepo->mw_size.split("x");
@@ -299,7 +307,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     ui->profilesTableView->setModel(profilesTableModel);
     ui->profilesTableView->rowsSwapped = [=,this](int row1, int row2)
     {
-        if (!searchString.isEmpty()) return;
+        if (!addressFilterString.isEmpty() || !nameFilterString.isEmpty() || !typeFilterString.isEmpty() || !countryFilterString.isEmpty()) return;
         if (row1 == row2) return;
         auto group = Configs::dataManager->groupsRepo->CurrentGroup();
         group->EmplaceProfile(row1, row2);
@@ -322,6 +330,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
             action.method = GroupSortMethod::ByName;
         } else if (logicalIndex == 3) {
             action.method = GroupSortMethod::ByTestResult;
+        } else if (logicalIndex == 4) {
+            action.method = GroupSortMethod::ByTraffic;
         } else {
             return;
         }
@@ -340,119 +350,163 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
             });
         });
     });
-    connect(ui->profilesTableView->horizontalHeader(), &QHeaderView::sectionResized, this, [=, this](int logicalIndex, int oldSize, int newSize) {
+    connect(ui->profilesTableView->horizontalHeader(), &QHeaderView::sectionResized, this, [=, this](int, int, int) {
         auto group = Configs::dataManager->groupsRepo->CurrentGroup();
         if (Configs::dataManager->settingsRepo->refreshing_group || group == nullptr) return;
         group->column_width.clear();
         for (int i = 0; i < ui->profilesTableView->horizontalHeader()->count(); i++) {
             group->column_width.push_back(ui->profilesTableView->horizontalHeader()->sectionSize(i));
         }
-        group->column_width[logicalIndex] = newSize;
         Configs::dataManager->groupsRepo->Save(Configs::dataManager->groupsRepo->CurrentGroup());
     });
     ui->profilesTableView->horizontalHeader()->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(ui->profilesTableView->horizontalHeader(), &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
         auto* header = ui->profilesTableView->horizontalHeader();
-        if (header->logicalIndexAt(pos) != 3) return;
+        int columnIndex = header->logicalIndexAt(pos);
         auto group = Configs::dataManager->groupsRepo->CurrentGroup();
         if (group == nullptr) return;
-        QMenu menu(this);
-        auto* includeLabel = menu.addAction(tr("Include:"));
-        includeLabel->setEnabled(false);
+        if (columnIndex == 3) {
+            QMenu menu(this);
+            auto* includeLabel = menu.addAction(tr("Include:"));
+            includeLabel->setEnabled(false);
 
-        auto* actionShowOutIP = menu.addAction(tr("Out IP"));
-        actionShowOutIP->setCheckable(true);
-        actionShowOutIP->setChecked(group->test_items_to_show == Configs::testShowItems::all ||
-                             group->test_items_to_show == Configs::testShowItems::ipOnly);
+            auto* actionShowOutIP = menu.addAction(tr("Out IP"));
+            actionShowOutIP->setCheckable(true);
+            actionShowOutIP->setChecked(group->test_items_to_show == Configs::testShowItems::all ||
+                group->test_items_to_show == Configs::testShowItems::ipOnly);
 
-        auto* actionShowSpeed = menu.addAction(tr("Speed"));
-        actionShowSpeed->setCheckable(true);
-        actionShowSpeed->setChecked(group->test_items_to_show == Configs::testShowItems::all ||
-                             group->test_items_to_show == Configs::testShowItems::speedOnly);
+            auto* actionShowSpeed = menu.addAction(tr("Speed"));
+            actionShowSpeed->setCheckable(true);
+            actionShowSpeed->setChecked(group->test_items_to_show == Configs::testShowItems::all ||
+                group->test_items_to_show == Configs::testShowItems::speedOnly);
 
-        auto updateTestItemsToShow = [this, group, actionShowOutIP, actionShowSpeed] {
-            const bool ip = actionShowOutIP->isChecked();
-            const bool speed = actionShowSpeed->isChecked();
-            if (ip && speed) group->test_items_to_show = Configs::testShowItems::all;
-            else if (ip) group->test_items_to_show = Configs::testShowItems::ipOnly;
-            else if (speed) group->test_items_to_show = Configs::testShowItems::speedOnly;
-            else group->test_items_to_show = Configs::testShowItems::none;
-            Configs::dataManager->groupsRepo->Save(group);
-            refresh_proxy_list();
-        };
-
-        connect(actionShowOutIP, &QAction::triggered, this, updateTestItemsToShow);
-        connect(actionShowSpeed, &QAction::triggered, this, updateTestItemsToShow);
-
-        menu.addSeparator();
-        auto* sortByLabel = menu.addAction(tr("Sort By:"));
-        sortByLabel->setEnabled(false);
-        menu.addSeparator();
-
-        struct SortOption { int value; QString label; };
-        QList<SortOption> options = {
-            { static_cast<int>(Configs::testBy::latency), tr("Latency") },
-            { static_cast<int>(Configs::testBy::dlSpeed), tr("Download Speed") },
-            { static_cast<int>(Configs::testBy::ulSpeed), tr("Upload Speed") },
-            { static_cast<int>(Configs::testBy::ipOut), tr("IP Out") }
-        };
-        for (const auto& opt : options) {
-            auto* act = menu.addAction(opt.label);
-            act->setData(opt.value);
-            act->setCheckable(true);
-            act->setChecked(static_cast<int>(group->test_sort_by) == opt.value);
-        }
-
-        auto* chosen = menu.exec(header->mapToGlobal(pos));
-        if (chosen == nullptr || !chosen->data().isValid()) return;
-
-        int testSortBy = chosen->data().toInt();
-        group->test_sort_by = static_cast<Configs::testBy>(testSortBy);
-        Configs::dataManager->groupsRepo->Save(group);
-        GroupSortAction action;
-        action.method = GroupSortMethod::ByTestResult;
-        action.descending = false;
-        runOnNewThread([=, this] {
-            auto currGroup = Configs::dataManager->groupsRepo->CurrentGroup();
-            if (currGroup == nullptr) return;
-            if (!currGroup->SortProfiles(action)) {
-                runOnUiThread([=] {
-                    MessageBoxWarning("Action already in progress", "A sort action is already in progress");
-                });
-                return;
-            }
-            Configs::dataManager->groupsRepo->Save(Configs::dataManager->groupsRepo->CurrentGroup());
-            runOnUiThread([=, this] {
+            auto updateTestItemsToShow = [this, group, actionShowOutIP, actionShowSpeed] {
+                const bool ip = actionShowOutIP->isChecked();
+                const bool speed = actionShowSpeed->isChecked();
+                if (ip && speed) group->test_items_to_show = Configs::testShowItems::all;
+                else if (ip) group->test_items_to_show = Configs::testShowItems::ipOnly;
+                else if (speed) group->test_items_to_show = Configs::testShowItems::speedOnly;
+                else group->test_items_to_show = Configs::testShowItems::none;
+                Configs::dataManager->groupsRepo->Save(group);
                 refresh_proxy_list();
-            });
-        });
+                };
+
+            connect(actionShowOutIP, &QAction::triggered, this, updateTestItemsToShow);
+            connect(actionShowSpeed, &QAction::triggered, this, updateTestItemsToShow);
+
+            menu.addSeparator();
+            auto* sortByLabel = menu.addAction(tr("Sort By:"));
+            sortByLabel->setEnabled(false);
+
+            struct SortOption { int value; QString label; };
+            QList<SortOption> options = {
+                { static_cast<int>(Configs::testBy::latency), tr("Latency") },
+                { static_cast<int>(Configs::testBy::dlSpeed), tr("Download Speed") },
+                { static_cast<int>(Configs::testBy::ulSpeed), tr("Upload Speed") },
+                { static_cast<int>(Configs::testBy::ipOut), tr("IP Out") }
+            };
+            for (const auto& opt : options) {
+                auto* act = menu.addAction(opt.label);
+                act->setData(opt.value);
+                act->setCheckable(true);
+                act->setChecked(static_cast<int>(group->test_sort_by) == opt.value);
+            }
+
+            auto* chosen = menu.exec(header->mapToGlobal(pos));
+            if (chosen == nullptr || !chosen->data().isValid()) return;
+
+            int testSortBy = chosen->data().toInt();
+            group->test_sort_by = static_cast<Configs::testBy>(testSortBy);
+            Configs::dataManager->groupsRepo->Save(group);
+            GroupSortAction action;
+            action.method = GroupSortMethod::ByTestResult;
+            action.descending = false;
+            runOnNewThread([=, this] {
+                auto currGroup = Configs::dataManager->groupsRepo->CurrentGroup();
+                if (currGroup == nullptr) return;
+                if (!currGroup->SortProfiles(action)) {
+                    runOnUiThread([=] {
+                        MessageBoxWarning("Action already in progress", "A sort action is already in progress");
+                        });
+                    return;
+                }
+                Configs::dataManager->groupsRepo->Save(Configs::dataManager->groupsRepo->CurrentGroup());
+                runOnUiThread([=, this] {
+                    refresh_proxy_list();
+                    });
+                });
+            return;
+        }
+        if (columnIndex == 4) {
+            QMenu menu(this);
+            auto* sortByLabel = menu.addAction(tr("Sort By:"));
+            sortByLabel->setEnabled(false);
+
+            struct TrafficSortOption { int value; QString label; };
+            QList<TrafficSortOption> options = {
+                { 0, tr("Total") },
+                { 1, tr("Downloaded") },
+                { 2, tr("Uploaded") }
+            };
+
+            for (const auto& opt : options) {
+                auto* act = menu.addAction(opt.label);
+                act->setData(opt.value);
+                act->setCheckable(true);
+                act->setChecked(static_cast<int>(group->traffic_sort_by) == opt.value);
+            }
+
+            auto* chosen = menu.exec(header->mapToGlobal(pos));
+            if (chosen == nullptr || !chosen->data().isValid()) return;
+
+            int trafficSortBy = chosen->data().toInt();
+            group->traffic_sort_by = static_cast<Configs::trafficBy>(trafficSortBy);
+            Configs::dataManager->groupsRepo->Save(group);
+            GroupSortAction action;
+            action.method = GroupSortMethod::ByTraffic;
+            action.descending = false;
+            runOnNewThread([=, this] {
+                auto currGroup = Configs::dataManager->groupsRepo->CurrentGroup();
+                if (currGroup == nullptr) return;
+                if (!currGroup->SortProfiles(action)) {
+                    runOnUiThread([=] {
+                        MessageBoxWarning("Action already in progress", "A sort action is already in progress");
+                        });
+                    return;
+                }
+                Configs::dataManager->groupsRepo->Save(Configs::dataManager->groupsRepo->CurrentGroup());
+                runOnUiThread([=, this] {
+                    refresh_proxy_list();
+                    });
+                });
+            return;
+        }
     });
     ui->profilesTableView->verticalHeader()->setStretchLastSection(false);
     ui->profilesTableView->verticalHeader()->setDefaultSectionSize(24);
     ui->profilesTableView->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
-    ui->profilesTableView->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-    ui->profilesTableView->verticalScrollBar()->setSingleStep(6);
     ui->profilesTableView->setTabKeyNavigation(false);
 
     // search box
-    setSearchState(false);
-    connect(shortcut_ctrl_f, &QShortcut::activated, this, [=, this]
+    connect(static_cast<ProfilesTableFilterHeader*>(ui->profilesTableView->horizontalHeader()), &ProfilesTableFilterHeader::typeFilterChanged, this, [=,this](const QString& currentText)
     {
-        setSearchState(true);
-        ui->search_input->setFocus();
-    });
-    connect(ui->search_input, &QLineEdit::textChanged, this, [=,this](const QString& currentText)
-    {
-       searchString = currentText;
+       typeFilterString = currentText;
        refresh_proxy_list({}, true);
     });
-    connect(shortcut_esc, &QShortcut::activated, this, [=,this] {
-        if (select_mode) {
-            emit profile_selected(-1);
-            select_mode = false;
-            refresh_status();
-        }
-        if (searchEnabled) setSearchState(false);
+    connect(static_cast<ProfilesTableFilterHeader*>(ui->profilesTableView->horizontalHeader()), &ProfilesTableFilterHeader::addressFilterChanged, this, [=,this](const QString& currentText)
+    {
+       addressFilterString = currentText;
+       refresh_proxy_list({}, true);
+    });
+    connect(static_cast<ProfilesTableFilterHeader*>(ui->profilesTableView->horizontalHeader()), &ProfilesTableFilterHeader::nameFilterChanged, this, [=,this](const QString& currentText)
+    {
+       nameFilterString = currentText;
+       refresh_proxy_list({}, true);
+    });
+    connect(static_cast<ProfilesTableFilterHeader*>(ui->profilesTableView->horizontalHeader()), &ProfilesTableFilterHeader::testFilterChanged, this, [=,this](const QString& currentText)
+    {
+       countryFilterString = currentText;
+       refresh_proxy_list({}, true);
     });
 
     // refresh
@@ -492,6 +546,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(ui->menu_add_from_clipboard2, &QAction::triggered, ui->menu_add_from_clipboard, &QAction::trigger);
     connect(ui->actionRestart_Proxy, &QAction::triggered, this, [=,this] {
         runOnThread([=, this] {
+            profile_stop(true, true, true);
             core_process->Kill();
         }, DS_cores);
     });
@@ -611,6 +666,18 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
         });
         ui->menuRouting_Menu->addAction(actionAdblock);
 
+        auto* actionWarp = new QAction(ui->menuRouting_Menu);
+        actionWarp->setText("Enable Warp");
+        actionWarp->setCheckable(true);
+        actionWarp->setChecked(Configs::dataManager->settingsRepo->enable_warp);
+        connect(actionWarp, &QAction::triggered, this, [=,this](bool checked) {
+            Configs::dataManager->settingsRepo->enable_warp = checked;
+            actionWarp->setChecked(checked);
+            Configs::dataManager->settingsRepo->Save();
+            if (Configs::dataManager->settingsRepo->started_id >= 0) profile_start(Configs::dataManager->settingsRepo->started_id);
+        });
+        ui->menuRouting_Menu->addAction(actionWarp);
+
         mu_remoteRouteProfiles.lock();
         if(!remoteRouteProfiles.isEmpty()) {
             QMenu* profilesMenu = ui->menuRouting_Menu->addMenu(QObject::tr("Download Profiles"));
@@ -708,12 +775,48 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(ui->menu_share_item, &QMenu::aboutToShow, this, [=,this] {
         QString name;
         auto selected = get_now_selected_list();
-        if (!selected.isEmpty()) {
-            auto ent = selected.first();
-            name = software_core_name;
+
+        ui->menu_export_config->setVisible(false);
+        ui->actionExport_Xray_config->setVisible(false);
+        if (selected.isEmpty()) return;
+
+        auto profile = Configs::dataManager->profilesRepo->GetProfile(selected.first());
+        if (!profile) return;
+
+        ui->menu_export_config->setVisible(true);
+        if (profile->outbound->IsXray()) ui->actionExport_Xray_config->setVisible(true);
+    });
+    connect(ui->actionExport_Xray_config, &QAction::triggered, this, [=,this]() {
+        auto ents = get_now_selected_list();
+        if (ents.count() != 1) return;
+        auto ent = Configs::dataManager->profilesRepo->GetProfile(ents.first());
+
+        auto result = Configs::BuildSingBoxConfig(ent);
+        if (!result->error.isEmpty()) {
+            MessageBoxWarning("Build config error", result->error);
+            return;
         }
-        ui->menu_export_config->setVisible(name == software_core_name);
-        ui->menu_export_config->setText(tr("Export %1 config").arg(name));
+        QString config_core = QJsonObject2QString(result->xrayConfig, true);
+        QApplication::clipboard()->setText(config_core);
+
+        QMessageBox msg(QMessageBox::Information, tr("Config copied"), config_core);
+        QPushButton *button_1 = msg.addButton(tr("Copy core config"), QMessageBox::YesRole);
+        QPushButton *button_2 = msg.addButton(tr("Copy test config"), QMessageBox::YesRole);
+        msg.addButton(QMessageBox::Ok);
+        msg.setEscapeButton(QMessageBox::Ok);
+        msg.setDefaultButton(QMessageBox::Ok);
+        msg.exec();
+        if (msg.clickedButton() == button_1) {
+            QApplication::clipboard()->setText(config_core);
+        } else if (msg.clickedButton() == button_2) {
+            auto res = Configs::BuildTestConfig({ent});
+            if (!res->error.isEmpty()) {
+                MessageBoxWarning("Build Test config error", res->error);
+                return;
+            }
+            config_core = QJsonObject2QString(res->xrayConfig, true);
+            QApplication::clipboard()->setText(config_core);
+        }
     });
     connect(ui->actionAdd_profile_from_File, &QAction::triggered, this, [=,this]()
     {
@@ -866,45 +969,43 @@ void MainWindow::show_group(int gid) {
 
     ui->tabWidget->widget(groupId2TabIndex(gid))->layout()->addWidget(ui->profilesTableView);
 
-    auto *hHeader = ui->profilesTableView->horizontalHeader();
-    if (group->column_width.isEmpty() || group->column_width[0] <= 0) {
-        group->column_width.clear();
-        for (int i=0;i<=4;i++) group->column_width.push_back(0);
-        hHeader->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-        hHeader->setSectionResizeMode(1, QHeaderView::Stretch);
-        hHeader->setSectionResizeMode(2, QHeaderView::Stretch);
-        hHeader->setSectionResizeMode(3, QHeaderView::ResizeToContents);
-        hHeader->setSectionResizeMode(4, QHeaderView::ResizeToContents);
-    }
-
     // show proxies
     refresh_proxy_list({}, true);
 
-    for (int i = 0; i <= 4; i++) {
-        hHeader->setSectionResizeMode(i, QHeaderView::Interactive);
-        auto size = group->column_width.value(i);
-        if (size <= 0) {
-            size = hHeader->sectionSize(i);
-        }
-        group->column_width[i] = size;
-        hHeader->resizeSection(i, size);
-    }
-    Configs::dataManager->groupsRepo->Save(group);
-
-    if (group->scroll_last_profile >= 0) {
-        int rowCount = profilesTableModel->rowCount();
-        int targetRow = group->scroll_last_profile;
-        if (targetRow >= rowCount && rowCount > 0) targetRow = rowCount - 1;
+    int rowCount = profilesTableModel->rowCount();
+    int targetRow = group->scroll_last_profile;
+    if (targetRow >= rowCount && rowCount > 0) targetRow = rowCount - 1;
+    // TODO try to find a more stable way
+    QTimer::singleShot(0, ui->profilesTableView, [=, this]() {
         if (targetRow >= 0) {
-            // TODO try to find a more stable way
-            QTimer::singleShot(0, ui->profilesTableView, [=, this]() {
-                QModelIndex idx = profilesTableModel->index(targetRow, 0);
-                if (idx.isValid()) {
-                    ui->profilesTableView->scrollTo(idx, QAbstractItemView::PositionAtTop);
-                }
-            });
+            if (QModelIndex idx = profilesTableModel->index(targetRow, 0); idx.isValid()) {
+                ui->profilesTableView->scrollTo(idx, QAbstractItemView::PositionAtTop);
+            }
         }
-    }
+        auto *hHeader = dynamic_cast<ProfilesTableFilterHeader*>(ui->profilesTableView->horizontalHeader());
+        hHeader->blockSignals(true);
+        if (group->column_width.isEmpty()) {
+            hHeader->setResizeContentsPrecision(40);
+            hHeader->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+            hHeader->setSectionResizeMode(1, QHeaderView::Stretch);
+            hHeader->setSectionResizeMode(2, QHeaderView::Stretch);
+            hHeader->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+            hHeader->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+            ui->profilesTableView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        } else {
+            for (int i=0;i<group->column_width.size();i++) {
+                hHeader->resizeSection(i, group->column_width.at(i));
+            }
+            ui->profilesTableView->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        }
+        for (int i=0;i<=4;i++) {
+            auto size = hHeader->sectionSize(i);
+            hHeader->setSectionResizeMode(i, QHeaderView::Interactive);
+            hHeader->resizeSection(i, size);
+        }
+        hHeader->adjustPositions();
+        hHeader->blockSignals(false);
+    });
 
     Configs::dataManager->settingsRepo->refreshing_group = false;
 }
@@ -1484,32 +1585,9 @@ void MainWindow::updateLogFilterFields() {
     excludeCombined.optimize();
 }
 
-void MainWindow::setSearchState(bool enable)
-{
-    searchEnabled = enable;
-    if (enable)
-    {
-        ui->data_view->hide();
-        ui->search_input->show();
-    } else
-    {
-        ui->search_input->blockSignals(true);
-        ui->search_input->clear();
-        ui->search_input->blockSignals(false);
-
-        ui->search_input->hide();
-        ui->data_view->show();
-        if (!searchString.isEmpty())
-        {
-            searchString.clear();
-            refresh_proxy_list({}, true);
-        }
-    }
-}
-
 QList<int> MainWindow::filterProfilesList(const QList<int>& profileIDs)
 {
-    if (searchString.isEmpty()) return profileIDs;
+    if (addressFilterString.isEmpty() && nameFilterString.isEmpty() && typeFilterString.isEmpty() && countryFilterString.isEmpty()) return profileIDs;
     QList<int> res;
     auto profiles = Configs::dataManager->profilesRepo->GetProfileBatch(profileIDs);
     for (const auto& profile : profiles)
@@ -1519,8 +1597,10 @@ QList<int> MainWindow::filterProfilesList(const QList<int>& profileIDs)
             MW_show_log("Null profile, maybe data is corrupted");
             continue;
         }
-        if (searchString.isEmpty() || profile->outbound->name.contains(searchString, Qt::CaseInsensitive) || profile->outbound->server.contains(searchString, Qt::CaseInsensitive)
-            || (searchString.startsWith("CODE:") && searchString.mid(5) == profile->test_country))
+        if ((addressFilterString.isEmpty() || profile->outbound->server.contains(addressFilterString, Qt::CaseInsensitive))
+            && (nameFilterString.isEmpty() || profile->outbound->name.contains(nameFilterString, Qt::CaseInsensitive))
+            && (typeFilterString.isEmpty() || profile->type.contains(typeFilterString, Qt::CaseInsensitive))
+            && (countryFilterString.isEmpty() || profile->test_country.contains(countryFilterString, Qt::CaseInsensitive)))
             res.append(profile->id);
     }
     return res;
@@ -1680,13 +1760,16 @@ void MainWindow::refresh_proxy_list(const QList<int>& ids, bool mayNeedReset) {
 }
 
 void MainWindow::refresh_proxy_list_impl(const QList<int>& ids, bool mayNeedReset) {
-    if (auto currentGroup = Configs::dataManager->groupsRepo->CurrentGroup(); currentGroup == nullptr)
+    auto currentGroup = Configs::dataManager->groupsRepo->CurrentGroup();
+    if (currentGroup == nullptr)
     {
         MW_show_log("Could not find current group!");
         return;
     }
     // refresh data
     refresh_proxy_list_impl_refresh_data(ids, mayNeedReset);
+    // now refresh to resize columns
+    show_group(currentGroup->id);
 }
 
 void MainWindow::refresh_proxy_list_impl_refresh_data(const QList<int>& ids, bool mayNeedReset) {
@@ -1785,7 +1868,7 @@ void MainWindow::on_menu_reset_traffic_triggered() {
     if (entIDs.count() == 0) return;
     auto ents = Configs::dataManager->profilesRepo->GetProfileBatch(entIDs);
     for (const auto& ent: ents) {
-        ent->traffic_data->Reset();
+        ent->ResetTraffic();
         Configs::dataManager->profilesRepo->SaveTraffic(ent);
     }
     refresh_proxy_list(entIDs);
@@ -2142,12 +2225,12 @@ void MainWindow::on_menu_resolve_selected_triggered() {
     auto ents = Configs::dataManager->profilesRepo->GetProfileBatch(profiles);
     for (const auto &profile: ents) {
         profile->outbound->ResolveDomainToIP([=,this] {
+            Configs::dataManager->profilesRepo->Save(profile);
             refresh_proxy_list({profile->id});
             if (--Configs::dataManager->settingsRepo->resolve_count != 0) return;
             mw_sub_updating = false;
         });
     }
-    Configs::dataManager->profilesRepo->SaveBatch(ents);
 }
 
 void MainWindow::on_menu_resolve_domain_triggered() {
@@ -2393,7 +2476,9 @@ void MainWindow::on_tabWidget_customContextMenuRequested(const QPoint &p) {
         auto id = Configs::dataManager->groupsRepo->GetGroupsTabOrder()[clickedIndex];
         if (QMessageBox::question(this, tr("Confirmation"), tr("Remove %1?").arg(Configs::dataManager->groupsRepo->GetGroup(id)->name)) ==
             QMessageBox::StandardButton::Yes) {
-            profile_stop(false, true, false);
+            if (running != nullptr) {
+                if (running->gid == id) profile_stop(false, true, false);
+            }
             Configs::dataManager->groupsRepo->DeleteGroup(id);
             MW_dialog_message(Dialog_DialogManageGroups, "refresh-1");
         }

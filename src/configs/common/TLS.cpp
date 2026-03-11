@@ -26,6 +26,13 @@ namespace Configs {
         if (object.contains("fingerprint")) fingerPrint = object["fingerprint"].toString();
         return true;
     }
+    bool uTLS::ParseFromClash(const clash::Proxies& object)
+    {
+        if (object.client_fingerprint.empty()) return false;
+        enabled = true;
+        fingerPrint = QString::fromStdString(object.client_fingerprint);
+        return true;
+    }
     QString uTLS::ExportToLink()
     {
         QUrlQuery query;
@@ -121,6 +128,14 @@ namespace Configs {
         if (object.contains("short_id")) short_id = object["short_id"].toString();
         return true;
     }
+    bool Reality::ParseFromClash(const clash::Proxies& object)
+    {
+        if (object.reality_opts.public_key.empty()) return false;
+        enabled = true;
+        public_key = QString::fromStdString(object.reality_opts.public_key);
+        short_id = QString::fromStdString(object.reality_opts.short_id);
+        return true;
+    }
     QString Reality::ExportToLink()
     {
         QUrlQuery query;
@@ -168,7 +183,7 @@ namespace Configs {
         if (query.hasQueryItem("allowInsecure")) insecure = query.queryItemValue("allowInsecure").replace("1", "true") == "true";
         if (query.hasQueryItem("allow_insecure")) insecure = query.queryItemValue("allow_insecure").replace("1", "true") == "true";
         if (query.hasQueryItem("insecure")) insecure = query.queryItemValue("insecure").replace("1", "true") == "true";
-        if (query.hasQueryItem("alpn")) alpn = query.queryItemValue("alpn").split(",");
+        if (query.hasQueryItem("alpn")) alpn = query.queryItemValue("alpn", QUrl::FullyDecoded).split(",");
         if (query.hasQueryItem("tls_min_version")) min_version = query.queryItemValue("tls_min_version");
         if (query.hasQueryItem("tls_max_version")) max_version = query.queryItemValue("tls_max_version");
         if (query.hasQueryItem("tls_cipher_suites")) cipher_suites = query.queryItemValue("tls_cipher_suites").split(",");
@@ -232,6 +247,24 @@ namespace Configs {
         if (object.contains("ech")) ech->ParseFromJson(object["ech"].toObject());
         if (object.contains("utls")) utls->ParseFromJson(object["utls"].toObject());
         if (object.contains("reality")) reality->ParseFromJson(object["reality"].toObject());
+        return true;
+    }
+    bool TLS::ParseFromClash(const clash::Proxies& object)
+    {
+        enabled = object.tls;
+        if (!object.servername.empty()) {
+            server_name = QString::fromStdString(object.servername);
+        } else if (!object.sni.empty()) {
+            server_name = QString::fromStdString(object.sni);
+        } else {
+            server_name = QString::fromStdString(object.server);
+        }
+        insecure = object.skip_cert_verify;
+        for (const auto& s : object.alpn) {
+            alpn.append(QString::fromStdString(s));
+        }
+        utls->ParseFromClash(object);
+        reality->ParseFromClash(object);
         return true;
     }
     QString TLS::ExportToLink()

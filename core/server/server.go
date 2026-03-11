@@ -6,28 +6,26 @@ import (
 	"ThroneCore/internal/boxmain"
 	"ThroneCore/internal/process"
 	"ThroneCore/internal/sys"
+	"ThroneCore/internal/wg"
 	"ThroneCore/internal/xray"
 	"ThroneCore/test_utils"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"net/netip"
+	"os"
+	"runtime"
+	"strings"
+	"time"
+
 	"github.com/google/shlex"
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/experimental/clashapi"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/service"
-	"github.com/throneproj/clash2singbox/convert"
-	"github.com/throneproj/clash2singbox/model"
-	"github.com/throneproj/clash2singbox/model/clash"
 	"github.com/xtls/xray-core/core"
-	"gopkg.in/yaml.v3"
-	"log"
-	"os"
-	"runtime"
-	"strings"
-	"time"
 )
 
 var boxInstance *boxbox.Box
@@ -126,11 +124,40 @@ func (s *server) Start(ctx context.Context, in *gen.LoadConfigReq) (out *gen.Err
 		}
 		return
 	}
-	if runtime.GOOS == "darwin" && strings.Contains(*in.CoreConfig, "tun-in") && strings.Contains(*in.CoreConfig, "172.19.0.1/24") {
-		err := sys.SetSystemDNS("172.19.0.2", boxInstance.Network().InterfaceMonitor())
-		if err != nil {
+
+	if runtime.GOOS == "darwin" && in.GetTunIpv4Cidr() != "" {
+		stopAllCores := func() {
+			boxInstance.CloseWithTimeout(instanceCancel, time.Second*2, log.Println, true)
+			boxInstance = nil
+			if extraProcess != nil {
+				extraProcess.Stop()
+				extraProcess = nil
+			}
+			if xrayInstance != nil {
+				xrayInstance.Close()
+				xrayInstance = nil
+			}
+		}
+
+		tunCIDR := in.GetTunIpv4Cidr()
+		tunPrefix, parseErr := netip.ParsePrefix(tunCIDR)
+		if parseErr != nil || !tunPrefix.Addr().Is4() {
+			err = fmt.Errorf("invalid tun_ipv4_cidr %q", tunCIDR)
+			stopAllCores()
+			return
+		}
+
+		tunDNS := tunPrefix.Addr().Next()
+		if !tunDNS.IsValid() || !tunDNS.Is4() {
+			err = fmt.Errorf("got invalid DNS IP from tun_ipv4_cidr: %s", tunDNS)
+			stopAllCores()
+			return
+		}
+
+		if err := sys.SetSystemDNS(tunDNS.String(), boxInstance.Network().InterfaceMonitor()); err != nil {
 			log.Println("Failed to set system DNS:", err)
 		}
+
 		needUnsetDNS = true
 	}
 
@@ -158,7 +185,7 @@ func (s *server) Stop(ctx context.Context, in *gen.EmptyReq) (out *gen.ErrorResp
 			log.Println("Failed to unset system DNS:", err)
 		}
 	}
-	boxInstance.CloseWithTimeout(instanceCancel, time.Second*2, log.Println)
+	boxInstance.CloseWithTimeout(instanceCancel, time.Second*2, log.Println, true)
 
 	boxInstance = nil
 
@@ -218,7 +245,7 @@ func (s *server) Test(ctx context.Context, in *gen.TestReq) (*gen.TestResp, erro
 		if err != nil {
 			return nil, err
 		}
-		defer testInstance.CloseWithTimeout(cancel, 2*time.Second, log.Println)
+		defer testInstance.CloseWithTimeout(cancel, 2*time.Second, log.Println, false)
 	}
 
 	outboundTags := in.OutboundTags
@@ -295,7 +322,7 @@ func (s *server) IPTest(ctx context.Context, in *gen.IPTestRequest) (*gen.IPTest
 	if err != nil {
 		return nil, err
 	}
-	defer testInstance.CloseWithTimeout(cancel, 2*time.Second, log.Println)
+	defer testInstance.CloseWithTimeout(cancel, 2*time.Second, log.Println, false)
 
 	outboundTags := in.OutboundTags
 	if *in.UseDefaultOutbound {
@@ -540,29 +567,14 @@ func (s *server) QueryCountryTest(ctx context.Context, _ *gen.EmptyReq) (out *ge
 	return
 }
 
-func (s *server) Clash2Singbox(ctx context.Context, in *gen.Clash2SingboxRequest) (out *gen.Clash2SingboxResponse, _ error) {
-	var convErr error
-	out = &gen.Clash2SingboxResponse{}
-
-	c := clash.Clash{}
-	err := yaml.Unmarshal([]byte(*in.ClashConfig), &c)
+func (s *server) GenWgKeyPair(ctx context.Context, _ *gen.EmptyReq) (out *gen.GenWgKeyPairResponse, _ error) {
+	var res gen.GenWgKeyPairResponse
+	privateKey, err := wg.GeneratePrivateKey()
 	if err != nil {
-		out.Error = To(err.Error())
-		return
+		res.Error = To(err.Error())
+		return &res, nil
 	}
-
-	sing, convErr := convert.Clash2sing(c, model.SINGLATEST)
-	if convErr != nil {
-		out.Error = To(convErr.Error())
-		return
-	}
-
-	outb, err := json.Marshal(map[string]any{"outbounds": sing})
-	if err != nil {
-		out.Error = To(err.Error())
-		return
-	}
-
-	out.SingboxConfig = To(string(outb))
-	return
+	res.PrivateKey = To(privateKey.String())
+	res.PublicKey = To(privateKey.PublicKey().String())
+	return &res, nil
 }

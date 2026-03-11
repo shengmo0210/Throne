@@ -681,6 +681,7 @@ void MainWindow::profile_start(int _id) {
     auto profile_start_stage2 = [=, this] {
         libcore::LoadConfigReq req;
         req.core_config = QJsonObject2QString(result->coreConfig, true).toStdString();
+        req.tun_ipv4_cidr = result->tunIPv4CIDR.toStdString();
         req.disable_stats = Configs::dataManager->settingsRepo->disable_traffic_stats;
         req.xray_config = QJsonObject2QString(result->xrayConfig, true).toStdString();
         req.need_xray = !result->xrayConfig.isEmpty();
@@ -727,10 +728,8 @@ void MainWindow::profile_start(int _id) {
             return false;
         }
         //
-        Stats::trafficLooper->proxy = std::make_shared<Stats::TrafficData>("proxy");
-        Stats::trafficLooper->direct = std::make_shared<Stats::TrafficData>("direct");
         Stats::trafficLooper->SetEnts(result->outboundEntsForTraffic);
-        Stats::trafficLooper->isChain = ent->type == "chain";
+        Stats::trafficLooper->isChain = result->isChained;
         Stats::trafficLooper->loop_enabled = true;
         Stats::connection_lister->suspend = false;
 

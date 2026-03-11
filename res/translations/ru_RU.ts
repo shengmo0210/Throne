@@ -2,7 +2,7 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="ru_RU">
 <context>
-    <name></name>
+    <name>QObject</name>
     <message>
         <source>Request with proxy but no profile started.</source>
         <translation>Запрос через прокси, но профиль не запущен.</translation>
@@ -354,15 +354,15 @@ Release note:
     </message>
     <message>
         <source>5m</source>
-        <translation>5 мин.</translation>
+        <translation>5m</translation>
     </message>
     <message>
         <source>10m</source>
-        <translation>10 мин.</translation>
+        <translation>10m</translation>
     </message>
     <message>
         <source>30m</source>
-        <translation>30 мин.</translation>
+        <translation>30m</translation>
     </message>
     <message>
         <source>Listen Port</source>
@@ -1195,6 +1195,34 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
     <message>
         <source>Enable Tun Routing</source>
         <translation>Вкл. TUN-маршрутизацию</translation>
+    </message>
+    <message>
+        <source>Tun Address</source>
+        <translation>Адрес TUN</translation>
+    </message>
+    <message>
+        <source>Restore default addresses</source>
+        <translation>Восстановить адреса по умолчанию</translation>
+    </message>
+    <message>
+        <source>IPv4 CIDR</source>
+        <translation>IPv4 CIDR</translation>
+    </message>
+    <message>
+        <source>IPv6 CIDR</source>
+        <translation>IPv6 CIDR</translation>
+    </message>
+    <message>
+        <source>Invalid Tun Address</source>
+        <translation>Неверный адрес TUN</translation>
+    </message>
+    <message>
+        <source>IPv4 CIDR is invalid.</source>
+        <translation>Некорректный IPv4 CIDR.</translation>
+    </message>
+    <message>
+        <source>IPv6 CIDR is invalid.</source>
+        <translation>Некорректный IPv6 CIDR.</translation>
     </message>
 </context>
 <context>
