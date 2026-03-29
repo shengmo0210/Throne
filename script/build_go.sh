@@ -15,7 +15,7 @@ TAGS="with_clash_api,with_gvisor,with_quic,with_wireguard,with_utls,with_dhcp,wi
 if [[ "$GOOS" == "windows" || "$GOOS" == "linux" ]]; then
   rm -rf $DEST
   mkdir -p $DEST
-  TAGS="$TAGS,with_purego"
+  TAGS="$TAGS,with_purego,with_naive_outbound"
   if [[ "$GOOS" == "windows" ]]; then
     if [[ "$GOARCH" == "arm64" ]]; then
       curl -fLso $DEST/libcronet.dll "https://github.com/SagerNet/cronet-go/releases/latest/download/libcronet-windows-arm64.dll"
@@ -32,14 +32,6 @@ if [[ "$GOOS" == "windows" || "$GOOS" == "linux" ]]; then
   fi
 fi
 
-if [[ "$GOOS" == "darwin" ]]; then
-  rm -rf $DEST
-  mkdir -p $DEST
-  export CGO_ENABLED=1
-else
-  export CGO_ENABLED=0
-fi
-
 if [[ "$GOOS" =~ legacy$ ]]; then
   GOCMD="$PWD/golang.org/go/bin/go"
   if [[ "$GOOS" == "windowslegacy" ]]; then
@@ -49,15 +41,24 @@ if [[ "$GOOS" =~ legacy$ ]]; then
     else
       DEST=$DEPLOYMENT/windows32
     fi
+    rm -rf $DEST
+    mkdir -p $DEST
   else
     GOOS="darwin"
     DEST=$DEPLOYMENT/macos-legacy-amd64
   fi
-  rm -rf $DEST
-  mkdir -p $DEST
 else
   GOCMD="go"
+fi
+
+if [[ "$GOOS" == "darwin" ]]; then
+  rm -rf $DEST
+  mkdir -p $DEST
   TAGS="$TAGS,with_naive_outbound"
+  export CGO_ENABLED=1
+  export CGO_LDFLAGS="-weak_framework UniformTypeIdentifiers"
+else
+  export CGO_ENABLED=0
 fi
 
 if [ -z $DEST ]; then
