@@ -348,7 +348,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
                 });
                 return;
             }
-            Configs::dataManager->groupsRepo->Save(Configs::dataManager->groupsRepo->CurrentGroup());
+            Configs::dataManager->groupsRepo->Save(currGroup);
             runOnUiThread([=, this] {
                 refresh_proxy_list({}, true);
             });
@@ -427,7 +427,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
             Configs::dataManager->groupsRepo->Save(group);
             GroupSortAction action;
             action.method = GroupSortMethod::ByTestResult;
-            action.descending = false;
+            action.descending = true;
             runOnNewThread([=, this] {
                 auto currGroup = Configs::dataManager->groupsRepo->CurrentGroup();
                 if (currGroup == nullptr) return;
@@ -437,9 +437,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
                         });
                     return;
                 }
-                Configs::dataManager->groupsRepo->Save(Configs::dataManager->groupsRepo->CurrentGroup());
+                Configs::dataManager->groupsRepo->Save(currGroup);
                 runOnUiThread([=, this] {
-                    refresh_proxy_list();
+                    refresh_proxy_list({}, true);
                     });
                 });
             return;
