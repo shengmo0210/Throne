@@ -359,13 +359,6 @@ For more information, see the document &quot;Configuration/DNS&quot;.</string>
           <item row="6" column="3">
            <layout class="QHBoxLayout" name="horizontalLayout_3">
             <item>
-             <widget class="QLabel" name="dns_final_out_l">
-              <property name="text">
-               <string>Default DNS server</string>
-              </property>
-             </widget>
-            </item>
-            <item>
              <widget class="QComboBox" name="dns_final_out">
               <item>
                <property name="text">
@@ -377,6 +370,23 @@ For more information, see the document &quot;Configuration/DNS&quot;.</string>
                 <string notr="true">direct</string>
                </property>
               </item>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="enable_fakeip">
+              <property name="text">
+               <string>Enable FakeIP</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="enable_dns_routing">
+              <property name="toolTip">
+               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;When enabled, domains destined for direct outbound will also be resolved using direct dns&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+              </property>
+              <property name="text">
+               <string>Enable DNS Routing</string>
+              </property>
              </widget>
             </item>
            </layout>
@@ -432,13 +442,6 @@ For more information, see the document &quot;Configuration/DNS&quot;.</string>
              <widget class="QComboBox" name="direct_dns_strategy"/>
             </item>
            </layout>
-          </item>
-          <item row="6" column="0">
-           <widget class="QCheckBox" name="enable_fakeip">
-            <property name="text">
-             <string>Enable FakeIP</string>
-            </property>
-           </widget>
           </item>
           <item row="1" column="3">
            <layout class="QHBoxLayout" name="horizontalLayout_7">
@@ -503,27 +506,24 @@ For more information, see the document &quot;Configuration/DNS&quot;.</string>
           <item row="4" column="3">
            <layout class="QHBoxLayout" name="horizontalLayout_5">
             <item>
-             <widget class="QLabel" name="label_2">
-              <property name="toolTip">
-               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Local DNS can not be used in some configurations, you will have to set an ip here to be used as local dns in such situations&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
-              </property>
-              <property name="text">
-               <string>Local Override</string>
-              </property>
-             </widget>
-            </item>
-            <item>
              <widget class="QLineEdit" name="local_override"/>
             </item>
            </layout>
           </item>
           <item row="4" column="0">
-           <widget class="QCheckBox" name="enable_dns_routing">
+           <widget class="QLabel" name="label_2">
             <property name="toolTip">
-             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;When enabled, domains destined for direct outbound will also be resolved using direct dns&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Local DNS can not be used in some configurations, you will have to set an ip here to be used as local dns in such situations&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
             </property>
             <property name="text">
-             <string>Enable DNS Routing</string>
+             <string>Local Override</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="0">
+           <widget class="QLabel" name="dns_final_out_l">
+            <property name="text">
+             <string>Default DNS server</string>
             </property>
            </widget>
           </item>
