@@ -823,6 +823,18 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
             ui->menuRouting_Menu->addAction(action);
         }
     });
+    connect(ui->actionClear_Test_Result, &QAction::triggered, this, [=, this]() {
+        auto entIDs = get_now_selected_list();
+        auto ents = Configs::dataManager->profilesRepo->GetProfileBatch(entIDs);
+        if (ents.empty()) return;
+        for (const auto &ent: ents) {
+            ent->ClearTestResults();
+        }
+        Configs::dataManager->profilesRepo->SaveBatch(ents);
+        if (auto group = Configs::dataManager->groupsRepo->GetGroup(ents.first()->gid); group &&
+            group->calculated_column_width.size() > 3) group->calculated_column_width[3] = 0;
+        refresh_proxy_list();
+    });
     connect(ui->actionUrl_Test_Selected, &QAction::triggered, this, [=,this]() {
         urltest_current_group(get_now_selected_list());
     });
@@ -872,6 +884,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
         auto profile = Configs::dataManager->profilesRepo->GetProfile(selected.first());
         if (!profile) return;
 
+        if (selected.count() == 1 && profile->DisplayTestResult().trimmed().isEmpty()) {
+            ui->actionCopy_Test_Result->setVisible(false);
+        } else {
+            ui->actionCopy_Test_Result->setVisible(true);
+        }
+
         ui->menu_export_config->setVisible(true);
         if (profile->outbound->IsXray()) ui->actionExport_Xray_config->setVisible(true);
     });
@@ -906,6 +924,22 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
             config_core = QJsonObject2QString(res->xrayConfig, true);
             QApplication::clipboard()->setText(config_core);
         }
+    });
+    connect(ui->actionCopy_Test_Result, &QAction::triggered, this, [=,this]() {
+        auto ents = get_now_selected_list();
+        if (ents.count() == 0 || ents.count() > 1000) return;
+        auto entList = Configs::dataManager->profilesRepo->GetProfileBatch(ents);
+        QString res;
+        int counter = 0;
+        for (auto ent : entList) {
+            auto testRes = ent->DisplayTestResult();
+            if (!testRes.trimmed().isEmpty()) {
+                res += testRes.trimmed() + "\n";
+                counter++;
+            }
+        }
+        QApplication::clipboard()->setText(res);
+        MW_show_log(QString::number(counter) + tr(" Test result(s) copied to clipboard!"));
     });
     connect(ui->actionAdd_profile_from_File, &QAction::triggered, this, [=,this]()
     {
@@ -2772,6 +2806,8 @@ void MainWindow::setActionsData()
     ui->actionRefresh_Column_Widths->setData(QString("m25"));
     ui->actionResolve_Out_IP->setData(QString("m26"));
     ui->actionResolve_Selected_Out_IP->setData(QString("m27"));
+    ui->actionCopy_Test_Result->setData(QString("m28"));
+    ui->actionClear_Test_Result->setData(QString("m29"));
 }
 
 QList<QAction*> MainWindow::getActionsForShortcut()

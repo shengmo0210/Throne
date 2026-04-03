@@ -688,6 +688,7 @@ QTabBar::tab:hover:!selected {
      <addaction name="separator"/>
      <addaction name="menu_copy_links"/>
      <addaction name="menu_copy_links_nkr"/>
+     <addaction name="actionCopy_Test_Result"/>
     </widget>
     <addaction name="menu_add_from_input"/>
     <addaction name="menu_add_from_clipboard"/>
@@ -703,6 +704,7 @@ QTabBar::tab:hover:!selected {
     <addaction name="separator"/>
     <addaction name="actionUrl_Test_Selected"/>
     <addaction name="menu_resolve_selected"/>
+    <addaction name="actionClear_Test_Result"/>
     <addaction name="actionSpeedtest_Current"/>
     <addaction name="actionSpeedtest_Selected"/>
     <addaction name="actionResolve_Selected_Out_IP"/>
@@ -1180,6 +1182,16 @@ QTabBar::tab:hover:!selected {
   <action name="actionExport_Xray_config">
    <property name="text">
     <string>Export Xray config</string>
+   </property>
+  </action>
+  <action name="actionCopy_Test_Result">
+   <property name="text">
+    <string>Copy Test Result</string>
+   </property>
+  </action>
+  <action name="actionClear_Test_Result">
+   <property name="text">
+    <string>Clear Test Result</string>
    </property>
   </action>
  </widget>
