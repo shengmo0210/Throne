@@ -57,6 +57,8 @@ namespace Configs {
         sniffOverrideDest = other.sniffOverrideDest;
         strategy = other.strategy;
         type = other.type;
+        uiVisibleAttributes = other.uiVisibleAttributes;
+        uiAttributeTabsSeeded = other.uiAttributeTabsSeeded;
     }
 
     QJsonObject RouteRule::get_rule_json(bool forView, const QString& outboundTag) {
@@ -143,6 +145,78 @@ namespace Configs {
     }
 
     // TODO use constant for field names
+    QStringList RouteRule::tab_attributes() {
+        QStringList out;
+        for (const QString& a : get_attributes()) {
+            if (a != QStringLiteral("action")) out << a;
+        }
+        return out;
+    }
+
+    bool RouteRule::is_attribute_at_default(RouteRule& rule, const QString& attr) {
+        if (attr == QStringLiteral("action")) return true;
+        switch (RouteRule::get_input_type(attr)) {
+            case trufalse:
+                if (attr == QStringLiteral("source_ip_is_private")) return !rule.source_ip_is_private;
+                if (attr == QStringLiteral("ip_is_private")) return !rule.ip_is_private;
+                if (attr == QStringLiteral("invert")) return !rule.invert;
+                if (attr == QStringLiteral("no_drop")) return !rule.no_drop;
+                if (attr == QStringLiteral("override_destination")) return !rule.sniffOverrideDest;
+                return true;
+            case select:
+                if (attr == QStringLiteral("outbound")) return rule.outboundID == directID;
+                {
+                    const QStringList s = rule.get_current_value_string(attr);
+                    return s.isEmpty() || s.first().isEmpty();
+                }
+            case text:
+                if (attr == QStringLiteral("override_address")) return rule.override_address.isEmpty();
+                if (attr == QStringLiteral("override_port"))
+                    return rule.override_port.isEmpty() || rule.override_port.trimmed().isEmpty() || rule.override_port.toInt() <= 0;
+                return !isValidStrArray(rule.get_current_value_string(attr));
+        }
+        return true;
+    }
+
+    void RouteRule::clear_attribute_value(const QString& attr) {
+        if (attr == QStringLiteral("ip_version")) ip_version.clear();
+        else if (attr == QStringLiteral("network")) network.clear();
+        else if (attr == QStringLiteral("protocol")) protocol.clear();
+        else if (attr == QStringLiteral("inbound")) inbound.clear();
+        else if (attr == QStringLiteral("domain")) domain.clear();
+        else if (attr == QStringLiteral("domain_suffix")) domain_suffix.clear();
+        else if (attr == QStringLiteral("domain_keyword")) domain_keyword.clear();
+        else if (attr == QStringLiteral("domain_regex")) domain_regex.clear();
+        else if (attr == QStringLiteral("source_ip_cidr")) source_ip_cidr.clear();
+        else if (attr == QStringLiteral("source_ip_is_private")) source_ip_is_private = false;
+        else if (attr == QStringLiteral("ip_cidr")) ip_cidr.clear();
+        else if (attr == QStringLiteral("ip_is_private")) ip_is_private = false;
+        else if (attr == QStringLiteral("source_port")) source_port.clear();
+        else if (attr == QStringLiteral("source_port_range")) source_port_range.clear();
+        else if (attr == QStringLiteral("port")) port.clear();
+        else if (attr == QStringLiteral("port_range")) port_range.clear();
+        else if (attr == QStringLiteral("process_name")) process_name.clear();
+        else if (attr == QStringLiteral("process_path")) process_path.clear();
+        else if (attr == QStringLiteral("process_path_regex")) process_path_regex.clear();
+        else if (attr == QStringLiteral("rule_set")) rule_set.clear();
+        else if (attr == QStringLiteral("invert")) invert = false;
+        else if (attr == QStringLiteral("outbound")) outboundID = directID;
+        else if (attr == QStringLiteral("method")) rejectMethod.clear();
+        else if (attr == QStringLiteral("no_drop")) no_drop = false;
+        else if (attr == QStringLiteral("override_address")) override_address.clear();
+        else if (attr == QStringLiteral("override_port")) override_port.clear();
+        else if (attr == QStringLiteral("override_destination")) sniffOverrideDest = false;
+        else if (attr == QStringLiteral("strategy")) strategy.clear();
+    }
+
+    void RouteRule::ensure_ui_visible_attribute_tabs_seeded() {
+        if (uiAttributeTabsSeeded) return;
+        uiAttributeTabsSeeded = true;
+        for (const QString& a : tab_attributes()) {
+            if (!is_attribute_at_default(*this, a)) uiVisibleAttributes.insert(a);
+        }
+    }
+
     QStringList RouteRule::get_attributes()
     {
         return {

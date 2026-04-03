@@ -2,7 +2,6 @@
 
 #include <QAbstractItemView>
 #include <QMenu>
-#include "include/global/Utils.hpp"
 #include "include/configs/sub/GroupUpdater.hpp"
 #include "include/sys/Process.hpp"
 #include "include/sys/AutoRun.hpp"
