@@ -334,6 +334,40 @@
               <height>100</height>
              </size>
             </property>
+            <property name="styleSheet">
+             <string notr="true">QTabWidget::tab-bar {
+    left: 2px;
+}
+
+QTabBar {
+    background: transparent;
+    qproperty-drawBase: 0;
+}
+
+QTabBar::tab {
+    background-color: palette(button);
+    color: palette(button-text);
+
+    border: 1px solid palette(mid);
+
+    border-radius: 4px;
+    padding: 3px 5px;
+    margin-right: 1px;
+}
+
+QTabBar::tab:selected {
+    border: 1px solid palette(highlight);
+    background-color: palette(window); 
+}
+
+QTabBar::tab:!selected {
+    border: 1px solid palette(button);
+}
+
+QTabBar::tab:hover:!selected {
+    background-color: palette(light);
+}</string>
+            </property>
             <property name="currentIndex">
              <number>-1</number>
             </property>
