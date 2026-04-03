@@ -225,7 +225,7 @@ namespace Configs {
 
     QStringList RouteRule::get_attributes()
     {
-        return {
+        auto res = QStringList{
             "ip_version",
             "network",
             "protocol",
@@ -258,6 +258,8 @@ namespace Configs {
             "override_destination",
             "strategy",
         };
+        if (getOS() == Darwin) res.removeAll("wifi_ssid"), res.removeAll("wifi_bssid");
+        return res;
     }
 
     inputType RouteRule::get_input_type(const QString& fieldName) {
