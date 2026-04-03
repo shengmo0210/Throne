@@ -102,12 +102,12 @@ namespace Configs {
             if (!rejectMethod.isEmpty()) obj["reject_method"] = rejectMethod;
             if (no_drop) obj["no_drop"] = no_drop;
         }
-        if (action == "route" || action == "route-options")
+        if (action == "route" || action == "route-options" || action == "bypass")
         {
             if (!override_address.isEmpty()) obj["override_address"] = override_address;
             if (override_port.toInt() > 0) obj["override_port"] = override_port.toInt();
 
-            if (action == "route")
+            if (action == "route" || action == "bypass")
             {
                 if (forView) {
                     switch (outboundID) { // TODO use constants
@@ -284,7 +284,9 @@ namespace Configs {
         }
         if (fieldName == "action")
         {
-            return SingboxOptions::ActionTypes;
+            auto actions = SingboxOptions::ActionTypes;
+            if (getOS() == Linux) actions.insert(1, "bypass");
+            return actions;
         }
         if (fieldName == "method")
         {
@@ -496,7 +498,7 @@ namespace Configs {
         }
         auto ruleJson = get_rule_json();
         if (action == "route" || action == "route-options" || action == "hijack-dns") return ruleJson.keys().length() <= 1;
-        if (action == "sniff" || action == "resolve" || action == "reject") return ruleJson.keys().length() < 1;
+        if (action == "sniff" || action == "resolve" || action == "reject" || action == "bypass") return ruleJson.keys().length() < 1;
         return false;
     }
 
