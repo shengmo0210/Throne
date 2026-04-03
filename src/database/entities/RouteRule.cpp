@@ -45,6 +45,8 @@ namespace Configs {
         process_name << other.process_name;
         process_path << other.process_path;
         process_path_regex << other.process_path_regex;
+        wifi_ssid << other.wifi_ssid;
+        wifi_bssid << other.wifi_bssid;
         rule_set << other.rule_set;
         invert = other.invert;
         outboundID = other.outboundID;
@@ -83,6 +85,8 @@ namespace Configs {
         if (isValidStrArray(process_name)) obj["process_name"] = get_as_array(process_name);
         if (isValidStrArray(process_path)) obj["process_path"] = get_as_array(process_path);
         if (isValidStrArray(process_path_regex)) obj["process_path_regex"] = get_as_array(process_path_regex);
+        if (isValidStrArray(wifi_ssid)) obj["wifi_ssid"] = get_as_array(wifi_ssid);
+        if (isValidStrArray(wifi_bssid)) obj["wifi_bssid"] = get_as_array(wifi_bssid);
         if (isValidStrArray(rule_set))
             if (forView)
                 obj["rule_set"] = get_as_array(rule_set);
@@ -198,6 +202,8 @@ namespace Configs {
         else if (attr == QStringLiteral("process_name")) process_name.clear();
         else if (attr == QStringLiteral("process_path")) process_path.clear();
         else if (attr == QStringLiteral("process_path_regex")) process_path_regex.clear();
+        else if (attr == QStringLiteral("wifi_ssid")) wifi_ssid.clear();
+        else if (attr == QStringLiteral("wifi_bssid")) wifi_bssid.clear();
         else if (attr == QStringLiteral("rule_set")) rule_set.clear();
         else if (attr == QStringLiteral("invert")) invert = false;
         else if (attr == QStringLiteral("outbound")) outboundID = directID;
@@ -239,6 +245,8 @@ namespace Configs {
             "process_name",
             "process_path",
             "process_path_regex",
+            "wifi_ssid",
+            "wifi_bssid",
             "rule_set",
             "invert",
             "action",
@@ -351,6 +359,8 @@ namespace Configs {
         if (fieldName == "process_name") return process_name;
         if (fieldName == "process_path") return process_path;
         if (fieldName == "process_path_regex") return process_path_regex;
+        if (fieldName == "wifi_ssid") return wifi_ssid;
+        if (fieldName == "wifi_bssid") return wifi_bssid;
         if (fieldName == "rule_set") return rule_set;
         return {};
     }
@@ -442,6 +452,12 @@ namespace Configs {
         }
         if (fieldName == "process_path_regex") {
             process_path_regex = filterEmpty(value);
+        }
+        if (fieldName == "wifi_ssid") {
+            wifi_ssid = filterEmpty(value);
+        }
+        if (fieldName == "wifi_bssid") {
+            wifi_bssid = filterEmpty(value);
         }
         if (fieldName == "rule_set") {
             rule_set = filterEmpty(value);

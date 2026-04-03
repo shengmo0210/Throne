@@ -75,6 +75,8 @@ namespace Configs {
         QList<QString> process_name;
         QList<QString> process_path;
         QList<QString> process_path_regex;
+        QList<QString> wifi_ssid;
+        QList<QString> wifi_bssid;
         QList<QString> rule_set;
         bool invert = false;
         int outboundID = directID; // -1 is proxy -2 is direct -3 is block -4 is dns_out
