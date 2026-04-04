@@ -99,7 +99,7 @@ DialogManageRoutes::DialogManageRoutes(QWidget *parent) : QDialog(parent), ui(ne
     connect(ui->format_dns_object, &QPushButton::clicked, this, [=,this] {
         auto obj = QString2QJsonObject(ui->dns_object->toPlainText());
         if (obj.isEmpty()) {
-            MessageBoxInfo("DNS", "invaild json");
+            MessageBoxInfo("DNS", "Invalid json");
         } else {
             ui->dns_object->setPlainText(QJsonObject2QString(obj, false));
         }
