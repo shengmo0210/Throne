@@ -43,7 +43,7 @@ public:
 
     void clearTestSections();
 
-    void addTestProgress(int count = 0);
+    void addTestProgress(int count = 1);
 
     QString buildHtml();
 

@@ -450,14 +450,15 @@ void MainWindow::speedtest_current_group(const QList<int>& profileIDs, bool test
         return;
     }
 
-    currentUnderTest.store(true);
+    currentUnderTest.store(testCurrent);
 
     runOnNewThread([this, profileIDs, testCurrent]() {
         stopSpeedtest.store(false);
         if (!testCurrent)
         {
             dataViewHtmlGenerator_.seedSpeedTest(profileIDs.size());
-            auto speedTestFunc = [=, this](const QList<std::shared_ptr<Configs::Profile>>& profileSlice, int offset) {
+            UpdateDataView(true);
+            auto speedTestFunc = [=, this](const QList<std::shared_ptr<Configs::Profile>>& profileSlice) {
                 auto buildObject = Configs::BuildTestConfig(profileSlice);
                 if (!buildObject->error.isEmpty()) {
                     MW_show_log(tr("Failed to build batch test config: ") + buildObject->error);
@@ -466,24 +467,25 @@ void MainWindow::speedtest_current_group(const QList<int>& profileIDs, bool test
 
                 for (const auto &entID: buildObject->fullConfigs.keys()) {
                     auto configStr = buildObject->fullConfigs[entID];
-                    runSpeedTest(configStr, "", true, false, {}, {}, entID, offset);
+                    runSpeedTest(configStr, "", true, false, {}, {}, entID);
                 }
 
                 if (!buildObject->outboundTags.empty()) {
                     auto xrayConf = buildObject->isXrayNeeded ? QJsonObject2QString(buildObject->xrayConfig, true) : "";
-                    runSpeedTest(QJsonObject2QString(buildObject->coreConfig, false), xrayConf, false, false, buildObject->outboundTags, buildObject->tag2entID, -1, offset);
+                    runSpeedTest(QJsonObject2QString(buildObject->coreConfig, false), xrayConf, false, false, buildObject->outboundTags, buildObject->tag2entID, -1);
                 }
             };
-            for (int i=0;i<profileIDs.length();i+=100) {
+            int stepSize = Configs::dataManager->settingsRepo->speed_test_mode == Configs::TestConfig::COUNTRY ? 100 : 1;
+            for (int i=0;i<profileIDs.length();i+=stepSize) {
                 if (stopSpeedtest.load()) break;
-                auto profileIDsSlice = profileIDs.mid(i, 100);
+                auto profileIDsSlice = profileIDs.mid(i, stepSize);
                 auto profiles = Configs::dataManager->profilesRepo->GetProfileBatch(profileIDsSlice);
-                speedTestFunc(profiles, i);
+                speedTestFunc(profiles);
             }
         } else
         {
             dataViewHtmlGenerator_.seedSpeedTest(1);
-            runSpeedTest("", "", true, true, {}, {}, -1, 0);
+            runSpeedTest("", "", true, true, {}, {}, -1);
             currentUnderTest.store(false);
         }
         dataViewHtmlGenerator_.clearTestSections();
@@ -496,7 +498,7 @@ void MainWindow::speedtest_current_group(const QList<int>& profileIDs, bool test
     });
 }
 
-void MainWindow::querySpeedtest(const QMap<QString, int>& tag2entID, bool testCurrent, const QList<QString>& outboundList, int offset)
+void MainWindow::querySpeedtest(const QMap<QString, int>& tag2entID, bool testCurrent)
 {
     bool ok;
     auto res = defaultClient->QueryCurrentSpeedTests(&ok);
@@ -512,7 +514,6 @@ void MainWindow::querySpeedtest(const QMap<QString, int>& tag2entID, bool testCu
     runOnUiThread([=, this]
     {
         dataViewHtmlGenerator_.setSpeedtestProgress(profile->outbound->name, res.result.value());
-        dataViewHtmlGenerator_.addTestProgress(outboundList.indexOf(res.result->outbound_tag.value())+1+offset);
         UpdateDataView();
 
         if (res.result.value().error.value().empty() && !res.result.value().cancelled.value())
@@ -557,7 +558,7 @@ void MainWindow::queryCountryTest(const QMap<QString, int>& tag2entID, bool test
 }
 
 
-void MainWindow::runSpeedTest(const QString& config, const QString& xrayConfig, bool useDefault, bool testCurrent, const QStringList& outboundTags, const QMap<QString, int>& tag2entID, int entID, int offset)
+void MainWindow::runSpeedTest(const QString& config, const QString& xrayConfig, bool useDefault, bool testCurrent, const QStringList& outboundTags, const QMap<QString, int>& tag2entID, int entID)
 {
     if (stopSpeedtest.load()) {
         MW_show_log(tr("Profile speed test aborted"));
@@ -582,6 +583,11 @@ void MainWindow::runSpeedTest(const QString& config, const QString& xrayConfig, 
     req.xray_config = xrayConfig.toStdString();
     req.need_xray = !xrayConfig.isEmpty();
 
+    if (speedtestConf != Configs::TestConfig::COUNTRY) {
+        dataViewHtmlGenerator_.addTestProgress();
+        UpdateDataView();
+    }
+
     // loop query result
     auto doneMu = new QMutex;
     doneMu->lock();
@@ -598,7 +604,7 @@ void MainWindow::runSpeedTest(const QString& config, const QString& xrayConfig, 
                 queryCountryTest(tag2entID, testCurrent);
             } else
             {
-                querySpeedtest(tag2entID, testCurrent, outboundTags, offset);
+                querySpeedtest(tag2entID, testCurrent);
             }
         }
         doneMu->unlock();

@@ -32,14 +32,13 @@ void DataViewHtmlGenerator::seedLatencyTest(LatencyTestPanelState::Kind kind, in
 }
 
 void DataViewHtmlGenerator::clearTestSections() {
-    latencyTest_.visible = {};
-    speedtest_.visible = {};
+    latencyTest_ = {};
+    speedtest_ = {};
     testProgress.store(0);
 }
 
 void DataViewHtmlGenerator::addTestProgress(int count) {
-    if (count == 0) ++testProgress;
-    else testProgress.store(count);
+    testProgress.fetch_add(count);
 }
 
 QString DataViewHtmlGenerator::buildHtml() {
@@ -82,11 +81,11 @@ QString DataViewHtmlGenerator::downloadSectionHtml() {
 
 QString DataViewHtmlGenerator::speedtestSectionHtml() {
     if (speedtest_.kind == SpeedtestPanelState::Kind::Speed) {
-        QString firstLine;
-        firstLine = QStringLiteral("Running Speedtest: %1").arg(speedtest_.profileName);
+        auto firstLine = QStringLiteral("Running Speedtest: %1").arg(speedtest_.profileName);
         if (speedtest_.totalProfiles > 1) {
             firstLine += QString(" (%1 / %2)").arg(Int2String(testProgress.load()), Int2String(speedtest_.totalProfiles));
         }
+        if (speedtest_.serverName.isEmpty()) return QString("<p style='text-align:center;margin:0;'>%1</p>").arg(firstLine);
         return QString(
            "<p style='text-align:center;margin:0;'>%1</p>"
            "<div style='text-align: center;'>"
