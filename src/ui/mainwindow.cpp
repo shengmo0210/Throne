@@ -1489,45 +1489,16 @@ void MainWindow::UpdateDataView(bool force)
     {
         return;
     }
-    QString html;
-    if (showDownloadData)
-    {
-        qint64 count = 0;
-        if(currentDownloadReport.totalSize > 0)
-            count = 10 * currentDownloadReport.downloadedSize / currentDownloadReport.totalSize;
-        QString progressText;
-        for (int i = 0; i < 10; i++)
-        {
-            if (count--; count >=0) progressText += "#";
-            else progressText += "-";
-        }
-        QString stat = ReadableSize(currentDownloadReport.downloadedSize) + "/" + ReadableSize(currentDownloadReport.totalSize);
-        html = QString("<p style='text-align:center;margin:0;'>Downloading %1: %2 %3</p>").arg(currentDownloadReport.fileName, stat, progressText);
-    }
-    if (showSpeedtestData)
-    {
-        html += QString(
-    "<p style='text-align:center;margin:0;'>Running Speedtest: %1</p>"
-    "<div style='text-align: center;'>"
-    "<span style='color: #3299FF;'>Dl↓ %2</span>  "
-    "<span style='color: #86C43F;'>Ul↑ %3</span>"
-    "</div>"
-    "<p style='text-align:center;margin:0;'>Server: %4%5, %6</p>"
-        ).arg(currentSptProfileName,
-            currentTestResult.dl_speed.value().c_str(),
-            currentTestResult.ul_speed.value().c_str(),
-            CountryCodeToFlag(CountryNameToCode(QString::fromStdString(currentTestResult.server_country.value()))),
-            currentTestResult.server_country.value().c_str(),
-            currentTestResult.server_name.value().c_str());
-    }
-    ui->data_view->setHtml(html);
+    auto html = dataViewHtmlGenerator_.buildHtml();
+    runOnUiThread([=, this] {
+        ui->data_view->setHtml(html);
+    }, true);
     lastUpdated = QDateTime::currentDateTime();
 }
 
 void MainWindow::setDownloadReport(const DownloadProgressReport& report, bool show)
 {
-    showDownloadData = show;
-    currentDownloadReport = report;
+    dataViewHtmlGenerator_.setDownloadReport(report, show);
 }
 
 

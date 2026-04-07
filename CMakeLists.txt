@@ -113,6 +113,8 @@ set(PROJECT_SOURCES
         src/ui/mainwindow.cpp
         include/ui/mainwindow.h
         include/ui/mainwindow.ui
+        include/ui/utils/DataViewHtmlGenerator.h
+        src/ui/utils/DataViewHtmlGenerator.cpp
         include/ui/utils/ProfilesTableModel.h
         src/ui/utils/ProfilesTableModel.cpp
         include/ui/utils/ProfilesTableView.h

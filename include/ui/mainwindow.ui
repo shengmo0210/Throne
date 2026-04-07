@@ -25,6 +25,12 @@
      <layout class="QHBoxLayout" name="horizontalLayout_2">
       <item>
        <widget class="QToolButton" name="toolButton_program">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>0</height>
+         </size>
+        </property>
         <property name="styleSheet">
          <string notr="true">QToolButton {
     padding-left: 8px;
@@ -60,6 +66,12 @@ QToolButton::menu-indicator {
       </item>
       <item>
        <widget class="QToolButton" name="toolButton_preferences">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>0</height>
+         </size>
+        </property>
         <property name="styleSheet">
          <string notr="true">QToolButton {
     padding-left: 8px;
@@ -95,6 +107,12 @@ QToolButton::menu-indicator {
       </item>
       <item>
        <widget class="QToolButton" name="toolButton_server">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>0</height>
+         </size>
+        </property>
         <property name="styleSheet">
          <string notr="true">QToolButton {
     padding-left: 8px;
@@ -130,6 +148,12 @@ QToolButton::menu-indicator {
       </item>
       <item>
        <widget class="QToolButton" name="toolButton_routing">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>0</height>
+         </size>
+        </property>
         <property name="styleSheet">
          <string notr="true">QToolButton {
     padding-left: 8px;
@@ -165,6 +189,25 @@ QToolButton::menu-indicator {
       </item>
       <item>
        <widget class="QToolButton" name="toolButton_update">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">QToolButton {
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+QToolButton::menu-indicator {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    right: 2px;
+    bottom: 3px;
+}</string>
+        </property>
         <property name="text">
          <string>Update</string>
         </property>
@@ -226,6 +269,12 @@ QToolButton::menu-indicator {
           <horstretch>0</horstretch>
           <verstretch>0</verstretch>
          </sizepolicy>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>65</height>
+         </size>
         </property>
         <property name="mouseTracking">
          <bool>false</bool>

@@ -29,6 +29,7 @@
 
 #include "group/GroupSort.hpp"
 #include "include/global/GuiUtils.hpp"
+#include "include/ui/utils/DataViewHtmlGenerator.h"
 #include "include/ui/utils/ProfilesTableModel.h"
 #include "ui_mainwindow.h"
 
@@ -202,11 +203,7 @@ private:
     //
     // for data view
     QDateTime lastUpdated = QDateTime::currentDateTime();
-    QString currentSptProfileName;
-    bool showSpeedtestData = false;
-    bool showDownloadData = false;
-    libcore::SpeedTestResult currentTestResult;
-    DownloadProgressReport currentDownloadReport; // could use a list, but don't think can show more than one anyways
+    DataViewHtmlGenerator dataViewHtmlGenerator_;
 
     // shortcuts
     QList<QShortcut*> hiddenMenuShortcuts;
@@ -294,7 +291,7 @@ private:
 
     void speedtest_current_group(const QList<int>& profileIDs, bool testCurrent = false);
 
-    void runSpeedTest(const QString& config, const QString& xrayConfig, bool useDefault, bool testCurrent, const QStringList& outboundTags, const QMap<QString, int>& tag2entID, int entID = -1);
+    void runSpeedTest(const QString& config, const QString& xrayConfig, bool useDefault, bool testCurrent, const QStringList& outboundTags, const QMap<QString, int>& tag2entID, int entID = -1, int offset = 0);
 
     bool set_system_dns(bool set, bool save_set = true);
 
@@ -302,7 +299,7 @@ private:
 
     void setupConnectionList();
 
-    void querySpeedtest(const QMap<QString, int>& tag2entID, bool testCurrent);
+    void querySpeedtest(const QMap<QString, int>& tag2entID, bool testCurrent, const QList<QString>& outboundList, int offset);
 
     void queryCountryTest(const QMap<QString, int>& tag2entID, bool testCurrent);
 
