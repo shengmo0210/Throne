@@ -36,6 +36,10 @@ namespace Configs_network {
             p.setType(QNetworkProxy::HttpProxy);
             p.setHostName(Configs::dataManager->settingsRepo->inbound_address == "::" ? "127.0.0.1" : Configs::dataManager->settingsRepo->inbound_address);
             p.setPort(Configs::dataManager->settingsRepo->inbound_socks_port);
+            if (Configs::dataManager->settingsRepo->inbound_auth) {
+                p.setUser(Configs::dataManager->settingsRepo->inbound_user);
+                p.setPassword(Configs::dataManager->settingsRepo->inbound_pass);
+            }
             accessManager.setProxy(p);
         }
         // Set attribute

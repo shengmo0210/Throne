@@ -534,6 +534,14 @@ namespace Configs {
         inboundObj["type"] = "mixed";
         inboundObj["listen"] = Configs::dataManager->settingsRepo->inbound_address;
         inboundObj["listen_port"] = Configs::dataManager->settingsRepo->inbound_socks_port;
+        if (Configs::dataManager->settingsRepo->inbound_auth) {
+            inboundObj["users"] = QJsonArray{
+                                    QJsonObject{
+                                        {"username", Configs::dataManager->settingsRepo->inbound_user},
+                                        {"password", Configs::dataManager->settingsRepo->inbound_pass}
+                                    }
+                                };
+        }
         inbounds += inboundObj;
 
         // Tun
@@ -670,9 +678,12 @@ namespace Configs {
                     return;
                 }
                 if (xrayPort == -1) xrayPort = MkPort();
+                QString xrayAuth = GetRandomString(32);
                 object["server_port"] = xrayPort;
+                object["username"] = xrayAuth;
+                object["password"] = xrayAuth;
                 xrayObj["tag"] = tag;
-                ctx->xrayOutbounds.append({xrayPort, xrayObj});
+                ctx->xrayOutbounds.append({xrayPort, xrayObj, xrayAuth});
             }
             if (ent->outbound->IsEndpoint())
             {
@@ -911,14 +922,23 @@ namespace Configs {
             };
         }
 
-        for (auto [port, outboundObj] : ctx->xrayOutbounds) {
+        for (auto [port, outboundObj, auth] : ctx->xrayOutbounds) {
             auto inboundTag = outboundObj["tag"].toString() + "-inbound";
             inbounds << QJsonObject{
                 {"tag", inboundTag},
                 {"listen", "127.0.0.1"},
                 {"port", port},
                 {"protocol", "socks"},
-                {"settings", QJsonObject{{"auth", "noauth"}, {"udp", true}}}
+                {"settings", QJsonObject{
+                    {"auth", "password"},
+                    {"udp", false},
+                    {"accounts", QJsonArray{
+                        QJsonObject{
+                            {"user", auth},
+                            {"pass", auth}
+                        }
+                    }}
+                }}
             };
             outbounds << outboundObj;
             routeRules << QJsonObject{

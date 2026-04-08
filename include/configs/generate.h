@@ -92,7 +92,7 @@ namespace Configs
         QStringList warnings;
         QJsonArray outbounds;
         QJsonArray endpoints;
-        QList<std::pair<int, QJsonObject>> xrayOutbounds; // (inbound port, object)
+        QList<std::tuple<int, QJsonObject, QString>> xrayOutbounds; // (inbound port, object, auth)
         std::shared_ptr<BuildConfigResult> buildConfigResult = std::make_shared<BuildConfigResult>();
     };
 

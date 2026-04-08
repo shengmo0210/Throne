@@ -144,6 +144,9 @@ namespace Configs {
         bool random_inbound_port = false;
         QString custom_inbound = "{\"inbounds\": []}";
         QString proxy_scheme = "{ip}:{port}";
+        bool inbound_auth = false;
+        QString inbound_user = "";
+        QString inbound_pass = "";
 
         // Routing
         QString custom_route_global = "{\"rules\": []}";
