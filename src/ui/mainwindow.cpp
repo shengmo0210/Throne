@@ -1671,7 +1671,15 @@ QList<int> MainWindow::filterProfilesList(const QList<int>& profileIDs)
             MW_show_log("Null profile, maybe data is corrupted");
             continue;
         }
-        if ((addressFilterString.isEmpty() || profile->outbound->server.contains(addressFilterString, Qt::CaseInsensitive))
+        auto portMatches = [&]() {
+            QString val = addressFilterString.mid(5);
+            if (!val.contains(':')) return val.isEmpty() ? false : profile->outbound->server_port == val.toInt();
+            QStringList p = val.split(':');
+            bool minOk = p[0].isEmpty() || profile->outbound->server_port >= p[0].toInt();
+            bool maxOk = (p.size() < 2 || p[1].isEmpty()) || profile->outbound->server_port <= p[1].toInt();
+            return minOk && maxOk;
+        };
+        if ((addressFilterString.isEmpty() || (addressFilterString.startsWith("port=") ? portMatches() : profile->outbound->server.contains(addressFilterString, Qt::CaseInsensitive)))
             && (nameFilterString.isEmpty() || profile->outbound->name.contains(nameFilterString, Qt::CaseInsensitive))
             && (typeFilterString.isEmpty() || profile->type.contains(typeFilterString, Qt::CaseInsensitive))
             && (countryFilterString.isEmpty() || profile->test_country.contains(countryFilterString, Qt::CaseInsensitive)))
