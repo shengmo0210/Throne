@@ -931,7 +931,7 @@ namespace Configs {
                 {"protocol", "socks"},
                 {"settings", QJsonObject{
                     {"auth", "password"},
-                    {"udp", false},
+                    {"udp", true},
                     {"accounts", QJsonArray{
                         QJsonObject{
                             {"user", auth},
