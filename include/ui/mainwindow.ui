@@ -327,10 +327,10 @@ QTabBar::tab {
     background-color: palette(button);
     color: palette(button-text);
 
-    border: 1px solid palette(mid);
+    border: 1px solid palette(midlight);
 
     border-radius: 4px;
-    padding: 3px 5px;
+    padding: 2px 4px;
     margin-right: 1px;
 }
 
@@ -344,7 +344,8 @@ QTabBar::tab:!selected {
 }
 
 QTabBar::tab:hover:!selected {
-    background-color: palette(light);
+    border: 1px solid palette(button);
+    background-color: palette(midlight);
 }</string>
        </property>
        <property name="currentIndex">
@@ -452,10 +453,10 @@ QTabBar::tab {
     background-color: palette(button);
     color: palette(button-text);
 
-    border: 1px solid palette(mid);
+    border: 1px solid palette(midlight);
 
     border-radius: 4px;
-    padding: 3px 5px;
+    padding: 2px 4px;
     margin-right: 1px;
 }
 
@@ -469,7 +470,8 @@ QTabBar::tab:!selected {
 }
 
 QTabBar::tab:hover:!selected {
-    background-color: palette(light);
+    border: 1px solid palette(button);
+    background-color: palette(midlight);
 }</string>
              </property>
              <property name="tabPosition">
