@@ -268,12 +268,20 @@ jobs:
           cd deployment
           mkdir debug
           ####
-          bash ../script/pack_debian.sh ${{ github.event.inputs.tag }}
-          mv Throne.deb Throne-${{ github.event.inputs.tag }}-debian-x64.deb
+          bash ../script/pack_debian.sh ${{ github.event.inputs.tag }} amd64
+          mv Throne.deb Throne-${{ github.event.inputs.tag }}-debian-amd64.deb
           rm -rf Throne
           ####
-          bash ../script/pack_debian_system_qt.sh ${{ github.event.inputs.tag }}
-          mv Throne.deb Throne-${{ github.event.inputs.tag }}-debian-system-qt-x64.deb
+          bash ../script/pack_debian.sh ${{ github.event.inputs.tag }} amd64 systemqt
+          mv Throne.deb Throne-${{ github.event.inputs.tag }}-debian-amd64-system-qt.deb
+          rm -rf Throne
+          ####
+          bash ../script/pack_debian.sh ${{ github.event.inputs.tag }} arm64
+          mv Throne.deb Throne-${{ github.event.inputs.tag }}-debian-arm64.deb
+          rm -rf Throne
+          ####
+          bash ../script/pack_debian.sh ${{ github.event.inputs.tag }} arm64 systemqt
+          mv Throne.deb Throne-${{ github.event.inputs.tag }}-debian-arm64-system-qt.deb
           rm -rf Throne
           ####
           mv linux-amd64 Throne
@@ -340,7 +348,7 @@ jobs:
           rm -rf windows-amd64
           rm -rf windows-arm64
           rm -rf linux-amd64
-          rm -rf linux-amd64-
+          rm -rf linux-amd64-system-qt
           rm -rf linux-arm64
           rm -rf linux-arm64-system-qt
           rm -rf darwin-amd64
