@@ -1991,7 +1991,7 @@ void  MainWindow::on_menu_delete_repeat_triggered () {
         for (const auto &ent: out_del) {
             del_ids += ent->id;
         }
-        Configs::dataManager->profilesRepo->BatchDeleteProfiles(del_ids);
+        Configs::dataManager->profilesRepo->BatchDeleteProfiles(del_ids, true);
         refresh_proxy_list({}, true);
     }
 }
@@ -2000,7 +2000,7 @@ void MainWindow::on_menu_delete_triggered() {
     auto entIDs = get_now_selected_list();
     if (entIDs.count() == 0) return;
     if (Configs::dataManager->settingsRepo->skip_delete_confirmation || QMessageBox::question(this, tr("Confirmation"), QString(tr("Remove %1 item(s) ?")).arg(entIDs.count()))==QMessageBox::StandardButton::Yes) {
-        Configs::dataManager->profilesRepo->BatchDeleteProfiles(entIDs);
+        Configs::dataManager->profilesRepo->BatchDeleteProfiles(entIDs, true);
         refresh_proxy_list({}, true);
     }
 }
@@ -2354,7 +2354,7 @@ void MainWindow::on_menu_remove_invalid_triggered() {
          for (const auto &ent: out_del) {
              del_ids += ent->id;
          }
-         Configs::dataManager->profilesRepo->BatchDeleteProfiles(del_ids);
+         Configs::dataManager->profilesRepo->BatchDeleteProfiles(del_ids, true);
          refresh_proxy_list({}, true);
      }
      });
@@ -2456,7 +2456,7 @@ void MainWindow::clearUnavailableProfiles(bool confirm, QList<int> profileIDs) {
         }
     }
 
-    auto clearFunc = [=, this] {
+    auto clearFunc = [&, this] {
         Configs::dataManager->profilesRepo->BatchDeleteProfiles(del_ids);
         refresh_proxy_list({}, true);
     };

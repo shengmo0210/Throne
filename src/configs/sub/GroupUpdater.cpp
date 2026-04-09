@@ -641,7 +641,7 @@ namespace Subscription {
             //
             if (Configs::dataManager->settingsRepo->sub_clear) {
                 MW_show_log(QObject::tr("Clearing servers..."));
-                if (!Configs::dataManager->profilesRepo->BatchDeleteProfiles(group->Profiles())) {
+                if (!Configs::dataManager->profilesRepo->BatchDeleteProfiles(group->profiles, Configs::dataManager->settingsRepo->allow_stopping_active_profile)) {
                     runOnUiThread([=] {
                         MessageBoxWarning("Internal Error", "DB Error when deleting profiles, Please try again.");
                     });
@@ -727,7 +727,7 @@ namespace Subscription {
                         del_ids.append(ent->id);
                     }
                 }
-                if (!Configs::dataManager->profilesRepo->BatchDeleteProfiles(del_ids)) {
+                if (!Configs::dataManager->profilesRepo->BatchDeleteProfiles(del_ids, Configs::dataManager->settingsRepo->allow_stopping_active_profile)) {
                     runOnUiThread([=] {
                        MessageBoxWarning("Internal error", "DB Error when deleting profiles, data may be corrupted");
                     });

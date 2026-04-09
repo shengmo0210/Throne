@@ -72,7 +72,7 @@ namespace Configs {
         QStringList GetAllProfileNames();
         
         // Delete multiple profiles
-        bool BatchDeleteProfiles(const QList<int>& ids);
+        bool BatchDeleteProfiles(QList<int>& ids, bool stopRunningProfile = false);
         
         // Get all profile IDs in order
         QList<int> GetAllProfileIds() const;

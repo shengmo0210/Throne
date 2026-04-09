@@ -109,6 +109,7 @@ namespace Configs {
         bool sub_clear = false;
         bool sub_send_hwid = false;
         QString sub_custom_hwid_params = "";
+        bool allow_stopping_active_profile = false;
 
         // Security
         bool skip_cert = false;

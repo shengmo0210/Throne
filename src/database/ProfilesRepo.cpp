@@ -516,13 +516,14 @@ namespace Configs {
         return names;
     }
 
-    bool ProfilesRepo::BatchDeleteProfiles(const QList<int>& ids) {
+    bool ProfilesRepo::BatchDeleteProfiles(QList<int>& ids, bool stopRunningProfile) {
         QSet<int> groupIDs;
+        if (ids.contains(dataManager->settingsRepo->started_id)) {
+            if (stopRunningProfile) GetMainWindow()->profile_stop(false, true, false);
+            else ids.removeAll(dataManager->settingsRepo->started_id);
+        }
         auto profiles = GetProfileBatch(ids);
         for (const auto& ent : profiles) {
-            if (ent->id == dataManager->settingsRepo->started_id) {
-                GetMainWindow()->profile_stop(false, true, false);
-            }
             groupIDs.insert(ent->gid);
         }
         for (auto groupID : groupIDs) {
