@@ -12,12 +12,12 @@ cp $GITHUB_WORKSPACE/res/public/Throne.png $DEST
 
 #### copy Core ####
 cd download-artifact
-cd *linux-amd64
+cd *${DEST_SUFFIX%-system-qt}
 tar xvzf artifacts.tgz -C ../../
 cd ../..
-cp deployment/linux-amd64/ThroneCore $DEST
-cp deployment/linux-amd64/libcronet.so $DEST
-rm -rf deployment/linux-amd64
+cp deployment/${DEST_SUFFIX%-system-qt}/ThroneCore $DEST
+cp deployment/${DEST_SUFFIX%-system-qt}/libcronet.so $DEST
+rm -rf deployment/${DEST_SUFFIX%-system-qt}
 
 # handle debug info
 objcopy --only-keep-debug $DEST/Throne $DEST/Throne.debug

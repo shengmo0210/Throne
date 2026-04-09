@@ -114,11 +114,15 @@ jobs:
           - platform: ubuntu-22.04
             qt_version: "6.2.0"
             target: x86_64
-            dest_suffix: linux-system-qt-amd64
+            dest_suffix: linux-amd64-system-qt
           - platform: ubuntu-24.04-arm
             qt_version: "6.11.0"
             target: aarch64
             dest_suffix: linux-arm64
+          - platform: ubuntu-22.04-arm
+            qt_version: "6.2.0"
+            target: aarch64
+            dest_suffix: linux-arm64-system-qt
           - platform: macos-latest
             qt_version: "6.11.0"
             target: x86_64
@@ -164,7 +168,7 @@ jobs:
       # ========================================================================================================= Qt Install
       - name: Install Qt
         uses: jurplel/install-qt-action@v4.3.0
-        if: "!contains(matrix.platform, 'windows')"
+        if: (!contains(matrix.platform, 'windows')) && matrix.qt_version != '6.2.0'
         with:
           version: ${{ matrix.qt_version }}
           setup-python: true
@@ -212,6 +216,8 @@ jobs:
         shell: bash
         if: contains( matrix.platform, 'ubuntu' ) && matrix.qt_version == '6.2.0'
         run: |
+          sudo apt update && sudo apt upgrade -y
+          sudo apt install qt6-base-dev qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools libqt6svg6-dev qt6-translations-l10n libglx-dev libgl1-mesa-dev
           mkdir build
           cd build
           curl -fLso srslist.h "https://raw.githubusercontent.com/throneproj/routeprofiles/rule-set/srslist.h"
@@ -334,8 +340,9 @@ jobs:
           rm -rf windows-amd64
           rm -rf windows-arm64
           rm -rf linux-amd64
-          rm -rf linux-system-qt-amd64
+          rm -rf linux-amd64-
           rm -rf linux-arm64
+          rm -rf linux-arm64-system-qt
           rm -rf darwin-amd64
           rm -rf darwin-arm64
           rm -rf darwinlegacy-amd64
