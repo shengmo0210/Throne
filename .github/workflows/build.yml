@@ -136,11 +136,11 @@ jobs:
             target: x86_64
             dest_suffix: darwinlegacy-amd64
           - platform: windows-latest
-            qt_version: "6.5.8"
+            qt_version: "6.2.13"
             target: x64
             dest_suffix: windowslegacy-amd64
           - platform: windows-latest
-            qt_version: "6.5.8"
+            qt_version: "6.2.13"
             target: x86
             dest_suffix: windowslegacy-386
       fail-fast: false
@@ -194,7 +194,7 @@ jobs:
           ./script/deploy_windows.sh
       - name: Build Installer with NSIS
         shell: cmd
-        if: matrix.platform == 'windows-latest' && matrix.qt_version != '6.5.8'
+        if: matrix.platform == 'windows-latest' && matrix.qt_version != '6.2.13'
         run: |
           choco install nsis
           cp .\script\windows_installer.nsi .
