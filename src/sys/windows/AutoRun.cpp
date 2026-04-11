@@ -147,7 +147,7 @@ void AutoRun_FixPrivilegeIfNeeded() {
     if (process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0) {
         QString output = QString::fromLocal8Bit(process.readAllStandardOutput());
         if (!output.contains("xml")) return;
-        if (!output.contains(runLevel)) AutoRun_SetEnabled(true);
+        if (runLevel == "HighestAvailable" && !output.contains("HighestAvailable") || runLevel == "LeastPrivilege" && output.contains("HighestAvailable")) AutoRun_SetEnabled(true);
     }
 }
 
