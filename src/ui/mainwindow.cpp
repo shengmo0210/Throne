@@ -140,17 +140,20 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
             new SyntaxHighlighter(isDarkMode(), qvLogDocument);
         }
     });
-    connect(ui->masterLogBrowser->verticalScrollBar(), &QSlider::valueChanged, this, [=,this](int value) {
-        if (ui->masterLogBrowser->verticalScrollBar()->maximum() == value)
-            qvLogAutoScoll = true;
-        else
-            qvLogAutoScoll = false;
-    });
-    connect(ui->masterLogBrowser, &QTextBrowser::textChanged, this, [=,this]() {
-        if (!qvLogAutoScoll)
-            return;
-        auto bar = ui->masterLogBrowser->verticalScrollBar();
-        bar->setValue(bar->maximum());
+    logAutoScrollCheckBox = new QCheckBox(tr("Auto-scroll log"), ui->stats_widget);
+    logAutoScrollCheckBox->setChecked(qvLogAutoScoll);
+    ui->stats_widget->setCornerWidget(logAutoScrollCheckBox, Qt::TopRightCorner);
+    auto updateAutoScrollVisibility = [=,this]() {
+        logAutoScrollCheckBox->setVisible(ui->stats_widget->currentWidget() == ui->Logs);
+    };
+    updateAutoScrollVisibility();
+    connect(ui->stats_widget, &QTabWidget::currentChanged, this, [=](int) { updateAutoScrollVisibility(); });
+    connect(logAutoScrollCheckBox, &QCheckBox::toggled, this, [=,this](bool checked) {
+        qvLogAutoScoll = checked;
+        if (checked) {
+            auto bar = ui->masterLogBrowser->verticalScrollBar();
+            bar->setValue(bar->maximum());
+        }
     });
     MW_show_log = [=,this](const QString &log) {
         append_log(log);
@@ -2586,8 +2589,21 @@ void MainWindow::log_process_loop() {
         logMutex.unlock();
 
         if (!batchToPrint.isEmpty()) {
-            runOnUiThread([=, this] {
-               FastAppendTextDocument(batchToPrint.trimmed(), qvLogDocument);
+            QString trimmedBatch = batchToPrint.trimmed();
+            runOnUiThread([trimmedBatch = std::move(trimmedBatch), this] {
+                auto bar = ui->masterLogBrowser->verticalScrollBar();
+                auto layout = qvLogDocument->documentLayout();
+                // Anchor to the block at the top of the viewport; if trim shifts its
+                // document-Y afterwards, we replay the original sub-block offset.
+                QTextBlock anchorBlock = ui->masterLogBrowser->cursorForPosition(QPoint(0, 0)).block();
+                int viewportOffset = bar->value() - static_cast<int>(layout->blockBoundingRect(anchorBlock).y());
+                FastAppendTextDocument(trimmedBatch, qvLogDocument);
+                if (qvLogAutoScoll) {
+                    bar->setValue(bar->maximum());
+                } else if (anchorBlock.isValid()) {
+                    int newY = static_cast<int>(layout->blockBoundingRect(anchorBlock).y());
+                    bar->setValue(newY + viewportOffset);
+                }
             });
         }
     }

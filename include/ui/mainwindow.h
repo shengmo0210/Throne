@@ -23,6 +23,7 @@
 #include <QProcess>
 #include <QTextDocument>
 #include <QShortcut>
+#include <QCheckBox>
 #include <QSemaphore>
 #include <QMutex>
 #include <QThreadPool>
@@ -179,6 +180,7 @@ private:
     //
     bool qvLogAutoScoll = true;
     QTextDocument *qvLogDocument = new QTextDocument(this);
+    QCheckBox *logAutoScrollCheckBox = nullptr;
     //
     QString title_error;
     int icon_status = -1;

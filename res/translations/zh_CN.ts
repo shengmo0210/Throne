@@ -2701,6 +2701,10 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
         <source>Click To Sort By Outbound</source>
         <translation>点击“按出站排序”</translation>
     </message>
+    <message>
+        <source>Auto-scroll log</source>
+        <translation>自动滚动日志</translation>
+    </message>
 </context>
 <context>
     <name>ProfilesTableModel</name>

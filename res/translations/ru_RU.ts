@@ -2610,6 +2610,10 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
         <source>Add profile from File</source>
         <translation>Добавить профиль из файла</translation>
     </message>
+    <message>
+        <source>Auto-scroll log</source>
+        <translation>Авто-скролл логов</translation>
+    </message>
 </context>
 <context>
     <name>ProfilesTableModel</name>
