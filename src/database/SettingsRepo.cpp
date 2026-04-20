@@ -47,7 +47,8 @@ namespace Configs {
             "enable_warp",
             "enable_dns_routing",
             "inbound_auth",
-               "allow_stopping_active_profile"
+        "allow_stopping_active_profile",
+        "disable_mixed_inbound"
         };
 
         const QSet<QString> intKeys = {
@@ -362,6 +363,7 @@ namespace Configs {
                 else if (key == "inbound_user") inbound_user = varValue.toString();
                 else if (key == "inbound_pass") inbound_pass = varValue.toString();
                 else if (key == "allow_stopping_active_profile") allow_stopping_active_profile = varValue.toBool();
+                else if (key == "disable_mixed_inbound") disable_mixed_inbound = varValue.toBool();
             }
         }
     }
@@ -492,7 +494,8 @@ namespace Configs {
             {"inbound_auth", inbound_auth},
             {"inbound_user", inbound_user},
             {"inbound_pass", inbound_pass},
-            {"allow_stopping_active_profile", allow_stopping_active_profile}
+            {"allow_stopping_active_profile", allow_stopping_active_profile},
+            {"disable_mixed_inbound", disable_mixed_inbound}
         };
 
         std::vector<std::pair<std::string, std::string>> keyValues;

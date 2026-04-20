@@ -528,19 +528,22 @@ namespace Configs {
 
         // mixed
         QJsonObject inboundObj;
-        inboundObj["tag"] = "mixed-in";
-        inboundObj["type"] = "mixed";
-        inboundObj["listen"] = Configs::dataManager->settingsRepo->inbound_address;
-        inboundObj["listen_port"] = Configs::dataManager->settingsRepo->inbound_socks_port;
-        if (Configs::dataManager->settingsRepo->inbound_auth) {
-            inboundObj["users"] = QJsonArray{
-                                    QJsonObject{
-                                        {"username", Configs::dataManager->settingsRepo->inbound_user},
-                                        {"password", Configs::dataManager->settingsRepo->inbound_pass}
-                                    }
-                                };
+
+        if (!Configs::dataManager->settingsRepo->disable_mixed_inbound) {
+            inboundObj["tag"] = "mixed-in";
+            inboundObj["type"] = "mixed";
+            inboundObj["listen"] = Configs::dataManager->settingsRepo->inbound_address;
+            inboundObj["listen_port"] = Configs::dataManager->settingsRepo->inbound_socks_port;
+            if (Configs::dataManager->settingsRepo->inbound_auth) {
+                inboundObj["users"] = QJsonArray{
+                    QJsonObject{
+                                            {"username", Configs::dataManager->settingsRepo->inbound_user},
+                                            {"password", Configs::dataManager->settingsRepo->inbound_pass}
+                    }
+                };
+            }
+            inbounds += inboundObj;
         }
-        inbounds += inboundObj;
 
         // Tun
         if (Configs::dataManager->settingsRepo->spmode_vpn) {
