@@ -14,6 +14,10 @@ namespace Configs
         bool uot = false;
         std::shared_ptr<TLS> tls = std::make_shared<TLS>();
 
+        naive() {
+            tls->utls->supported = false;
+        }
+
         bool HasTLS() override {
             return true;
         }

@@ -836,6 +836,13 @@ void MainWindow::profile_start(int _id) {
 }
 
 void MainWindow::set_spmode_system_proxy(bool enable, bool save) {
+    if (enable && Configs::dataManager->settingsRepo->disable_mixed_inbound) {
+        runOnUiThread([=] {
+           MessageBoxWarning("Invalid Operation", "Cannot set system proxy when mixed inbound is disabled.");
+        });
+        ui->checkBox_SystemProxy->setChecked(false);
+        return;
+    }
     if (enable != Configs::dataManager->settingsRepo->spmode_system_proxy) {
         if (enable) {
             auto socks_port = Configs::dataManager->settingsRepo->inbound_socks_port;

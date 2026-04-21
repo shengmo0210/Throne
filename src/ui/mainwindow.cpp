@@ -1740,7 +1740,8 @@ void MainWindow::refresh_status(const QString &traffic_update) {
     }
     //
     auto display_socks = DisplayAddress(Configs::dataManager->settingsRepo->inbound_address, Configs::dataManager->settingsRepo->inbound_socks_port);
-    auto inbound_txt = QString("Mixed: %1").arg(display_socks);
+    auto inbound_disabled = Configs::dataManager->settingsRepo->disable_mixed_inbound;
+    auto inbound_txt = QString("Mixed: %1").arg(inbound_disabled ? "Disabled" : display_socks);
     ui->label_inbound->setText(inbound_txt);
     //
     ui->checkBox_VPN->setChecked(Configs::dataManager->settingsRepo->spmode_vpn);
