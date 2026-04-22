@@ -279,7 +279,7 @@ namespace Subscription {
         }
 
         // Naive
-        if ((str.startsWith("naive+https://") || str.startsWith("naive+quic://")) && Configs::HasNaive()) {
+        if (str.startsWith("naive+https://") || str.startsWith("naive+quic://")) {
             ent = Configs::ProfilesRepo::NewProfile("naive");
             auto ok = ent->Naive()->ParseFromLink(str);
             if (!ok) return;
@@ -425,7 +425,7 @@ namespace Subscription {
             }
 
             // Naive
-            if (Configs::HasNaive() && out["type"] == "naive") {
+            if (out["type"] == "naive") {
                 ent = Configs::ProfilesRepo::NewProfile("naive");
                 auto ok = ent->Naive()->ParseFromJson(out);
                 if (!ok) continue;

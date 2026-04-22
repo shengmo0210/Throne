@@ -241,7 +241,7 @@ DialogEditProfile::DialogEditProfile(const QString &_type, int profileOrGroupId,
         LOAD_TYPE("hysteria")
         LOAD_TYPE("tuic")
         LOAD_TYPE("juicity")
-        if (Configs::HasNaive()) LOAD_TYPE("naive")
+        LOAD_TYPE("naive")
         LOAD_TYPE("trusttunnel")
         LOAD_TYPE("anytls")
         LOAD_TYPE("shadowtls")
@@ -372,7 +372,7 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         auto _innerWidget = new EditExtraCore(this);
         innerWidget = _innerWidget;
         innerEditor = _innerWidget;
-    } else if (Configs::HasNaive() && type == "naive") {
+    } else if (type == "naive") {
         auto _innerWidget = new EditNaive(this);
         innerWidget = _innerWidget;
         innerEditor = _innerWidget;

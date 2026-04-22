@@ -127,7 +127,7 @@ namespace Configs {
             outbound = new Configs::Custom();
         } else if (type == "extracore") {
             outbound = new Configs::extracore();
-        } else if (Configs::HasNaive() && type == "naive") {
+        } else if (type == "naive") {
             outbound = new Configs::naive();
         } else {
             outbound = new Configs::outbound();
@@ -310,7 +310,7 @@ namespace Configs {
             outbound = new Configs::Custom();
         } else if (type == "extracore") {
             outbound = new Configs::extracore();
-        } else if (Configs::HasNaive() && type == "naive") {
+        } else if (type == "naive") {
             outbound = new Configs::naive();
         } else {
             outbound = new Configs::outbound();
