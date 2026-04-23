@@ -4,10 +4,15 @@ OutFile "ThroneSetup.exe"
 ; 1. NEVER ask for UAC on launch
 RequestExecutionLevel user 
 
+SetCompressor /SOLID /FINAL lzma
+SetCompressorDictSize 64
+
 !include MUI2.nsh
 !include nsDialogs.nsh
 !include LogicLib.nsh
 !include FileFunc.nsh
+!include WinVer.nsh
+!include x64.nsh
 
 !define MUI_ICON "res\Throne.ico"
 !define MUI_ABORTWARNING
@@ -202,10 +207,29 @@ Section "Install"
 
   !insertmacro AbortOnRunningApp "$INSTDIR\Throne.exe"
 
-  File /r ".\deployment\windows-amd64\libcronet.dll"
-  File /r ".\deployment\windows-amd64\ThroneCore.exe"
-  File /r ".\deployment\windows-amd64\Throne.exe"
-  File /r ".\deployment\windows-amd64\updater.exe"
+  ${If} ${IsNativeAMD64}
+    ${If} ${AtLeastWaaS} 1809
+      File /oname=libcronet.dll "deployment\windows-amd64\libcronet.dll"
+      File /oname=ThroneCore.exe "deployment\windows-amd64\ThroneCore.exe"
+      File /oname=Throne.exe "deployment\windows-amd64\Throne.exe"
+      File /oname=updater.exe "deployment\windows-amd64\updater.exe"
+    ${Else}
+      File /oname=ThroneCore.exe "deployment\windowslegacy-amd64\ThroneCore.exe"
+      File /oname=Throne.exe "deployment\windowslegacy-amd64\Throne.exe"
+      File /oname=updater.exe "deployment\windowslegacy-amd64\updater.exe"
+    ${EndIf}
+  ${ElseIf} ${IsNativeARM64}
+    File /oname=libcronet.dll "deployment\windows-arm64\libcronet.dll"
+    File /oname=ThroneCore.exe "deployment\windows-arm64\ThroneCore.exe"
+    File /oname=Throne.exe "deployment\windows-arm64\Throne.exe"
+    File /oname=updater.exe "deployment\windows-arm64\updater.exe"
+  ${ElseIf} ${IsNativeIA32}
+    File /oname=ThroneCore.exe "deployment\windowslegacy-386\ThroneCore.exe"
+    File /oname=Throne.exe "deployment\windowslegacy-386\Throne.exe"
+    File /oname=updater.exe "deployment\windowslegacy-386\updater.exe"
+  ${Else}
+    Abort "Unsupported CPU architecture!"
+  ${EndIf}
 
   CreateShortcut "$DESKTOP\Throne.lnk" "$INSTDIR\Throne.exe"
   CreateShortcut "$SMPROGRAMS\Throne.lnk" "$INSTDIR\Throne.exe" "" "$INSTDIR\Throne.exe" 0
