@@ -387,28 +387,47 @@ namespace Configs {
         QJsonArray rules;
         // remote
         if (!ctx->forTest) {
+            auto remoteDnsObj = buildDnsObj(Configs::dataManager->settingsRepo->remote_dns, ctx);
+            remoteDnsObj["tag"] = "dns-remote";
+            remoteDnsObj["detour"] = "proxy";
+            servers += remoteDnsObj;
+
             if (isTailscale)
             {
                 auto tailscale = ctx->ent->Tailscale();
-                if (tailscale == nullptr)
+                if (tailscale != nullptr)
                 {
-                    ctx->error = "Corrupted state, needed tailscale been but could not cast";
-                    return;
-                }
-                auto tailDns = QJsonObject{
+                    // Add an additional DNS server for Tailscale MagicDNS
+                    servers += QJsonObject{
                         {"type", "tailscale"},
-                        {"tag", "dns-remote"},
+                        {"tag", "dns-tailscale"},
                         {"endpoint", "proxy"},
                         {"accept_default_resolvers", tailscale->globalDNS},
                     };
-                servers += tailDns;
-            } else
-            {
-                auto remoteDnsObj = buildDnsObj(Configs::dataManager->settingsRepo->remote_dns, ctx);
-                remoteDnsObj["tag"] = "dns-remote";
-                remoteDnsObj["domain_resolver"] = "dns-local";
-                remoteDnsObj["detour"] = "proxy";
-                servers += remoteDnsObj;
+                    
+                    // Route Tailscale internal domains to MagicDNS
+                    rules.prepend(QJsonObject{
+                        {"domain_suffix", QJsonArray{"ts.net", "tailscale.net"}},
+                        {"action", "route"},
+                        {"server", "dns-tailscale"},
+                    });
+                }
+
+                // Add direct bootstrap rules for tailscale control plane and services
+                rules.prepend(QJsonObject{
+                    {"domain", QJsonArray{
+                        "controlplane.tailscale.com", 
+                        "login.tailscale.com",
+                        "log.tailscale.io"
+                    }},
+                    {"domain_suffix", QJsonArray{
+                        "tailscale.com", 
+                        "tailscale.net", 
+                        "tailscale.io"
+                    }},
+                    {"action", "route"},
+                    {"server", "dns-direct"},
+                });
             }
         }
 
