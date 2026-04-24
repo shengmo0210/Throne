@@ -715,7 +715,8 @@ namespace Configs {
             }
             object["tag"] = tag;
             if (!nextTag.isEmpty() && link) object["proxySettings"] = QJsonObject{
-                {"tag", nextTag}
+                {"tag", nextTag},
+                {"transportLayer", true}
             };
             ctx->xrayOutbounds.append(object);
         }
