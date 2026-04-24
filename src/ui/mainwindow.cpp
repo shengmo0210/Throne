@@ -893,7 +893,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
         }
 
         ui->menu_export_config->setVisible(true);
-        if (profile->outbound->IsXray()) ui->actionExport_Xray_config->setVisible(true);
+        if (profile->outbound->IsXray() || profile->type == "chain") ui->actionExport_Xray_config->setVisible(true);
     });
     connect(ui->actionExport_Xray_config, &QAction::triggered, this, [=,this]() {
         auto ents = get_now_selected_list();

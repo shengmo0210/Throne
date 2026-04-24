@@ -77,6 +77,12 @@ namespace Configs
         QList<std::pair<std::shared_ptr<Profile>, QString>> outboundEntsForTraffic;
     };
 
+    struct coreBridgeConfig {
+        bool needed = false;
+        int port = -1;
+        QString auth;
+    };
+
     class BuildSingBoxConfigContext
     {
         public:
@@ -84,6 +90,8 @@ namespace Configs
         bool forExport = false;
         bool tunEnabled = false;
         bool isResolvedUsed = false;
+        bool singToXrayTransitioned = false;
+        bool xrayToSingTransitioned = false;
         std::shared_ptr<Profile> ent = std::make_shared<Profile>(nullptr, nullptr);
         std::shared_ptr<BuildPrerequisities> buildPrerequisities = std::make_shared<BuildPrerequisities>();
         osType os;
@@ -92,7 +100,11 @@ namespace Configs
         QStringList warnings;
         QJsonArray outbounds;
         QJsonArray endpoints;
-        QList<std::tuple<int, QJsonObject, QString>> xrayOutbounds; // (inbound port, object, auth)
+        QJsonArray xrayOutbounds;
+        QList<QString> xrayIngressTags;
+        QList<QString> singIngressTags;
+        QList<coreBridgeConfig> singToXrayBridges;
+        QList<coreBridgeConfig> xrayToSingBridges;
         std::shared_ptr<BuildConfigResult> buildConfigResult = std::make_shared<BuildConfigResult>();
     };
 

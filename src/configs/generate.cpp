@@ -606,22 +606,32 @@ namespace Configs {
         ctx->buildConfigResult->coreConfig["inbounds"] = inbounds;
     }
 
-    void entIDListtoEntList(const QList<int>& entIDs, QList<std::shared_ptr<Profile>> &ents, QString& error)
+    void entIDListtoEntList(std::shared_ptr<BuildSingBoxConfigContext> &ctx, const QList<int>& entIDs, QList<std::shared_ptr<Profile>> &ents, QString& error)
     {
         bool hasExtracore = false;
         bool hasCustom = false;
-        bool hasXray = false;
+        int coreTransitions = 0;
+        bool inXray = false;
         for (auto id : entIDs)
         {
-            if (id == warpProfileID) {
-                ents.append(getWarpProfile());
-                continue;
-            }
             auto ent = Configs::dataManager->profilesRepo->GetProfile(id);
             if (ent == nullptr)
             {
                 error = "Null proxy in chain, you may want to check your configs";
                 return;
+            }
+            if (!inXray && ent->outbound->IsXray()) {
+                ctx->singToXrayTransitioned = true;
+                coreTransitions++;
+            }
+            if (inXray && !ent->outbound->IsXray()) {
+                ctx->xrayToSingTransitioned = true;
+                coreTransitions++;
+            }
+            inXray = ent->outbound->IsXray();
+            if (id == warpProfileID) {
+                ents.append(getWarpProfile());
+                continue;
             }
             if (ent->type == "chain")
             {
@@ -630,12 +640,14 @@ namespace Configs {
             }
             if (ent->type == "extracore") hasExtracore = true;
             if (ent->type == "custom" && ent->Custom()->type == "fullconfig") hasCustom = true;
-            if (ent->outbound->IsXray()) hasXray = true;
             ents.append(ent);
         }
-        if (ents.size() > 1 && (hasExtracore || hasCustom || hasXray))
+        if (ents.size() > 1 && (hasExtracore || hasCustom))
         {
-            error = "Cannot use Extracore or Custom or Xray configs in a chain";
+            error = "Cannot use Extracore or Custom configs in a chain";
+        }
+        if (coreTransitions > 2) {
+            error = "Too many core transitions, the valid sequence is: (optional sing-box chain)->(optional xray chain)->(optional sing-box chain)";
         }
     }
 
@@ -653,16 +665,14 @@ namespace Configs {
         return {entID};
     }
 
-    void buildOutboundChain(std::shared_ptr<BuildSingBoxConfigContext> &ctx, const QList<int>& entIDs, const QString& prefix, bool includeProxy, bool link, int xrayPort = -1, int startSuffix = 0)
-    {
-        QList<std::shared_ptr<Profile>> ents;
-        entIDListtoEntList(entIDs, ents, ctx->error);
+    void buildSingboxChain(std::shared_ptr<BuildSingBoxConfigContext> &ctx, QList<std::shared_ptr<Profile>> &ents, const QString& prefix, bool includeProxy, bool link, int startSuffix = 0, bool markIngress = false) {
         for (int idx = 0; idx < ents.size(); idx++)
         {
             auto tag = prefix + "-" + Int2String(startSuffix + idx);
             QString nextTag;
             if (idx < ents.size() - 1) nextTag = prefix + "-" + Int2String(startSuffix + idx + 1);
             if (includeProxy && idx == 0) tag = "proxy";
+            if (markIngress && idx == 0) ctx->singIngressTags << tag;
             const auto& ent = ents[idx];
             auto [object, error] = ent->outbound->Build();
             if (!error.isEmpty())
@@ -672,20 +682,6 @@ namespace Configs {
             }
             object["tag"] = tag;
             if (!nextTag.isEmpty() && link) object["detour"] = nextTag;
-            if (ent->outbound->IsXray()) {
-                auto [xrayObj, xrayErr] = ent->outbound->BuildXray();
-                if (!xrayErr.isEmpty()) {
-                    ctx->error += xrayErr;
-                    return;
-                }
-                if (xrayPort == -1) xrayPort = MkPort();
-                QString xrayAuth = GetRandomString(32);
-                object["server_port"] = xrayPort;
-                object["username"] = xrayAuth;
-                object["password"] = xrayAuth;
-                xrayObj["tag"] = tag;
-                ctx->xrayOutbounds.append({xrayPort, xrayObj, xrayAuth});
-            }
             if (ent->outbound->IsEndpoint())
             {
                 ctx->endpoints.append(object);
@@ -697,9 +693,90 @@ namespace Configs {
         }
     }
 
+    void buildXrayChain(std::shared_ptr<BuildSingBoxConfigContext> &ctx, QList<std::shared_ptr<Profile>> &ents, const QString& prefix, bool includeProxy, bool link, int startSuffix = 0, coreBridgeConfig bridgeConfig = {}) {
+        for (int idx = 0; idx < ents.size(); idx++)
+        {
+            auto tag = prefix + "-" + Int2String(startSuffix + idx);
+            QString nextTag;
+            if (idx < ents.size() - 1 || bridgeConfig.needed) nextTag = prefix + "-" + Int2String(startSuffix + idx + 1);
+            if (includeProxy && idx == 0) tag = "proxy";
+            if (idx == 0) ctx->xrayIngressTags << tag;
+            const auto& ent = ents[idx];
+            auto [object, error] = ent->outbound->BuildXray();
+            if (!error.isEmpty())
+            {
+                ctx->error += error;
+                return;
+            }
+            object["tag"] = tag;
+            if (!nextTag.isEmpty() && link) object["proxySettings"] = QJsonObject{
+                {"tag", nextTag}
+            };
+            ctx->xrayOutbounds.append(object);
+        }
+        if (bridgeConfig.needed) {
+            QJsonObject socksSettings = {
+                {"address", "127.0.0.1"},
+                {"port", bridgeConfig.port},
+                {"user", bridgeConfig.auth},
+                {"pass", bridgeConfig.auth},
+            };
+            QJsonObject socksOutbound = {
+                {"tag", prefix + "-" + Int2String(startSuffix + ents.size())},
+                {"protocol", "socks"},
+                {"settings", socksSettings}
+            };
+            ctx->xrayOutbounds.append(socksOutbound);
+        }
+    }
+
+    void buildOutboundChain(std::shared_ptr<BuildSingBoxConfigContext> &ctx, const QList<int>& entIDs, const QString& prefix, bool includeProxy, bool link, int singToXrayPort = -1, int xrayToSingPort = -1, int startSuffix = 0)
+    {
+        QList<std::shared_ptr<Profile>> ents;
+        entIDListtoEntList(ctx, entIDs, ents, ctx->error);
+        if (!ctx->error.isEmpty()) return;
+        QList<std::shared_ptr<Profile>> initialSingEnts;
+        QList<std::shared_ptr<Profile>> xrayEnts;
+        QList<std::shared_ptr<Profile>> tailingSingEnts;
+        for (const auto& ent : ents) {
+            if (ent->outbound->IsXray()) xrayEnts.append(ent);
+            else {
+                if (xrayEnts.isEmpty()) initialSingEnts.append(ent);
+                else tailingSingEnts.append(ent);
+            }
+        }
+        auto ports = MkManyPorts(2);
+        if (ctx->singToXrayTransitioned) {
+            coreBridgeConfig singToXrayBridgeConf = {
+                true, singToXrayPort == -1 ? ports[0] : singToXrayPort, GetRandomString(32)
+            };
+            ctx->singToXrayBridges << singToXrayBridgeConf;
+            auto bridgeEnt = ProfilesRepo::NewProfile("socks");
+            auto socksOutbound = bridgeEnt->Socks();
+            socksOutbound->username = singToXrayBridgeConf.auth;
+            socksOutbound->password = singToXrayBridgeConf.auth;
+            socksOutbound->server = "127.0.0.1";
+            socksOutbound->server_port = singToXrayBridgeConf.port;
+            initialSingEnts << bridgeEnt;
+        }
+        coreBridgeConfig xrayToSingBridgeConf;
+        if (ctx->xrayToSingTransitioned) {
+            xrayToSingBridgeConf = {true, xrayToSingPort == -1 ? ports[1] : xrayToSingPort, GetRandomString(32)};
+            ctx->xrayToSingBridges << xrayToSingBridgeConf;
+        }
+        if (!initialSingEnts.isEmpty()) {
+            buildSingboxChain(ctx, initialSingEnts, prefix, includeProxy, link, startSuffix);
+        }
+        if (!xrayEnts.isEmpty()) {
+            buildXrayChain(ctx, xrayEnts, prefix, includeProxy, link, startSuffix, xrayToSingBridgeConf);
+        }
+        if (!tailingSingEnts.isEmpty()) {
+            buildSingboxChain(ctx, tailingSingEnts, prefix, false, link, startSuffix + initialSingEnts.size(), true);
+        }
+    }
+
     void buildOutboundsSection(std::shared_ptr<BuildSingBoxConfigContext> &ctx) {
         // First, our own ent
-        bool noChain = ctx->ent->outbound->IsXray();
         QList<int> entIDs;
         auto group = Configs::dataManager->groupsRepo->GetGroup(ctx->ent->gid);
         if (group == nullptr)
@@ -707,7 +784,7 @@ namespace Configs {
             ctx->error = "No group found for ent, data is corrupted";
             return;
         }
-        if (group->landing_proxy_id >= 0 && !noChain) entIDs.prepend(group->landing_proxy_id);
+        if (group->landing_proxy_id >= 0) entIDs.prepend(group->landing_proxy_id);
         if (ctx->ent->type == "chain")
         {
             auto chain = ctx->ent->Chain();
@@ -721,7 +798,7 @@ namespace Configs {
         {
             entIDs.append(ctx->ent->id);
         }
-        if (group->front_proxy_id >= 0 && !noChain) entIDs.append(group->front_proxy_id);
+        if (group->front_proxy_id >= 0) entIDs.append(group->front_proxy_id);
         if (dataManager->settingsRepo->enable_warp) {
             entIDs.prepend(warpProfileID);
         }
@@ -729,11 +806,37 @@ namespace Configs {
 
         // Now, build the outbounds needed by the route profile
         int routeSuffix = 0;
-        for (const auto& group : ctx->buildPrerequisities->routingDeps->routeOutboundGroups) {
-            bool linked = group.size() > 1;
-            buildOutboundChain(ctx, group, "route", false, linked, -1, routeSuffix);
-            routeSuffix += group.size();
+        for (const auto& outboundGroup : ctx->buildPrerequisities->routingDeps->routeOutboundGroups) {
+            bool linked = outboundGroup.size() > 1;
+            buildOutboundChain(ctx, outboundGroup, "route", false, linked, -1, -1,  routeSuffix);
+            routeSuffix += outboundGroup.size();
         }
+
+        // Also add the needed socks inbound bridges
+        if (ctx->xrayToSingBridges.size() != ctx->singIngressTags.size()) {
+            ctx->error = "xray to sing-box bridges count does not match ingress tags count";
+            return;
+        }
+        QJsonArray inboundArr;
+        if (ctx->buildConfigResult->coreConfig.contains("inbounds")) {
+            inboundArr = ctx->buildConfigResult->coreConfig["inbounds"].toArray();
+        }
+        for (auto idx=0;idx<ctx->xrayToSingBridges.size();idx++) {
+            auto bridgeConf = ctx->xrayToSingBridges[idx];
+            QJsonObject userObj = {
+                {"username", bridgeConf.auth},
+                {"password", bridgeConf.auth}
+            };
+            QJsonObject socksBridge = {
+                {"type", "socks"},
+                {"tag", "bridge-"+ctx->singIngressTags[idx]},
+                {"listen", "127.0.0.1"},
+                {"listen_port", bridgeConf.port},
+                {"users", QJsonArray{userObj}}
+            };
+            inboundArr.append(socksBridge);
+        }
+        ctx->buildConfigResult->coreConfig["inbounds"] = inboundArr;
 
         // Add the direct outbound
         ctx->outbounds.append(QJsonObject{
@@ -849,6 +952,20 @@ namespace Configs {
                     };
         }
 
+        // map ingress socks inbounds to their corresponding outbounds
+        if (ctx->xrayToSingBridges.size() != ctx->singIngressTags.size()) {
+            ctx->error = "xray to sing-box bridges count does not match ingress tags count";
+            return;
+        }
+        for (auto idx = 0; idx < ctx->xrayToSingBridges.size(); idx++) {
+            QJsonObject rule = {
+                {"inbound", "bridge-" + ctx->singIngressTags[idx]},
+                {"action", "route"},
+                {"outbound", ctx->singIngressTags[idx]},
+            };
+            routeRules.prepend(rule);
+        }
+
         // apply
         QJsonObject route;
         route["rules"] = routeRules;
@@ -900,7 +1017,6 @@ namespace Configs {
         ctx->buildConfigResult->isXrayNeeded = true;
         QJsonObject dnsObj;
         QJsonArray inbounds;
-        QJsonArray outbounds;
         QJsonArray routeRules;
         int dnsPort = dataManager->settingsRepo->core_dns_in_port;
 
@@ -923,35 +1039,41 @@ namespace Configs {
             };
         }
 
-        for (auto [port, outboundObj, auth] : ctx->xrayOutbounds) {
-            auto inboundTag = outboundObj["tag"].toString() + "-inbound";
+        if (ctx->xrayIngressTags.size() != ctx->singToXrayBridges.size()) {
+            ctx->error = "xray ingress tags size does not match bridge count!";
+            return;
+        }
+
+        for (int i = 0; i<ctx->xrayIngressTags.size(); i++) {
+            auto outboundTag = ctx->xrayIngressTags[i];
+            auto bridgeConf = ctx->singToXrayBridges[i];
+            auto inboundTag = outboundTag + "-" + "inbound";
             inbounds << QJsonObject{
                 {"tag", inboundTag},
                 {"listen", "127.0.0.1"},
-                {"port", port},
+                {"port", bridgeConf.port},
                 {"protocol", "socks"},
                 {"settings", QJsonObject{
                     {"auth", "password"},
                     {"udp", true},
                     {"accounts", QJsonArray{
                         QJsonObject{
-                            {"user", auth},
-                            {"pass", auth}
+                            {"user", bridgeConf.auth},
+                            {"pass", bridgeConf.auth}
                         }
                     }}
                 }}
             };
-            outbounds << outboundObj;
             routeRules << QJsonObject{
                 {"type", "field"},
                 {"inboundTag", QJsonArray{inboundTag}},
-                {"outboundTag", outboundObj["tag"].toString()}
+                {"outboundTag", outboundTag}
             };
         }
 
         // dnsRouting
         if (!ctx->forTest) {
-            outbounds << QJsonObject{
+            ctx->xrayOutbounds << QJsonObject{
                 {"tag", "direct"},
                 {"protocol", "freedom"},
             };
@@ -969,7 +1091,7 @@ namespace Configs {
         };
         ctx->buildConfigResult->xrayConfig["dns"] = dnsObj;
         ctx->buildConfigResult->xrayConfig["inbounds"] = inbounds;
-        ctx->buildConfigResult->xrayConfig["outbounds"] = outbounds;
+        ctx->buildConfigResult->xrayConfig["outbounds"] = ctx->xrayOutbounds;
         ctx->buildConfigResult->xrayConfig["routing"] = QJsonObject{
             {"domainStrategy", "AsIs"},
             {"rules", routeRules},
@@ -1141,10 +1263,12 @@ namespace Configs {
 
         int xrayPortIdx=0;
         int xrayCount=0;
+        int chainCount=0;
         for (const auto& proxy : profiles) {
             if (proxy->outbound->IsXray()) xrayCount++;
+            if (proxy->type == "chain") chainCount++;
         }
-        auto xrayPorts = MkManyPorts(xrayCount);
+        auto xrayPorts = MkManyPorts(xrayCount + 2*chainCount); // assume all chains transition twice and allocate port for them
 
         for (const auto& item : profiles)
         {
@@ -1186,9 +1310,18 @@ namespace Configs {
                 res->error = "Null group on profile, data is corrupted";
                 return res;
             }
-            if (group->landing_proxy_id >= 0 && !item->outbound->IsXray()) IDs.prepend(group->landing_proxy_id);
-            if (group->front_proxy_id >= 0 && !item->outbound->IsXray()) IDs.append(group->front_proxy_id);
-            buildOutboundChain(ctx, IDs, "proxy-" + Int2String(suffix), false, true, item->outbound->IsXray() ? xrayPorts[xrayPortIdx++] : -1);
+            if (group->landing_proxy_id >= 0) IDs.prepend(group->landing_proxy_id);
+            if (group->front_proxy_id >= 0) IDs.append(group->front_proxy_id);
+            int singToXrayPort = -1;
+            int xrayToSingPort = -1;
+            if (item->outbound->IsXray()) singToXrayPort = xrayPorts[xrayPortIdx++];
+            if (item->type == "chain") {
+                singToXrayPort = xrayPorts[xrayPortIdx++];
+                xrayToSingPort = xrayPorts[xrayPortIdx++];
+            }
+            ctx->singToXrayTransitioned = false;
+            ctx->xrayToSingTransitioned = false;
+            buildOutboundChain(ctx, IDs, "proxy-" + Int2String(suffix), false, true, singToXrayPort, xrayToSingPort);
             if (!ctx->error.isEmpty()) {
                 res->error = ctx->error;
                 return res;
@@ -1213,6 +1346,23 @@ namespace Configs {
                         {"strategy", Configs::dataManager->settingsRepo->default_domain_strategy},
                    }}
         };
+        // Also add the needed socks inbound bridges
+        QJsonArray inboundArr;
+        for (auto bridgeConf : ctx->xrayToSingBridges) {
+            QJsonObject userObj = {
+                {"username", bridgeConf.auth},
+                {"password", bridgeConf.auth}
+            };
+            QJsonObject socksBridge = {
+                {"type", "socks"},
+                {"tag", "bridge-"+Int2String(bridgeConf.port)},
+                {"listen", "127.0.0.1"},
+                {"listen_port", bridgeConf.port},
+                {"users", QJsonArray{userObj}}
+            };
+            inboundArr.append(socksBridge);
+        }
+        ctx->buildConfigResult->coreConfig["inbounds"] = inboundArr;
         res->coreConfig = ctx->buildConfigResult->coreConfig;
         res->xrayConfig = ctx->buildConfigResult->xrayConfig;
         res->isXrayNeeded = ctx->buildConfigResult->isXrayNeeded;
