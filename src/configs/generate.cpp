@@ -614,6 +614,15 @@ namespace Configs {
         bool inXray = false;
         for (auto id : entIDs)
         {
+            if (id == warpProfileID) {
+                if (inXray) {
+                    ctx->xrayToSingTransitioned = true;
+                    coreTransitions++;
+                }
+                inXray = false;
+                ents.append(getWarpProfile());
+                continue;
+            }
             auto ent = Configs::dataManager->profilesRepo->GetProfile(id);
             if (ent == nullptr)
             {
@@ -629,10 +638,6 @@ namespace Configs {
                 coreTransitions++;
             }
             inXray = ent->outbound->IsXray();
-            if (id == warpProfileID) {
-                ents.append(getWarpProfile());
-                continue;
-            }
             if (ent->type == "chain")
             {
                 error = "Chain in Chain is not allowed";
