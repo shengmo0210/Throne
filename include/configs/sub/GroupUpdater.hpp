@@ -12,7 +12,7 @@ namespace Subscription {
     };
     class RawUpdater {
     public:
-        void update(const QString &str, bool needParse);
+        void update(const QString &str, bool needParse = true, bool isBase64Decoded = false);
 
         void updateSingBox(const QJsonDocument &doc, SingBoxSubType type);
 

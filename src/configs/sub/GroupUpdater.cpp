@@ -73,11 +73,13 @@ namespace Subscription {
         return SingBoxSubType::invalid;
     }
 
-    void RawUpdater::update(const QString &str, bool needParse = true) {
+    void RawUpdater::update(const QString &str, bool needParse, bool isBase64Decoded) {
         // Base64 encoded subscription
-        if (auto str2 = DecodeB64IfValid(str); !str2.isEmpty()) {
-            update(str2);
-            return;
+        if (!isBase64Decoded) {
+            if (auto str2 = DecodeB64IfValid(str); !str2.isEmpty()) {
+                update(str2, needParse, true);
+                return;
+            }
         }
 
         std::shared_ptr<Configs::Profile> ent;
@@ -130,7 +132,7 @@ namespace Subscription {
         if (str.count("\n") > 0 && needParse) {
             auto list = Disect(str);
             for (const auto &str2: list) {
-                update(str2.trimmed(), false);
+                update(str2.trimmed(), false, isBase64Decoded);
             }
             return;
         }
