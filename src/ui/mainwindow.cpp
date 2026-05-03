@@ -538,7 +538,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     trayMenu->addAction(ui->actionAllow_LAN);
     trayMenu->addSeparator();
     // Select Server submenu (dynamically populated with pagination)
-    constexpr int PAGE_SIZE = 15;
+    constexpr int PAGE_CAPACITY = 15;
     trayServerMenu = new QMenu(tr("Select Server"));
     trayMenu->addMenu(trayServerMenu);
     connect(trayServerMenu, &QMenu::aboutToShow, this, [=, this]() {
@@ -566,10 +566,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
         }
         int totalProfiles = allProfileIDs.size();
         // Clamp page
-        int maxPage = qMax(0, (totalProfiles - 1) / PAGE_SIZE);
+        int maxPage = qMax(0, (totalProfiles - 1) / PAGE_CAPACITY);
         trayServerPage = qBound(0, trayServerPage, maxPage);
-        int offset = trayServerPage * PAGE_SIZE;
-        int end = qMin(offset + PAGE_SIZE, totalProfiles);
+        int offset = trayServerPage * PAGE_CAPACITY;
+        int end = qMin(offset + PAGE_CAPACITY, totalProfiles);
         // Show ↑ if not on first page
         if (trayServerPage > 0) {
             auto *upAction = trayServerMenu->addAction(QStringLiteral("\u2191"));
