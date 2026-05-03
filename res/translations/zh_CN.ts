@@ -25,6 +25,10 @@ Direct: %2</source>
         <source>Create new subscription group</source>
         <translation>创建新的订阅分组</translation>
     </message>
+	<message>
+        <source>Import HTTP proxy profile</source>
+        <translation>导入 HTTP 代理配置档</translation>
+    </message>
     <message>
         <source>Import HTTP proxy profile</source>
         <translation>导入 HTTP 代理配置档</translation>
@@ -1017,6 +1021,22 @@ Release note:
         <source>Sniffing Mode</source>
         <translation>嗅探模式(流量探测)</translation>
     </message>
+	<message>
+        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;If not empty, resolves domains in requests according to the strategy&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;如果非空，根据策略解析请求中的域&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+    </message>
+	<message>
+        <source>Resolve Domain Strategy</source>
+        <translation>解析域策略</translation>
+    </message>
+	<message>
+        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Used as default strategy when resolving outbound/dns server Domain addresses&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;当解析出站/DNS 服务器域地址时，作为默认策略使用&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+    </message>
+	<message>
+        <source>Default Domain Strategy</source>
+        <translation>默认域策略</translation>
+    </message>
     <message>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;If not empty, resolves domains in requests according to the strategy&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;如果非空，根据策略解析请求中的域&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
@@ -1133,6 +1153,14 @@ For more information, see the document &quot;Configuration/DNS&quot;.</source>
         <source>Enable FakeIP</source>
         <translation>启用 FakeIP</translation>
     </message>
+	<message>
+        <source>Enable DNS Routing</source>
+        <translation>启用 DNS 路由</translation>
+    </message>
+	<message>
+        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;When enabled, domains destined for direct outbound will also be resolved using direct dns&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;启用时，目标为直接出站的域也将使用直接 DNS 进行解析&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+    </message>
     <message>
         <source>Enable DNS Routing</source>
         <translation>启用 DNS 路由</translation>
@@ -1172,6 +1200,10 @@ For more information, see the document &quot;Configuration/DNS&quot;.</source>
     <message>
         <source>Rules</source>
         <translation>规则</translation>
+    </message>
+	<message>
+        <source>Rule Settings</source>
+        <translation>规则设置</translation>
     </message>
     <message>
         <source>Rule Settings</source>
@@ -2142,6 +2174,10 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
         <source>Copy Link</source>
         <translation>复制链接</translation>
     </message>
+	<message>
+        <source>Copy Test Result</source>
+        <translation>复制测试结果</translation>
+    </message>
     <message>
         <source>Copy Test Result</source>
         <translation>复制测试结果</translation>
@@ -2154,7 +2190,7 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
         <source>Export Sing-box config</source>
         <translation>导出 Sing-box 配置</translation>
     </message>
-    <message>
+	  <message>
         <source>Disable</source>
         <translation>禁用</translation>
     </message>
@@ -2290,6 +2326,34 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
         <source>Tun Mode</source>
         <translation>Tun 模式</translation>
     </message>
+	<message>
+        <source>Enable AdBlock</source>
+        <translation>启用广告屏蔽</translation>
+    </message>
+	<message>
+        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Enables the following config to be used as egress, useful for bypassing services restrciting non-warp VPNs&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;启用以下配置作为出口(egress)使用，对于绕过限制非 warp VPNs 的服务很有用&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+    </message>
+	<message>
+        <source>Enable Warp</source>
+        <translation>启用 Warp</translation>
+    </message>
+	<message>
+        <source>Endpoint</source>
+        <translation>端点</translation>
+    </message>
+	<message>
+        <source>Private Key</source>
+        <translation>私钥</translation>
+    </message>
+	<message>
+        <source>Public Key</source>
+        <translation>公钥</translation>
+    </message>
+	<message>
+        <source>Interface Addresses</source>
+        <translation>接口地址</translation>
+    </message>
     <message>
         <source>Enable AdBlock</source>
         <translation>启用广告屏蔽</translation>
@@ -2321,6 +2385,14 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
     <message>
         <source>Enable System Proxy</source>
         <translation>启用系统代理</translation>
+    </message>
+	<message>
+        <source>Generate Warp Config</source>
+        <translation>生成 Warp 配置</translation>
+    </message>
+	<message>
+        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Gets a new config from cloudflare API&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;从 cloudflare API 获取一个新配置&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
         <source>Generate Warp Config</source>
