@@ -178,7 +178,7 @@ void from_node(const fkyaml::node& node, Proxies& p) {
     load_opt(node, "protocol-param", p.protocol_param);
     load_opt(node, "client-fingerprint", p.client_fingerprint);
     load_opt(node, "flow", p.flow);
-    load_opt(node, "packet_encoding", p.packet_encoding);
+    load_opt(node, "packet-encoding", p.packet_encoding);
     load_opt(node, "reality-opts", p.reality_opts);
     load_opt(node, "auth-str", p.auth_str);
     load_opt(node, "auth_str", p.auth_str1);
