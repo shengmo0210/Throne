@@ -11,6 +11,8 @@
 
 namespace Configs
 {
+    inline QStringList vPacketEncoding = {"", "packetaddr", "xudp"};
+
     class outbound : public baseConfig
     {
     public:

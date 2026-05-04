@@ -63,6 +63,7 @@ namespace Configs {
         if (query.hasQueryItem("globalPadding")) global_padding = query.queryItemValue("globalPadding") == "true";
         if (query.hasQueryItem("authenticatedLength")) authenticated_length = query.queryItemValue("authenticatedLength") == "true";
         if (query.hasQueryItem("packetEncoding")) packet_encoding = query.queryItemValue("packetEncoding");
+        if (!Configs::vPacketEncoding.contains(packet_encoding)) packet_encoding = "";
 
         return !(uuid.isEmpty() || server.isEmpty());
     }

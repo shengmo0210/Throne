@@ -26,6 +26,8 @@ namespace Configs {
         }
         
         packet_encoding = GetQueryValue(query, "packetEncoding", "xudp");
+        if (!Configs::vPacketEncoding.contains(packet_encoding)) packet_encoding = "";
+
         multiplex->ParseFromLink(link);
 
         return !(uuid.isEmpty() || server.isEmpty());
