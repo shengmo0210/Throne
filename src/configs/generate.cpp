@@ -481,6 +481,26 @@ namespace Configs {
                 };
         }
 
+        if (!ctx->forTest)
+        {
+            QJsonArray coreProcessPaths;
+            coreProcessPaths.append(FindCoreRealPath());
+            if (!ctx->buildConfigResult->extraCoreData->path.isEmpty())
+            {
+                auto extraCorePath = ctx->buildConfigResult->extraCoreData->path;
+#ifdef Q_OS_WIN
+                extraCorePath.replace("/", "\\");
+#endif
+                coreProcessPaths.append(extraCorePath);
+            }
+            rules += QJsonObject{
+                {"process_path", coreProcessPaths},
+                {"action", "route"},
+                {"strategy", dataManager->settingsRepo->direct_dns_strategy},
+                {"server", "dns-direct"},
+            };
+        }
+
         // HijackRules
         if (Configs::dataManager->settingsRepo->enable_dns_server && !ctx->forTest)
         {
