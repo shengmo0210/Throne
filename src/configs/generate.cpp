@@ -340,17 +340,19 @@ namespace Configs {
         if (address.startsWith("https://")) {
             type = "https";
             addr = addr.replace("https://", "");
-            if (addr.contains("/")) {
-                path = addr.split("/").last();
-                addr = addr.left(addr.indexOf("/"));
+            auto slashIndex = addr.indexOf("/");
+            if (slashIndex != -1) {
+                path = addr.mid(slashIndex);
+                addr = addr.left(slashIndex);
             }
         }
         if (address.startsWith("h3://")) {
             type = "h3";
             addr = addr.replace("h3://", "");
-            if (addr.contains("/")) {
-                path = addr.split("/").last();
-                addr = addr.left(addr.indexOf("/"));
+            auto slashIndex = addr.indexOf("/");
+            if (slashIndex != -1) {
+                path = addr.mid(slashIndex);
+                addr = addr.left(slashIndex);
             }
         }
         if (addr.contains(":")) {
