@@ -58,6 +58,7 @@ namespace Configs {
         {
             if (auto subEnt = Configs::dataManager->profilesRepo->GetProfile(id); subEnt != nullptr)
             {
+                if (subEnt->outbound != nullptr && subEnt->outbound->IsExtraCore()) continue;
                 if (auto addr = subEnt->outbound->GetAddress(); !addr.isEmpty() && !IsIpAddress(addr)) domains.append(addr);
             }
         }
@@ -71,7 +72,7 @@ namespace Configs {
         {
             if (auto ent = Configs::dataManager->profilesRepo->GetProfile(id); ent != nullptr)
             {
-                if (ent->type == "extracore") continue;
+                if (ent->outbound != nullptr && ent->outbound->IsExtraCore()) continue;
                 if (ent->type == "chain") domains << getChainDomains(ent, error);
                 else
                 {
@@ -135,8 +136,8 @@ namespace Configs {
                 ctx->error = "The routing profile is referencing outbounds that no longer exist, consider revising your settings";
                 return;
             }
-            if (neededEnt->type == "extracore" || neededEnt->type == "custom") {
-                ctx->error = "Outbounds used in routing profile cannot be of types extracore or custom";
+            if ((neededEnt->outbound != nullptr && neededEnt->outbound->IsExtraCore()) || neededEnt->type == "custom") {
+                ctx->error = "Outbounds used in routing profile cannot use an extra core or be of type custom";
                 return;
             }
             if (neededEnt->type == "chain") {
@@ -152,8 +153,8 @@ namespace Configs {
                         ctx->error = "Chain outbound in routing profile contains a missing profile";
                         return;
                     }
-                    if (hopEnt->type == "extracore" || hopEnt->type == "custom" || hopEnt->type == "chain") {
-                        ctx->error = "Chain hops in routing profile cannot be of types extracore, custom or chain";
+                    if ((hopEnt->outbound != nullptr && hopEnt->outbound->IsExtraCore()) || hopEnt->type == "custom" || hopEnt->type == "chain") {
+                        ctx->error = "Chain hops in routing profile cannot use an extra core or be of types custom or chain";
                         return;
                     }
                     // Collect domains for DNS direct rules
@@ -263,14 +264,35 @@ namespace Configs {
             }
         }
 
-        // Extra core
-        if (ctx->ent->type == "extracore")
+        // Extra core (single ent OR final hop in a chain)
+        std::shared_ptr<Profile> extraCoreEnt;
+        if (ctx->ent->outbound != nullptr && ctx->ent->outbound->IsExtraCore())
         {
-            auto outbound = ctx->ent->ExtraCore();
+            extraCoreEnt = ctx->ent;
+        }
+        else if (ctx->ent->type == "chain")
+        {
+            auto chain = ctx->ent->Chain();
+            if (chain != nullptr && !chain->list.isEmpty())
+            {
+                // Profiles using an extra core (when present in a chain) must
+                // be at list[0], which becomes the outermost detour after the
+                // chain reversal in buildOutboundsSection. entIDListtoEntList
+                // enforces this; we just look it up here.
+                auto firstEnt = Configs::dataManager->profilesRepo->GetProfile(chain->list[0]);
+                if (firstEnt != nullptr && firstEnt->outbound != nullptr && firstEnt->outbound->IsExtraCore())
+                {
+                    extraCoreEnt = firstEnt;
+                }
+            }
+        }
+        if (extraCoreEnt != nullptr)
+        {
+            auto outbound = extraCoreEnt->ExtraCore();
             if (outbound == nullptr)
             {
                 MW_show_log("INVALID ENT TYPE, NEEDED EXTRACORE GOT NULLPTR");
-                ctx->error = "failed to cast to extracore, type is: " + ctx->ent->type;
+                ctx->error = "failed to cast to extracore, type is: " + extraCoreEnt->type;
                 return;
             }
             ctx->buildConfigResult->extraCoreData->path = QFileInfo(outbound->extraCorePath).canonicalFilePath();
@@ -630,7 +652,8 @@ namespace Configs {
 
     void entIDListtoEntList(std::shared_ptr<BuildSingBoxConfigContext> &ctx, const QList<int>& entIDs, QList<std::shared_ptr<Profile>> &ents, QString& error)
     {
-        bool hasExtracore = false;
+        int extracoreCount = 0;
+        int extracoreIdx = -1;
         bool hasCustom = false;
         int coreTransitions = 0;
         bool inXray = false;
@@ -665,13 +688,31 @@ namespace Configs {
                 error = "Chain in Chain is not allowed";
                 return;
             }
-            if (ent->type == "extracore") hasExtracore = true;
+            if (ent->outbound != nullptr && ent->outbound->IsExtraCore()) {
+                extracoreCount++;
+                extracoreIdx = ents.size();
+            }
             if (ent->type == "custom" && ent->Custom()->type == "fullconfig") hasCustom = true;
             ents.append(ent);
         }
-        if (ents.size() > 1 && (hasExtracore || hasCustom))
+        if (ents.size() > 1 && hasCustom)
         {
-            error = "Cannot use Extracore or Custom configs in a chain";
+            error = "Cannot use Custom configs in a chain";
+            return;
+        }
+        if (extracoreCount > 1)
+        {
+            error = "Only one extra-core profile is allowed in a chain";
+            return;
+        }
+        // A profile that uses an extra core must occupy the deepest detour
+        // slot (ents.last()) so its local socks server (127.0.0.1) is dialed
+        // directly. After this hop sing-box hands off to the extra core
+        // process and does no more hops.
+        if (extracoreCount == 1 && ents.size() > 1 && extracoreIdx != ents.size() - 1)
+        {
+            error = "Extra-core profiles can only be the final hop in a chain (top of the chain editor)";
+            return;
         }
         if (coreTransitions > 2) {
             error = "Too many core transitions, the valid sequence is: (optional sing-box chain)->(optional xray chain)->(optional sing-box chain)";
@@ -1300,10 +1341,24 @@ namespace Configs {
 
         for (const auto& item : profiles)
         {
-            if (item->type == "extracore")
+            if (item->outbound != nullptr && item->outbound->IsExtraCore())
             {
-                MW_show_log("Skipping ExtraCore conf");
+                MW_show_log("Skipping extra-core conf");
                 continue;
+            }
+            if (item->type == "chain")
+            {
+                bool chainHasExtracore = false;
+                if (auto c = item->Chain(); c != nullptr) {
+                    for (int hopID : c->list) {
+                        auto hopEnt = Configs::dataManager->profilesRepo->GetProfile(hopID);
+                        if (hopEnt != nullptr && hopEnt->outbound != nullptr && hopEnt->outbound->IsExtraCore()) { chainHasExtracore = true; break; }
+                    }
+                }
+                if (chainHasExtracore) {
+                    MW_show_log("Skipping chain with extra-core hop (cannot test)");
+                    continue;
+                }
             }
             if (item->type == "tailscale")
             {

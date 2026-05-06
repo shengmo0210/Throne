@@ -711,7 +711,7 @@ void MainWindow::profile_start(int _id) {
         req.disable_stats = Configs::dataManager->settingsRepo->disable_traffic_stats;
         req.xray_config = QJsonObject2QString(result->xrayConfig, true).toStdString();
         req.need_xray = !result->xrayConfig.isEmpty();
-        if (ent->type == "extracore")
+        if (!result->extraCoreData->path.isEmpty())
         {
             req.need_extra_process = true;
             req.extra_process_path = result->extraCoreData->path.toStdString();
