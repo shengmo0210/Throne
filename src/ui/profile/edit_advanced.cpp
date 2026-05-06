@@ -21,6 +21,7 @@ EditAdvanced::EditAdvanced(QWidget *parent, const std::shared_ptr<Configs::Profi
         ui->min_version->setText(tlsObj->min_version);
         ui->max_version->setText(tlsObj->max_version);
         ui->enable_ech->setChecked(tlsObj->ech->enabled);
+        ui->ech_server_name->setText(tlsObj->ech->serverName);
 
         if (!tlsObj->ech->config.isEmpty()) {
             ui->ech_config->setText("Already set");
@@ -63,6 +64,7 @@ void EditAdvanced::accept() {
         tlsObj->min_version = ui->min_version->text();
         tlsObj->max_version = ui->max_version->text();
         tlsObj->ech->enabled = ui->enable_ech->isChecked();
+        tlsObj->ech->serverName = ui->ech_server_name->text();
         tlsObj->ech->config = CACHE.echConfig;
         tlsObj->client_certificate = CACHE.clientCert;
         tlsObj->client_key = CACHE.clientKey;
