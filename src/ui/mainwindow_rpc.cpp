@@ -750,7 +750,7 @@ void MainWindow::profile_start(int _id) {
                 });
                 return false;
             }
-            runOnUiThread([=,this] { MessageBoxWarning("LoadConfig return error", error); });
+            runOnUiThread([=] { MessageBoxWarning("LoadConfig return error", error); });
             return false;
         }
         //
@@ -761,6 +761,7 @@ void MainWindow::profile_start(int _id) {
 
         Configs::dataManager->settingsRepo->UpdateStartedId(ent->id);
         running = ent;
+        set_system_proxy(false);
 
         runOnUiThread([=, this] {
             refresh_status();
@@ -827,12 +828,21 @@ void MainWindow::profile_start(int _id) {
         }
         mu_starting.unlock();
         // cancel timeout
-        runOnUiThread([=,this] {
+        runOnUiThread([=] {
             restartMsgboxTimer->cancel();
             restartMsgboxTimer->deleteLater();
             restartMsgbox->deleteLater();
         });
     });
+}
+
+void MainWindow::set_system_proxy(bool mustDisable) {
+    if (!mustDisable && Configs::dataManager->settingsRepo->spmode_system_proxy) {
+        auto socks_port = Configs::dataManager->settingsRepo->inbound_socks_port;
+        SetSystemProxy(socks_port, socks_port, Configs::dataManager->settingsRepo->proxy_scheme);
+    } else {
+        ClearSystemProxy();
+    }
 }
 
 void MainWindow::set_spmode_system_proxy(bool enable, bool save) {
@@ -843,24 +853,16 @@ void MainWindow::set_spmode_system_proxy(bool enable, bool save) {
         ui->checkBox_SystemProxy->setChecked(false);
         return;
     }
-    if (enable != Configs::dataManager->settingsRepo->spmode_system_proxy) {
-        if (enable) {
-            auto socks_port = Configs::dataManager->settingsRepo->inbound_socks_port;
-            SetSystemProxy(socks_port, socks_port, Configs::dataManager->settingsRepo->proxy_scheme);
-        } else {
-            ClearSystemProxy();
-        }
+    Configs::dataManager->settingsRepo->spmode_system_proxy = enable;
+    if (running) {
+        set_system_proxy(false);
     }
 
     if (save) {
-        Configs::dataManager->settingsRepo->remember_spmode.removeAll("system_proxy");
-        if (enable && Configs::dataManager->settingsRepo->remember_enable) {
-            Configs::dataManager->settingsRepo->remember_spmode.append("system_proxy");
-        }
+        Configs::dataManager->settingsRepo->system_proxy_enabled = enable && Configs::dataManager->settingsRepo->remember_enable;
         Configs::dataManager->settingsRepo->Save();
     }
 
-    Configs::dataManager->settingsRepo->spmode_system_proxy = enable;
     refresh_status();
 }
 
@@ -886,6 +888,7 @@ void MainWindow::profile_stop(bool crash, bool block, bool manual) {
                 return false;
             }
         }
+        set_system_proxy(true);
         return true;
     };
 
@@ -918,7 +921,6 @@ void MainWindow::profile_stop(bool crash, bool block, bool manual) {
         }
 
         if (manual) Configs::dataManager->settingsRepo->UpdateStartedId(-1919);
-        Configs::dataManager->settingsRepo->need_keep_vpn_off = false;
         running = nullptr;
 
         runOnUiThread([=, this, &restartMsgboxTimer, &restartMsgbox] {

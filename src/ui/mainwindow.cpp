@@ -1223,10 +1223,10 @@ void MainWindow::dialog_message_impl(const QString &sender, const QString &info)
             profile_stop();
         } else if (info.startsWith("CoreStarted")) {
             Configs::IsAdmin(true);
-            if (Configs::dataManager->settingsRepo->remember_spmode.contains("system_proxy")) {
+            if (Configs::dataManager->settingsRepo->system_proxy_enabled) {
                 set_spmode_system_proxy(true, false);
             }
-            if (Configs::dataManager->settingsRepo->remember_spmode.contains("vpn") || Configs::dataManager->settingsRepo->flag_restart_tun_on) {
+            if (Configs::dataManager->settingsRepo->tun_mode_enabled || Configs::dataManager->settingsRepo->flag_restart_tun_on) {
                 set_spmode_vpn(true, false);
             }
             if (Configs::dataManager->settingsRepo->flag_dns_set) {
@@ -1473,10 +1473,7 @@ void MainWindow::set_spmode_vpn(bool enable, bool save) {
     }
 
     if (save) {
-        Configs::dataManager->settingsRepo->remember_spmode.removeAll("vpn");
-        if (enable) {
-            Configs::dataManager->settingsRepo->remember_spmode.append("vpn");
-        }
+        Configs::dataManager->settingsRepo->tun_mode_enabled = enable;
         Configs::dataManager->settingsRepo->Save();
     }
 

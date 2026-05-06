@@ -43,7 +43,6 @@ namespace Configs {
         bool prepare_exit = false;
         bool spmode_vpn = false;
         bool spmode_system_proxy = false;
-        bool need_keep_vpn_off = false;
         QString appdataDir = "";
         QStringList ignoreConnTag = {};
         int imported_count = 0;
@@ -118,7 +117,8 @@ namespace Configs {
         bool use_mozilla_certs = false;
 
         // Remember
-        QStringList remember_spmode = {};
+        bool system_proxy_enabled = false;
+        bool tun_mode_enabled = false;
         int remember_id = -1919;
         bool remember_enable = false;
         bool windows_set_admin = false;

@@ -47,8 +47,10 @@ namespace Configs {
             "enable_warp",
             "enable_dns_routing",
             "inbound_auth",
-        "allow_stopping_active_profile",
-        "disable_mixed_inbound"
+            "allow_stopping_active_profile",
+            "disable_mixed_inbound",
+            "system_proxy_enabled",
+            "tun_mode_enabled"
         };
 
         const QSet<QString> intKeys = {
@@ -80,7 +82,6 @@ namespace Configs {
         };
 
         const QSet<QString> stringListKeys = {
-            "spmode2",
             "dns_server_rules",
             "log_ignore",  // Not in _add() but exists as QStringList in DataStore
             "extra_core_paths",  // Extra core paths list
@@ -289,7 +290,6 @@ namespace Configs {
                 else if (key == "utlsFingerprint") utlsFingerprint = varValue.toString();
                 else if (key == "disable_win_admin") disable_run_admin = varValue.toBool();
                 else if (key == "use_mozilla_certs") use_mozilla_certs = varValue.toBool();
-                else if (key == "spmode2") remember_spmode = varValue.toStringList();
                 else if (key == "remember_id") remember_id = varValue.toInt();
                 else if (key == "remember_enable") remember_enable = varValue.toBool();
                 else if (key == "windows_set_admin") windows_set_admin = varValue.toBool();
@@ -364,6 +364,8 @@ namespace Configs {
                 else if (key == "inbound_pass") inbound_pass = varValue.toString();
                 else if (key == "allow_stopping_active_profile") allow_stopping_active_profile = varValue.toBool();
                 else if (key == "disable_mixed_inbound") disable_mixed_inbound = varValue.toBool();
+                else if (key == "system_proxy_enabled") system_proxy_enabled = varValue.toBool();
+                else if (key == "tun_mode_enabled") tun_mode_enabled = varValue.toBool();
             }
         }
     }
@@ -421,7 +423,6 @@ namespace Configs {
             {"utlsFingerprint", utlsFingerprint},
             {"disable_win_admin", disable_run_admin},
             {"use_mozilla_certs", use_mozilla_certs},
-            {"spmode2", remember_spmode},
             {"remember_id", remember_id},
             {"remember_enable", remember_enable},
             {"windows_set_admin", windows_set_admin},
@@ -495,7 +496,9 @@ namespace Configs {
             {"inbound_user", inbound_user},
             {"inbound_pass", inbound_pass},
             {"allow_stopping_active_profile", allow_stopping_active_profile},
-            {"disable_mixed_inbound", disable_mixed_inbound}
+            {"disable_mixed_inbound", disable_mixed_inbound},
+            {"system_proxy_enabled", system_proxy_enabled},
+            {"tun_mode_enabled", tun_mode_enabled}
         };
 
         std::vector<std::pair<std::string, std::string>> keyValues;
