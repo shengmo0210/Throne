@@ -389,6 +389,7 @@ namespace Configs {
         if (!ctx->forTest) {
             auto remoteDnsObj = buildDnsObj(Configs::dataManager->settingsRepo->remote_dns, ctx);
             remoteDnsObj["tag"] = "dns-remote";
+            remoteDnsObj["domain_resolver"] = "dns-local";
             remoteDnsObj["detour"] = "proxy";
             servers += remoteDnsObj;
 
