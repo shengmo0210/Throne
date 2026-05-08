@@ -132,6 +132,9 @@ namespace Configs {
         auto isCustomFullConfig = [](const std::shared_ptr<Profile>& p) {
             return p->type == "custom" && p->Custom() != nullptr && p->Custom()->type == Custom::CustomFullConfig;
         };
+        auto isXrayFullConfig = [](const std::shared_ptr<Profile>& p) {
+            return p->outbound != nullptr && p->outbound->IsXrayFullConfig();
+        };
         for (const auto &item: *neededOutbounds) {
             if (item < 0) continue;
             auto neededEnt = Configs::dataManager->profilesRepo->GetProfile(item);
@@ -139,7 +142,7 @@ namespace Configs {
                 ctx->error = "The routing profile is referencing outbounds that no longer exist, consider revising your settings";
                 return;
             }
-            if ((neededEnt->outbound != nullptr && neededEnt->outbound->IsExtraCore()) || isCustomFullConfig(neededEnt)) {
+            if ((neededEnt->outbound != nullptr && neededEnt->outbound->IsExtraCore()) || isCustomFullConfig(neededEnt) || isXrayFullConfig(neededEnt)) {
                 ctx->error = "Outbounds used in routing profile cannot use an extra core or be a custom full config";
                 return;
             }
@@ -156,7 +159,7 @@ namespace Configs {
                         ctx->error = "Chain outbound in routing profile contains a missing profile";
                         return;
                     }
-                    if ((hopEnt->outbound != nullptr && hopEnt->outbound->IsExtraCore()) || isCustomFullConfig(hopEnt) || hopEnt->type == "chain") {
+                    if ((hopEnt->outbound != nullptr && hopEnt->outbound->IsExtraCore()) || isCustomFullConfig(hopEnt) || isXrayFullConfig(hopEnt) || hopEnt->type == "chain") {
                         ctx->error = "Chain hops in routing profile cannot use an extra core, a custom full config, or be of type chain";
                         return;
                     }
@@ -677,6 +680,9 @@ namespace Configs {
     {
         int extracoreCount = 0;
         int extracoreIdx = -1;
+        int xrayFullConfigCount = 0;
+        int xrayFullConfigIdx = -1;
+        int xrayHopCount = 0;
         bool hasCustomFullConfig = false;
         int coreTransitions = 0;
         bool inXray = false;
@@ -715,6 +721,13 @@ namespace Configs {
                 extracoreCount++;
                 extracoreIdx = ents.size();
             }
+            if (ent->outbound != nullptr && ent->outbound->IsXrayFullConfig()) {
+                xrayFullConfigCount++;
+                xrayFullConfigIdx = ents.size();
+            }
+            if (ent->outbound != nullptr && ent->outbound->IsXray()) {
+                xrayHopCount++;
+            }
             if (ent->type == "custom" && ent->Custom() != nullptr && ent->Custom()->type == Custom::CustomFullConfig) hasCustomFullConfig = true;
             ents.append(ent);
         }
@@ -728,6 +741,21 @@ namespace Configs {
             error = "Only one extra-core profile is allowed in a chain";
             return;
         }
+        if (xrayFullConfigCount > 1)
+        {
+            error = "Only one custom Xray full config profile is allowed in a chain";
+            return;
+        }
+        if (extracoreCount > 0 && xrayFullConfigCount > 0)
+        {
+            error = "Extra-core and custom Xray full config profiles cannot be combined in a chain";
+            return;
+        }
+        if (xrayFullConfigCount > 0 && xrayHopCount > 0)
+        {
+            error = "Custom Xray full config cannot be combined with other Xray hops in a chain (only one Xray instance is supported at a time)";
+            return;
+        }
         // A profile that uses an extra core must occupy the deepest detour
         // slot (ents.last()) so its local socks server (127.0.0.1) is dialed
         // directly. After this hop sing-box hands off to the extra core
@@ -735,6 +763,14 @@ namespace Configs {
         if (extracoreCount == 1 && ents.size() > 1 && extracoreIdx != ents.size() - 1)
         {
             error = "Extra-core profiles can only be the final hop in a chain (top of the chain editor)";
+            return;
+        }
+        // Same constraint for custom Xray full config: traffic exits through
+        // its sing-box socks bridge, then user's Xray (running their full
+        // config) takes over.
+        if (xrayFullConfigCount == 1 && ents.size() > 1 && xrayFullConfigIdx != ents.size() - 1)
+        {
+            error = "Custom Xray full config can only be the final hop in a chain (top of the chain editor)";
             return;
         }
         if (coreTransitions > 2) {
@@ -827,6 +863,48 @@ namespace Configs {
         QList<std::shared_ptr<Profile>> ents;
         entIDListtoEntList(ctx, entIDs, ents, ctx->error);
         if (!ctx->error.isEmpty()) return;
+
+        // If the deepest hop is a custom Xray full config, allocate a bridge
+        // port the sing-box chain dials into and inject a matching socks
+        // inbound into the user's Xray config. The user's Xray runs as our
+        // Xray instance, so its full config becomes ctx->xrayConfig directly.
+        if (!ents.isEmpty() && ents.last()->outbound != nullptr && ents.last()->outbound->IsXrayFullConfig()) {
+            auto custom = ents.last()->Custom();
+            if (custom == nullptr) {
+                ctx->error = "Failed to cast to Custom for Xray full config hop";
+                return;
+            }
+            auto userXrayConfig = QString2QJsonObject(custom->config);
+            if (userXrayConfig.isEmpty()) {
+                ctx->error = "Custom Xray full config is not valid JSON";
+                return;
+            }
+            auto bridgePorts = MkManyPorts(1);
+            custom->bridgePort = bridgePorts[0];
+            custom->bridgeAuth = GetRandomString(32);
+
+            auto inbounds = userXrayConfig["inbounds"].toArray();
+            inbounds.prepend(QJsonObject{
+                {"tag", "throne-bridge"},
+                {"listen", "127.0.0.1"},
+                {"port", custom->bridgePort},
+                {"protocol", "socks"},
+                {"settings", QJsonObject{
+                    {"auth", "password"},
+                    {"udp", true},
+                    {"accounts", QJsonArray{
+                        QJsonObject{
+                            {"user", custom->bridgeAuth},
+                            {"pass", custom->bridgeAuth}
+                        }
+                    }}
+                }}
+            });
+            userXrayConfig["inbounds"] = inbounds;
+            ctx->buildConfigResult->xrayConfig = userXrayConfig;
+            ctx->buildConfigResult->isXrayNeeded = true;
+        }
+
         QList<std::shared_ptr<Profile>> initialSingEnts;
         QList<std::shared_ptr<Profile>> xrayEnts;
         QList<std::shared_ptr<Profile>> tailingSingEnts;
@@ -1309,6 +1387,16 @@ namespace Configs {
                 conf = QString2QJsonObject(custom->config);
                 fullConf = true;
             }
+            if (custom->type == Custom::CustomXrayFullConfig)
+            {
+                // sing-box can't validate Xray-format configs; just check the
+                // user provided parseable JSON.
+                if (QString2QJsonObject(custom->config).isEmpty()) {
+                    MW_show_log("Custom Xray full config is not valid JSON");
+                    return false;
+                }
+                return true;
+            }
         }
         if (!fullConf)
         {
@@ -1369,17 +1457,22 @@ namespace Configs {
                 MW_show_log("Skipping extra-core conf");
                 continue;
             }
+            if (item->outbound != nullptr && item->outbound->IsXrayFullConfig())
+            {
+                MW_show_log("Skipping custom Xray full config (cannot batch-test)");
+                continue;
+            }
             if (item->type == "chain")
             {
-                bool chainHasExtracore = false;
+                bool chainHasTerminal = false;
                 if (auto c = item->Chain(); c != nullptr) {
                     for (int hopID : c->list) {
                         auto hopEnt = Configs::dataManager->profilesRepo->GetProfile(hopID);
-                        if (hopEnt != nullptr && hopEnt->outbound != nullptr && hopEnt->outbound->IsExtraCore()) { chainHasExtracore = true; break; }
+                        if (hopEnt != nullptr && hopEnt->outbound != nullptr && (hopEnt->outbound->IsExtraCore() || hopEnt->outbound->IsXrayFullConfig())) { chainHasTerminal = true; break; }
                     }
                 }
-                if (chainHasExtracore) {
-                    MW_show_log("Skipping chain with extra-core hop (cannot test)");
+                if (chainHasTerminal) {
+                    MW_show_log("Skipping chain with terminal (extra-core or Xray full config) hop (cannot test)");
                     continue;
                 }
             }

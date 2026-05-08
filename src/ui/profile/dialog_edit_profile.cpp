@@ -250,6 +250,8 @@ DialogEditProfile::DialogEditProfile(const QString &_type, int profileOrGroupId,
         LOAD_TYPE("ssh")
         ui->type->addItem(tr("Custom (%1 outbound)").arg(software_core_name), Configs::Custom::CustomOutbound);
         ui->type->addItem(tr("Custom (%1 config)").arg(software_core_name), Configs::Custom::CustomFullConfig);
+        ui->type->addItem(tr("Custom (Xray outbound)"), Configs::Custom::CustomXrayOutbound);
+        ui->type->addItem(tr("Custom (Xray config)"), Configs::Custom::CustomXrayFullConfig);
         ui->type->addItem(tr("Extra Core"), "extracore");
         LOAD_TYPE("chain")
 
@@ -360,7 +362,9 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         auto _innerWidget = new EditSSH(this);
         innerWidget = _innerWidget;
         innerEditor = _innerWidget;
-    } else if (type == Configs::Custom::CustomOutbound || type == Configs::Custom::CustomFullConfig || type == "custom") {
+    } else if (type == Configs::Custom::CustomOutbound || type == Configs::Custom::CustomFullConfig ||
+               type == Configs::Custom::CustomXrayOutbound || type == Configs::Custom::CustomXrayFullConfig ||
+               type == "custom") {
         auto _innerWidget = new EditCustom(this);
         innerWidget = _innerWidget;
         innerEditor = _innerWidget;
@@ -391,7 +395,12 @@ void DialogEditProfile::typeSelected(const QString &newType) {
     }
 
     // hide some widget
-    auto showAddressPort = type != "chain" && customType != Configs::Custom::CustomOutbound && customType != Configs::Custom::CustomFullConfig && type != "extracore" && type != "tailscale";
+    auto showAddressPort = type != "chain"
+                           && customType != Configs::Custom::CustomOutbound
+                           && customType != Configs::Custom::CustomFullConfig
+                           && customType != Configs::Custom::CustomXrayOutbound
+                           && customType != Configs::Custom::CustomXrayFullConfig
+                           && type != "extracore" && type != "tailscale";
     ui->address->setVisible(showAddressPort);
     ui->address_l->setVisible(showAddressPort);
     ui->port->setVisible(showAddressPort);

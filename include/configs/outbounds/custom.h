@@ -8,9 +8,17 @@ namespace Configs
     public:
         static constexpr auto CustomOutbound = "outbound";
         static constexpr auto CustomFullConfig = "fullconfig";
+        static constexpr auto CustomXrayOutbound = "xrayoutbound";
+        static constexpr auto CustomXrayFullConfig = "xrayfullconfig";
 
         QString config;
         QString type;
+
+        // Transient bridge fields, populated during build for CustomXrayFullConfig.
+        // Build() returns a sing-box socks outbound pointing at this port; the
+        // generated Xray config receives a matching socks inbound.
+        int bridgePort = 0;
+        QString bridgeAuth;
 
         bool ParseFromJson(const QJsonObject &object) override {
             if (object.isEmpty()) return false;
@@ -35,6 +43,11 @@ namespace Configs
                 auto obj = QString2QJsonObject(config);
                 return obj["server"].toString();
             }
+            if (type == CustomXrayOutbound) {
+                auto settings = QString2QJsonObject(config)["settings"].toObject();
+                if (settings.contains("vnext")) return settings["vnext"].toArray().first().toObject()["address"].toString();
+                if (settings.contains("servers")) return settings["servers"].toArray().first().toObject()["address"].toString();
+            }
             return {};
         }
 
@@ -43,6 +56,13 @@ namespace Configs
             if (type == CustomOutbound) {
                 auto obj = QString2QJsonObject(config);
                 return ::DisplayAddress(obj["server"].toString(), obj["server_port"].toInt());
+            }
+            if (type == CustomXrayOutbound) {
+                auto settings = QString2QJsonObject(config)["settings"].toObject();
+                QJsonObject server;
+                if (settings.contains("vnext")) server = settings["vnext"].toArray().first().toObject();
+                else if (settings.contains("servers")) server = settings["servers"].toArray().first().toObject();
+                if (!server.isEmpty()) return ::DisplayAddress(server["address"].toString(), server["port"].toInt());
             }
             return {};
         }
@@ -55,13 +75,48 @@ namespace Configs
                 return outboundType.isEmpty() ? "Custom Outbound" : "Custom " + outboundType + " Outbound";
             } else if (type == CustomFullConfig) {
                 return "Custom Config";
+            } else if (type == CustomXrayOutbound) {
+                auto protocol = QString2QJsonObject(config)["protocol"].toString();
+                if (!protocol.isEmpty()) protocol[0] = protocol[0].toUpper();
+                return protocol.isEmpty() ? "Custom Xray Outbound" : "Custom Xray " + protocol + " Outbound";
+            } else if (type == CustomXrayFullConfig) {
+                return "Custom Xray Config";
             }
             return type;
         };
 
+        bool IsXray() override { return type == CustomXrayOutbound; }
+
+        bool IsXrayFullConfig() override { return type == CustomXrayFullConfig; }
+
         BuildResult Build() override
         {
+            if (type == CustomXrayFullConfig) {
+                return {QJsonObject{
+                            {"type", "socks"},
+                            {"server", "127.0.0.1"},
+                            {"server_port", bridgePort},
+                            {"username", bridgeAuth},
+                            {"password", bridgeAuth},
+                        }, ""};
+            }
+            if (type == CustomXrayOutbound) {
+                // Dummy sing-box outbound so sing-box CheckConfig accepts the
+                // config during validation. The real outbound is in BuildXray().
+                return {QJsonObject{
+                            {"type", "socks"},
+                            {"server", "127.0.0.1"},
+                        }, ""};
+            }
             return {QString2QJsonObject(config), ""};
+        }
+
+        BuildResult BuildXray() override
+        {
+            if (type == CustomXrayOutbound) {
+                return {QString2QJsonObject(config), ""};
+            }
+            return {};
         }
     };
 }
