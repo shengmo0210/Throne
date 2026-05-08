@@ -129,6 +129,9 @@ namespace Configs {
         preReqs->routingDeps->outboundMap[-1] = "proxy";
         preReqs->routingDeps->outboundMap[-2] = "direct";
         int suffix = 0;
+        auto isCustomFullConfig = [](const std::shared_ptr<Profile>& p) {
+            return p->type == "custom" && p->Custom() != nullptr && p->Custom()->type == Custom::CustomFullConfig;
+        };
         for (const auto &item: *neededOutbounds) {
             if (item < 0) continue;
             auto neededEnt = Configs::dataManager->profilesRepo->GetProfile(item);
@@ -136,8 +139,8 @@ namespace Configs {
                 ctx->error = "The routing profile is referencing outbounds that no longer exist, consider revising your settings";
                 return;
             }
-            if ((neededEnt->outbound != nullptr && neededEnt->outbound->IsExtraCore()) || neededEnt->type == "custom") {
-                ctx->error = "Outbounds used in routing profile cannot use an extra core or be of type custom";
+            if ((neededEnt->outbound != nullptr && neededEnt->outbound->IsExtraCore()) || isCustomFullConfig(neededEnt)) {
+                ctx->error = "Outbounds used in routing profile cannot use an extra core or be a custom full config";
                 return;
             }
             if (neededEnt->type == "chain") {
@@ -153,8 +156,8 @@ namespace Configs {
                         ctx->error = "Chain outbound in routing profile contains a missing profile";
                         return;
                     }
-                    if ((hopEnt->outbound != nullptr && hopEnt->outbound->IsExtraCore()) || hopEnt->type == "custom" || hopEnt->type == "chain") {
-                        ctx->error = "Chain hops in routing profile cannot use an extra core or be of types custom or chain";
+                    if ((hopEnt->outbound != nullptr && hopEnt->outbound->IsExtraCore()) || isCustomFullConfig(hopEnt) || hopEnt->type == "chain") {
+                        ctx->error = "Chain hops in routing profile cannot use an extra core, a custom full config, or be of type chain";
                         return;
                     }
                     // Collect domains for DNS direct rules
@@ -674,7 +677,7 @@ namespace Configs {
     {
         int extracoreCount = 0;
         int extracoreIdx = -1;
-        bool hasCustom = false;
+        bool hasCustomFullConfig = false;
         int coreTransitions = 0;
         bool inXray = false;
         for (auto id : entIDs)
@@ -712,12 +715,12 @@ namespace Configs {
                 extracoreCount++;
                 extracoreIdx = ents.size();
             }
-            if (ent->type == "custom" && ent->Custom()->type == "fullconfig") hasCustom = true;
+            if (ent->type == "custom" && ent->Custom() != nullptr && ent->Custom()->type == Custom::CustomFullConfig) hasCustomFullConfig = true;
             ents.append(ent);
         }
-        if (ents.size() > 1 && hasCustom)
+        if (hasCustomFullConfig)
         {
-            error = "Cannot use Custom configs in a chain";
+            error = "Custom full config profiles cannot be used in a chain; only custom outbound profiles are chainable";
             return;
         }
         if (extracoreCount > 1)
@@ -1197,7 +1200,7 @@ namespace Configs {
                 res->error = "Corrupted data, needed custom ent, got nullptr";
                 return res;
             }
-            if (custom->type == "fullconfig")
+            if (custom->type == Custom::CustomFullConfig)
             {
                 res->coreConfig = custom->Build().object;
                 return res;
@@ -1301,7 +1304,7 @@ namespace Configs {
                 MW_show_log("Corrupted data in isValid, needed custom ent, got nullptr");
                 return false;
             }
-            if (custom->type == "fullconfig")
+            if (custom->type == Custom::CustomFullConfig)
             {
                 conf = QString2QJsonObject(custom->config);
                 fullConf = true;
@@ -1399,7 +1402,7 @@ namespace Configs {
                     res->error = "Corrupted data in build test config";
                     return res;
                 }
-                if (custom->type == "fullconfig")
+                if (custom->type == Custom::CustomFullConfig)
                 {
                     auto obj = QString2QJsonObject(custom->config);
                     obj["inbounds"] = QJsonArray();

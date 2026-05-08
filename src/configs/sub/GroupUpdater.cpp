@@ -92,12 +92,12 @@ namespace Subscription {
             auto subType = getSingBoxSubType(doc);
             if (subType == SingBoxSubType::fullConfig) {
                 ent = Configs::ProfilesRepo::NewProfile("custom");
-                ent->Custom()->type = "fullconfig";
+                ent->Custom()->type = Configs::Custom::CustomFullConfig;
                 ent->Custom()->config = str;
                 updated_order += ent;
             } else if (subType == SingBoxSubType::outboundObject) {
                 ent = Configs::ProfilesRepo::NewProfile("custom");
-                ent->Custom()->type = "outbound";
+                ent->Custom()->type = Configs::Custom::CustomOutbound;
                 ent->Custom()->config = str;
                 updated_order += ent;
             } else if (subType == SingBoxSubType::outboundInJson || subType == SingBoxSubType::outboundJsonArray) {
@@ -165,10 +165,10 @@ namespace Subscription {
             auto custom = ent->Custom();
             auto obj = QString2QJsonObject(str);
             if (obj.contains("outbounds")) {
-                custom->type = "fullconfig";
+                custom->type = Configs::Custom::CustomFullConfig;
                 custom->config = str;
             } else if (obj.contains("server")) {
-                custom->type = "outbound";
+                custom->type = Configs::Custom::CustomOutbound;
                 custom->config = str;
             } else {
                 return;

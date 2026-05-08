@@ -6,8 +6,11 @@ namespace Configs
     class Custom : public outbound
     {
     public:
+        static constexpr auto CustomOutbound = "outbound";
+        static constexpr auto CustomFullConfig = "fullconfig";
+
         QString config;
-        QString type; // one of outbound or fullconfig TODO use consts
+        QString type;
 
         bool ParseFromJson(const QJsonObject &object) override {
             if (object.isEmpty()) return false;
@@ -28,7 +31,7 @@ namespace Configs
 
         QString GetAddress() override
         {
-            if (type == "outbound") {
+            if (type == CustomOutbound) {
                 auto obj = QString2QJsonObject(config);
                 return obj["server"].toString();
             }
@@ -37,7 +40,7 @@ namespace Configs
 
         QString DisplayAddress() override
         {
-            if (type == "outbound") {
+            if (type == CustomOutbound) {
                 auto obj = QString2QJsonObject(config);
                 return ::DisplayAddress(obj["server"].toString(), obj["server_port"].toInt());
             }
@@ -46,11 +49,11 @@ namespace Configs
 
         QString DisplayType() override
         {
-            if (type == "outbound") {
+            if (type == CustomOutbound) {
                 auto outboundType = QString2QJsonObject(config)["type"].toString();
                 if (!outboundType.isEmpty()) outboundType[0] = outboundType[0].toUpper();
                 return outboundType.isEmpty() ? "Custom Outbound" : "Custom " + outboundType + " Outbound";
-            } else if (type == "fullconfig") {
+            } else if (type == CustomFullConfig) {
                 return "Custom Config";
             }
             return type;
