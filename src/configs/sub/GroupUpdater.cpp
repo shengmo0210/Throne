@@ -73,6 +73,78 @@ namespace Subscription {
         return SingBoxSubType::invalid;
     }
 
+    // Xray uses "protocol" instead of sing-box's "type" field on outbounds, so
+    // we can disambiguate by inspecting individual outbound objects rather than
+    // the wrapper.
+    XraySubType getXraySubType(const QJsonDocument &doc) {
+        if (doc.isObject()) {
+            auto obj = doc.object();
+            if (obj.contains("outbounds")) {
+                for (const auto &item : obj["outbounds"].toArray()) {
+                    if (item.isObject() && item.toObject().contains("protocol")) {
+                        return XraySubType::outboundInJson;
+                    }
+                }
+            }
+            if (obj.contains("protocol")) return XraySubType::outboundObject;
+            return XraySubType::invalid;
+        }
+        if (doc.isArray() && !doc.array().empty()) {
+            auto first = doc.array().first();
+            if (first.isObject() && first.toObject().contains("protocol")) {
+                return XraySubType::outboundJsonArray;
+            }
+        }
+        return XraySubType::invalid;
+    }
+
+    // Convert a real Xray VLESS outbound (settings.vnext[0].address etc.) into
+    // the simplified shape Throne's xrayVless::ParseFromJson expects. Returns
+    // an empty object if the input doesn't have the expected structure.
+    QJsonObject normalizeXrayVlessForParse(const QJsonObject &out) {
+        if (out["protocol"].toString() != "vless") return {};
+        auto settings = out["settings"].toObject();
+        // Already in simplified form.
+        if (settings.contains("address") && !settings.contains("vnext")) return out;
+        auto vnext = settings["vnext"].toArray();
+        if (vnext.isEmpty()) return {};
+        auto first = vnext.first().toObject();
+        if (first.isEmpty()) return {};
+        auto users = first["users"].toArray();
+        if (users.isEmpty()) return {};
+        auto user = users.first().toObject();
+        QJsonObject simpleSettings;
+        simpleSettings["address"] = first["address"];
+        simpleSettings["port"] = first["port"];
+        simpleSettings["id"] = user["id"];
+        simpleSettings["encryption"] = user.contains("encryption") ? user["encryption"] : QJsonValue("none");
+        simpleSettings["flow"] = user["flow"];
+        QJsonObject normalized = out;
+        normalized["settings"] = simpleSettings;
+        return normalized;
+    }
+
+    std::shared_ptr<Configs::Profile> makeProfileForXrayOutbound(const QJsonObject &out) {
+        if (out.isEmpty()) return nullptr;
+        auto protocol = out["protocol"].toString();
+        // System protocols don't make sense as user profiles.
+        if (protocol == "freedom" || protocol == "blackhole" || protocol == "dns" || protocol == "loopback") {
+            return nullptr;
+        }
+        std::shared_ptr<Configs::Profile> ent;
+        if (protocol == "vless") {
+            if (auto normalized = normalizeXrayVlessForParse(out); !normalized.isEmpty()) {
+                ent = Configs::ProfilesRepo::NewProfile("xrayvless");
+                if (ent->XrayVLESS()->ParseFromJson(normalized)) return ent;
+            }
+        }
+        ent = Configs::ProfilesRepo::NewProfile("custom");
+        ent->Custom()->type = Configs::Custom::CustomXrayOutbound;
+        ent->Custom()->config = QJsonObject2QString(out, false);
+        if (auto tag = out["tag"].toString(); !tag.isEmpty()) ent->Custom()->name = tag;
+        return ent;
+    }
+
     void RawUpdater::update(const QString &str, bool needParse, bool isBase64Decoded) {
         // Base64 encoded subscription
         if (!isBase64Decoded) {
@@ -88,6 +160,21 @@ namespace Subscription {
         QJsonParseError error;
         auto doc = QJsonDocument::fromJson(str.toUtf8(), &error);
         if (error.error == QJsonParseError::NoError) {
+            // Xray (checked first since its outbounds are tagged with
+            // "protocol", which lets us cleanly disambiguate from sing-box
+            // configs that share the "outbounds" wrapper).
+            auto xrayType = getXraySubType(doc);
+            if (xrayType == XraySubType::outboundObject) {
+                if (auto e = makeProfileForXrayOutbound(doc.object()); e != nullptr) {
+                    updated_order += e;
+                }
+                return;
+            }
+            if (xrayType == XraySubType::outboundInJson || xrayType == XraySubType::outboundJsonArray) {
+                updateXray(doc, xrayType);
+                return;
+            }
+
             // SingBox
             auto subType = getSingBoxSubType(doc);
             if (subType == SingBoxSubType::fullConfig) {
@@ -436,6 +523,24 @@ namespace Subscription {
             if (ent == nullptr) continue;
 
             updated_order += ent;
+        }
+    }
+
+    void RawUpdater::updateXray(const QJsonDocument &doc, XraySubType type)
+    {
+        QJsonArray outbounds;
+        if (type == XraySubType::outboundInJson) {
+            outbounds = doc.object()["outbounds"].toArray();
+        } else if (type == XraySubType::outboundJsonArray) {
+            outbounds = doc.array();
+        } else {
+            return;
+        }
+        for (const auto &o : outbounds) {
+            if (!o.isObject()) continue;
+            if (auto e = makeProfileForXrayOutbound(o.toObject()); e != nullptr) {
+                updated_order += e;
+            }
         }
     }
 
