@@ -7,148 +7,146 @@
 #include "include/global/Utils.hpp"
 
 namespace Configs {
-    const QSet<QString> boolKeys = {
-            "disable_tray",
-            "random_inbound_port",
-            "mux_padding",
-            "mux_default_on",
-            "net_use_proxy",
-            "remember_enable",
-            "skip_cert",
-            "fakedns",
-            "disable_traffic_stats",
-            "vpn_ipv6",
-            "vpn_strict_route",
-            "sub_clear",
-            "net_insecure",
-            "sub_send_hwid",
-            "start_minimal",
-            "enable_ntp",
-            "enable_dns_server",
-            "dns_server_listen_lan",
-            "enable_redirect",
-            "system_dns_set",
-            "windows_set_admin",
-            "disable_win_admin",
-            "enable_stats",
-            "disable_privilege_req",
-            "enable_tun_routing",
-            "use_mozilla_certs",
-            "allow_beta_update",
-            "adblock_enable",
-            "show_system_dns",
-            "use_custom_icons",
-            "xray_mux_default_on",
-            "use_dns_object",
-            "skip_delete_confirmation",
-            "log_enable_include",
-            "log_enable_exclude",
-            "enable_dns_in",
-            "enable_warp",
-            "enable_dns_routing",
-            "inbound_auth",
-            "allow_stopping_active_profile",
-            "disable_mixed_inbound",
-            "system_proxy_enabled",
-            "tun_mode_enabled"
-        };
-
-        const QSet<QString> intKeys = {
-            "current_group",
-            "current_group_id",
-            "inbound_socks_port",
-            "mux_concurrency",
-            "test_concurrent",
-            "remember_id",
-            "language",
-            "font_size",
-            "max_log_line",
-            "stats_tab",
-            "sub_auto_update",
-            "vpn_mtu",
-            "ntp_server_port",
-            "dns_server_listen_port",
-            "redirect_listen_port",
-            "core_box_clash_api",
-            "speed_test_mode",
-            "speed_test_timeout_ms",
-            "url_test_timeout_ms",
-            "xray_mux_concurrency",
-            "current_route_id",
-            "sniffing_mode",
-            "ruleset_mirror",
-            "xray_vless_preference",
-            "core_dns_in_port"
-        };
-
-        const QSet<QString> stringListKeys = {
-            "dns_server_rules",
-            "log_ignore",  // Not in _add() but exists as QStringList in DataStore
-            "extra_core_paths",  // Extra core paths list
-            "log_include_keyword",
-            "log_include_regex",
-            "log_exclude_keyword",
-            "log_exclude_regex",
-            "warp_ifc_addrs"
-        };
-
-        const QSet<QString> stringKeys = {
-            "user_agent2",
-            "test_url",
-            "inbound_address",
-            "log_level",
-            "mux_protocol",
-            "theme",
-            "custom_inbound",
-            "custom_route",
-            "font",
-            "hk_mw",
-            "hk_group",
-            "hk_route",
-            "hk_spmenu",
-            "hk_toggle",
-            "active_routing",
-            "mw_size",
-            "vpn_impl",
-            "vpn_tun_ipv4_cidr",
-            "vpn_tun_ipv6_cidr",
-            "sub_custom_hwid_params",
-            "splitter_state",
-            "utlsFingerprint",
-            "core_box_clash_listen_addr",
-            "core_box_clash_api_secret",
-            "core_box_underlying_dns",
-            "ntp_server_address",
-            "ntp_interval",
-            "dns_v4_resp",
-            "dns_v6_resp",
-            "redirect_listen_address",
-            "proxy_scheme",
-            "main_window_geometry",
-            "xray_log_level",
-            "remote_dns",
-            "remote_dns_strategy",
-            "direct_dns",
-            "direct_dns_strategy",
-            "dns_object",
-            "dns_final_out",
-            "domain_strategy",
-            "outbound_domain_strategy",
-            "simple_dl_url",
-            "warp_private_key",
-            "warp_public_key",
-            "warp_ep",
-            "inbound_user",
-            "inbound_pass"
-        };
-
     SettingsRepo::SettingsRepo(Database& database) : db(database) {
+        initMaps();
         createTables();
         loadAllSettings();
     }
 
+    void SettingsRepo::initMaps() {
+        boolMap = {
+            {"disable_tray",                  &disable_tray},
+            {"random_inbound_port",           &random_inbound_port},
+            {"mux_padding",                   &mux_padding},
+            {"mux_default_on",                &mux_default_on},
+            {"net_use_proxy",                 &net_use_proxy},
+            {"remember_enable",               &remember_enable},
+            {"skip_cert",                     &skip_cert},
+            {"fakedns",                       &fake_dns},
+            {"disable_traffic_stats",         &disable_traffic_stats},
+            {"vpn_ipv6",                      &vpn_ipv6},
+            {"vpn_strict_route",              &vpn_strict_route},
+            {"sub_clear",                     &sub_clear},
+            {"net_insecure",                  &net_insecure},
+            {"sub_send_hwid",                 &sub_send_hwid},
+            {"start_minimal",                 &start_minimal},
+            {"enable_ntp",                    &enable_ntp},
+            {"enable_dns_server",             &enable_dns_server},
+            {"dns_server_listen_lan",         &dns_server_listen_lan},
+            {"enable_redirect",               &enable_redirect},
+            {"system_dns_set",                &system_dns_set},
+            {"windows_set_admin",             &windows_set_admin},
+            {"disable_win_admin",             &disable_run_admin},
+            {"enable_stats",                  &enable_stats},
+            {"disable_privilege_req",         &disable_privilege_req},
+            {"enable_tun_routing",            &enable_tun_routing},
+            {"use_mozilla_certs",             &use_mozilla_certs},
+            {"allow_beta_update",             &allow_beta_update},
+            {"adblock_enable",                &adblock_enable},
+            {"show_system_dns",               &show_system_dns},
+            {"use_custom_icons",              &use_custom_icons},
+            {"xray_mux_default_on",           &xray_mux_default_on},
+            {"use_dns_object",                &use_dns_object},
+            {"skip_delete_confirmation",      &skip_delete_confirmation},
+            {"log_enable_include",            &log_enable_include},
+            {"log_enable_exclude",            &log_enable_exclude},
+            {"enable_warp",                   &enable_warp},
+            {"enable_dns_routing",            &enable_dns_routing},
+            {"inbound_auth",                  &inbound_auth},
+            {"allow_stopping_active_profile", &allow_stopping_active_profile},
+            {"disable_mixed_inbound",         &disable_mixed_inbound},
+            {"system_proxy_enabled",          &system_proxy_enabled},
+            {"tun_mode_enabled",              &tun_mode_enabled},
+        };
+
+        intMap = {
+            {"current_group",          &current_group},
+            {"inbound_socks_port",     &inbound_socks_port},
+            {"mux_concurrency",        &mux_concurrency},
+            {"test_concurrent",        &test_concurrent},
+            {"remember_id",            &remember_id},
+            {"language",               &language},
+            {"font_size",              &font_size},
+            {"max_log_line",           &max_log_line},
+            {"stats_tab",              &stats_tab},
+            {"sub_auto_update",        &sub_auto_update},
+            {"vpn_mtu",                &vpn_mtu},
+            {"ntp_server_port",        &ntp_server_port},
+            {"dns_server_listen_port", &dns_server_listen_port},
+            {"redirect_listen_port",   &redirect_listen_port},
+            {"core_box_clash_api",     &core_box_clash_api},
+            {"speed_test_mode",        &speed_test_mode},
+            {"speed_test_timeout_ms",  &speed_test_timeout_ms},
+            {"url_test_timeout_ms",    &url_test_timeout_ms},
+            {"xray_mux_concurrency",   &xray_mux_concurrency},
+            {"current_route_id",       &current_route_id},
+            {"sniffing_mode",          &sniffing_mode},
+            {"ruleset_mirror",         &ruleset_mirror},
+            {"core_dns_in_port",       &core_dns_in_port},
+        };
+
+        stringMap = {
+            {"user_agent2",                &user_agent},
+            {"test_url",                   &test_latency_url},
+            {"inbound_address",            &inbound_address},
+            {"log_level",                  &log_level},
+            {"mux_protocol",               &mux_protocol},
+            {"theme",                      &theme},
+            {"custom_inbound",             &custom_inbound},
+            {"custom_route",               &custom_route_global},
+            {"font",                       &font},
+            {"hk_mw",                      &hotkey_mainwindow},
+            {"hk_group",                   &hotkey_group},
+            {"hk_route",                   &hotkey_route},
+            {"hk_spmenu",                  &hotkey_system_proxy_menu},
+            {"hk_toggle",                  &hotkey_toggle_system_proxy},
+            {"active_routing",             &active_routing},
+            {"mw_size",                    &mw_size},
+            {"vpn_impl",                   &vpn_implementation},
+            {"vpn_tun_ipv4_cidr",          &vpn_tun_ipv4_cidr},
+            {"vpn_tun_ipv6_cidr",          &vpn_tun_ipv6_cidr},
+            {"sub_custom_hwid_params",     &sub_custom_hwid_params},
+            {"splitter_state",             &splitter_state},
+            {"utlsFingerprint",            &utlsFingerprint},
+            {"core_box_clash_listen_addr", &core_box_clash_listen_addr},
+            {"core_box_clash_api_secret",  &core_box_clash_api_secret},
+            {"core_box_underlying_dns",    &core_box_underlying_dns},
+            {"ntp_server_address",         &ntp_server_address},
+            {"ntp_interval",               &ntp_interval},
+            {"dns_v4_resp",                &dns_v4_resp},
+            {"dns_v6_resp",                &dns_v6_resp},
+            {"redirect_listen_address",    &redirect_listen_address},
+            {"proxy_scheme",               &proxy_scheme},
+            {"main_window_geometry",       &mainWindowGeometry},
+            {"xray_log_level",             &xray_log_level},
+            {"remote_dns",                 &remote_dns},
+            {"remote_dns_strategy",        &remote_dns_strategy},
+            {"direct_dns",                 &direct_dns},
+            {"direct_dns_strategy",        &direct_dns_strategy},
+            {"dns_object",                 &dns_object},
+            {"dns_final_out",              &dns_final_out},
+            {"domain_strategy",            &resolve_domain_strategy},
+            {"outbound_domain_strategy",   &default_domain_strategy},
+            {"simple_dl_url",              &simple_dl_url},
+            {"warp_private_key",           &warp_private_key},
+            {"warp_public_key",            &warp_public_key},
+            {"warp_ep",                    &warp_ep},
+            {"inbound_user",               &inbound_user},
+            {"inbound_pass",               &inbound_pass},
+        };
+
+        stringListMap = {
+            {"dns_server_rules",      &dns_server_rules},
+            {"extra_core_paths",      &extraCorePaths},
+            {"log_include_keyword",   &log_include_keyword},
+            {"log_include_regex",     &log_include_regex},
+            {"log_exclude_keyword",   &log_exclude_keyword},
+            {"log_exclude_regex",     &log_exclude_regex},
+            {"warp_ifc_addrs",        &warp_ifc_addrs},
+        };
+    }
+
     void SettingsRepo::createTables() const {
-        // Create key-value table for settings
         db.exec(R"(
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -157,357 +155,79 @@ namespace Configs {
         )");
     }
 
-    QString SettingsRepo::valueToString(const QVariant& value, const QString& key) const {
-        if (key == "shortcuts") {
-            // Serialize shortcuts map as JSON object
-            QJsonObject obj;
-            auto shortcutsMap = value.value<QMap<QString,QKeySequence>>();
-            for (auto it = shortcutsMap.begin(); it != shortcutsMap.end(); ++it) {
-                obj[it.key()] = it.value().toString();
-            }
-            QJsonDocument doc(obj);
-            return QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
-        } else if (stringListKeys.contains(key)) {
-            // Serialize QStringList as JSON array
-            QJsonArray arr;
-            QStringList list = value.toStringList();
-            for (const QString& item : list) {
-                arr.append(item);
-            }
-            QJsonDocument doc(arr);
-            return QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
-        } else if (boolKeys.contains(key)) {
-            return value.toBool() ? "true" : "false";
-        } else if (intKeys.contains(key)) {
-            return QString::number(value.toInt());
-        } else if (stringKeys.contains(key)) {
-            return value.toString();
-        } else {
-            // Unknown key - log and default to string
-            qDebug() << "SettingsRepo::valueToString: Unknown key type for key:" << key << ", defaulting to string";
-            return value.toString();
-        }
-    }
-
-    QVariant SettingsRepo::stringToValue(const QString& str, const QString& key) const {
-        // Special handling for shortcuts (JSON object)
-        if (key == "shortcuts") {
-            QJsonDocument doc = QJsonDocument::fromJson(str.toUtf8());
-            if (doc.isObject()) {
-                QMap<QString, QKeySequence> shortcutsMap;
-                QJsonObject obj = doc.object();
-                for (auto it = obj.begin(); it != obj.end(); ++it) {
-                    QString keyName = it.key();
-                    QString valueStr = it.value().toString();
-                    shortcutsMap[keyName] = QKeySequence(valueStr);
-                }
-                return QVariant::fromValue(shortcutsMap);
-            }
-            return QVariant::fromValue(QMap<QString, QKeySequence>());
-        }
-        
-        // Determine type based on key lists
-        if (stringListKeys.contains(key)) {
-            // Try to parse as JSON array
-            QJsonDocument doc = QJsonDocument::fromJson(str.toUtf8());
-            if (doc.isArray()) {
-                QStringList list;
-                QJsonArray arr = doc.array();
-                for (const QJsonValue& val : arr) {
-                    list.append(val.toString());
-                }
-                return list;
-            }
-            return QStringList();
-        } else if (intKeys.contains(key)) {
-            bool ok;
-            int val = str.toInt(&ok);
-            return ok ? val : 0;
-        } else if (boolKeys.contains(key)) {
-            return str == "true" || str == "1";
-        } else if (stringKeys.contains(key)) {
-            return str;
-        } else {
-            // Unknown key - log and default to string
-            qDebug() << "SettingsRepo::stringToValue: Unknown key type for key:" << key << ", defaulting to string";
-            return str;
-        }
-    }
-
     void SettingsRepo::loadAllSettings() {
-        // Load all settings from database
         auto query = db.query("SELECT key, value FROM settings");
-        if (query) {
-            while (query->executeStep()) {
-                QString key = QString::fromStdString(query->getColumn(0).getText());
-                QString value = QString::fromStdString(query->getColumn(1).getText());
-                
-                QVariant varValue = stringToValue(value, key);
-                
-                // Map keys to fields (matching DataStore key names)
-                // TODO, use a map instead of list for types, and use it instead of this if if if
-                if (key == "main_window_geometry") mainWindowGeometry = varValue.toString();
-                if (key == "log_level") log_level = varValue.toString();
-                if (key == "test_url") test_latency_url = varValue.toString();
-                if (key == "url_test_timeout_ms") url_test_timeout_ms = varValue.toInt();
-                if (key == "disable_tray") disable_tray = varValue.toBool();
-                if (key == "test_concurrent") test_concurrent = varValue.toInt();
-                if (key == "disable_traffic_stats") disable_traffic_stats = varValue.toBool();
-                if (key == "current_group") current_group = varValue.toInt();
-                if (key == "mux_protocol") mux_protocol = varValue.toString();
-                if (key == "mux_padding") mux_padding = varValue.toBool();
-                if (key == "mux_concurrency") mux_concurrency = varValue.toInt();
-                if (key == "mux_default_on") mux_default_on = varValue.toBool();
-                if (key == "theme") theme = varValue.toString();
-                if (key == "language") language = varValue.toInt();
-                if (key == "font") font = varValue.toString();
-                if (key == "font_size") font_size = varValue.toInt();
-                if (key == "mw_size") mw_size = varValue.toString();
-                if (key == "log_enable_include") log_enable_include = varValue.toBool();
-                if (key == "log_enable_exclude") log_enable_exclude = varValue.toBool();
-                if (key == "log_include_keyword") log_include_keyword = varValue.toStringList();
-                if (key == "log_include_regex") log_include_regex = varValue.toStringList();
-                if (key == "log_exclude_keyword") log_exclude_keyword = varValue.toStringList();
-                if (key == "log_exclude_regex") log_exclude_regex = varValue.toStringList();
-                if (key == "start_minimal") start_minimal = varValue.toBool();
-                if (key == "max_log_line") max_log_line = varValue.toInt();
-                if (key == "splitter_state") splitter_state = varValue.toString();
-                if (key == "enable_stats") enable_stats = varValue.toBool();
-                if (key == "stats_tab") stats_tab = varValue.toInt();
-                if (key == "speed_test_mode") speed_test_mode = varValue.toInt();
-                if (key == "speed_test_timeout_ms") speed_test_timeout_ms = varValue.toInt();
-                if (key == "simple_dl_url") simple_dl_url = varValue.toString();
-                if (key == "allow_beta_update") allow_beta_update = varValue.toBool();
-                if (key == "show_system_dns") show_system_dns = varValue.toBool();
-                if (key == "use_custom_icons") use_custom_icons = varValue.toBool();
-                if (key == "net_use_proxy") net_use_proxy = varValue.toBool();
-                if (key == "net_insecure") net_insecure = varValue.toBool();
-                if (key == "user_agent2") user_agent = varValue.toString();
-                if (key == "sub_auto_update") sub_auto_update = varValue.toInt();
-                if (key == "sub_clear") sub_clear = varValue.toBool();
-                if (key == "sub_send_hwid") sub_send_hwid = varValue.toBool();
-                if (key == "sub_custom_hwid_params") sub_custom_hwid_params = varValue.toString();
-                if (key == "skip_cert") skip_cert = varValue.toBool();
-                if (key == "utlsFingerprint") utlsFingerprint = varValue.toString();
-                if (key == "disable_win_admin") disable_run_admin = varValue.toBool();
-                if (key == "use_mozilla_certs") use_mozilla_certs = varValue.toBool();
-                if (key == "remember_id") remember_id = varValue.toInt();
-                if (key == "remember_enable") remember_enable = varValue.toBool();
-                if (key == "windows_set_admin") windows_set_admin = varValue.toBool();
-                if (key == "shortcuts") shortcuts = varValue.value<QMap<QString, QKeySequence>>();
-                if (key == "current_route_id") current_route_id = varValue.toInt();
-                if (key == "remote_dns") remote_dns = varValue.toString();
-                if (key == "remote_dns_strategy") remote_dns_strategy = varValue.toString();
-                if (key == "direct_dns") direct_dns = varValue.toString();
-                if (key == "direct_dns_strategy") direct_dns_strategy = varValue.toString();
-                if (key == "use_dns_object") use_dns_object = varValue.toBool();
-                if (key == "dns_object") dns_object = varValue.toString();
-                if (key == "dns_final_out") dns_final_out = varValue.toString();
-                if (key == "domain_strategy") resolve_domain_strategy = varValue.toString();
-                if (key == "outbound_domain_strategy") default_domain_strategy = varValue.toString();
-                if (key == "sniffing_mode") sniffing_mode = varValue.toInt();
-                if (key == "ruleset_mirror") ruleset_mirror = varValue.toInt();
-                if (key == "inbound_address") inbound_address = varValue.toString();
-                if (key == "inbound_socks_port") inbound_socks_port = varValue.toInt();
-                if (key == "random_inbound_port") random_inbound_port = varValue.toBool();
-                if (key == "custom_inbound") custom_inbound = varValue.toString();
-                if (key == "custom_route") custom_route_global = varValue.toString();
-                if (key == "active_routing") active_routing = varValue.toString();
-                if (key == "adblock_enable") adblock_enable = varValue.toBool();
-                if (key == "fakedns") fake_dns = varValue.toBool();
-                if (key == "enable_tun_routing") enable_tun_routing = varValue.toBool();
-                if (key == "vpn_impl") vpn_implementation = varValue.toString();
-                if (key == "vpn_mtu") vpn_mtu = varValue.toInt();
-                if (key == "vpn_ipv6") vpn_ipv6 = varValue.toBool();
-                if (key == "vpn_strict_route") vpn_strict_route = varValue.toBool();
-                if (key == "vpn_tun_ipv4_cidr") vpn_tun_ipv4_cidr = varValue.toString();
-                if (key == "vpn_tun_ipv6_cidr") vpn_tun_ipv6_cidr = varValue.toString();
-                if (key == "disable_privilege_req") disable_privilege_req = varValue.toBool();
-                if (key == "enable_ntp") enable_ntp = varValue.toBool();
-                if (key == "ntp_server_address") ntp_server_address = varValue.toString();
-                if (key == "ntp_server_port") ntp_server_port = varValue.toInt();
-                if (key == "ntp_interval") ntp_interval = varValue.toString();
-                if (key == "enable_dns_server") enable_dns_server = varValue.toBool();
-                if (key == "dns_server_listen_lan") dns_server_listen_lan = varValue.toBool();
-                if (key == "dns_server_listen_port") dns_server_listen_port = varValue.toInt();
-                if (key == "dns_v4_resp") dns_v4_resp = varValue.toString();
-                if (key == "dns_v6_resp") dns_v6_resp = varValue.toString();
-                if (key == "dns_server_rules") dns_server_rules = varValue.toStringList();
-                if (key == "enable_redirect") enable_redirect = varValue.toBool();
-                if (key == "redirect_listen_address") redirect_listen_address = varValue.toString();
-                if (key == "redirect_listen_port") redirect_listen_port = varValue.toInt();
-                if (key == "system_dns_set") system_dns_set = varValue.toBool();
-                if (key == "proxy_scheme") proxy_scheme = varValue.toString();
-                if (key == "hk_mw") hotkey_mainwindow = varValue.toString();
-                if (key == "hk_group") hotkey_group = varValue.toString();
-                if (key == "hk_route") hotkey_route = varValue.toString();
-                if (key == "hk_spmenu") hotkey_system_proxy_menu = varValue.toString();
-                if (key == "hk_toggle") hotkey_toggle_system_proxy = varValue.toString();
-                if (key == "core_box_clash_api") core_box_clash_api = varValue.toInt();
-                if (key == "core_box_clash_listen_addr") core_box_clash_listen_addr = varValue.toString();
-                if (key == "core_box_clash_api_secret") core_box_clash_api_secret = varValue.toString();
-                if (key == "core_box_underlying_dns") core_box_underlying_dns = varValue.toString();
-                if (key == "xray_log_level") xray_log_level = varValue.toString();
-                if (key == "xray_mux_concurrency") xray_mux_concurrency = varValue.toInt();
-                if (key == "xray_mux_default_on") xray_mux_default_on = varValue.toBool();
-                if (key == "extra_core_paths") extraCorePaths = varValue.toStringList();
-                if (key == "skip_delete_confirmation") skip_delete_confirmation = varValue.toBool();
-                if (key == "xray_vless_preference") xray_vless_preference = static_cast<Xray::XrayVlessPreference>(varValue.toInt());
-                if (key == "core_dns_in_port") core_dns_in_port = varValue.toInt();
-                if (key == "enable_warp") enable_warp = varValue.toBool();
-                if (key == "warp_private_key") warp_private_key = varValue.toString();
-                if (key == "warp_public_key") warp_public_key = varValue.toString();
-                if (key == "warp_ifc_addrs") warp_ifc_addrs = varValue.toStringList();
-                if (key == "warp_ep") warp_ep = varValue.toString();
-                if (key == "enable_dns_routing") enable_dns_routing = varValue.toBool();
-                if (key == "inbound_auth") inbound_auth = varValue.toBool();
-                if (key == "inbound_user") inbound_user = varValue.toString();
-                if (key == "inbound_pass") inbound_pass = varValue.toString();
-                if (key == "allow_stopping_active_profile") allow_stopping_active_profile = varValue.toBool();
-                if (key == "disable_mixed_inbound") disable_mixed_inbound = varValue.toBool();
-                if (key == "system_proxy_enabled") system_proxy_enabled = varValue.toBool();
-                if (key == "tun_mode_enabled") tun_mode_enabled = varValue.toBool();
+        if (!query) return;
+
+        while (query->executeStep()) {
+            const QString key = QString::fromStdString(query->getColumn(0).getText());
+            const QString str = QString::fromStdString(query->getColumn(1).getText());
+
+            if (auto boolVal = boolMap.find(key); boolVal != boolMap.end()) {
+                *boolVal.value() = str == "true" || str == "1";
+            } else if (auto intVal = intMap.find(key); intVal != intMap.end()) {
+                bool ok;
+                *intVal.value() = str.toInt(&ok);
+                if (!ok) *intVal.value() = 0;
+            } else if (auto strListVal = stringListMap.find(key); strListVal != stringListMap.end()) {
+                QJsonDocument doc = QJsonDocument::fromJson(str.toUtf8());
+                if (doc.isArray()) {
+                    QStringList list;
+                    for (const auto& val : doc.array()) list << val.toString();
+                    *strListVal.value() = list;
+                }
+            } else if (auto strVal = stringMap.find(key); strVal != stringMap.end()) {
+                *strVal.value() = str;
+            } else if (key == "shortcuts") {
+                QJsonDocument doc = QJsonDocument::fromJson(str.toUtf8());
+                if (doc.isObject()) {
+                    auto obj = doc.object();
+                    for (const auto& key : obj.keys()) {
+                        qDebug() << key << obj[key];
+                        shortcuts[key] = QKeySequence(obj[key].toString());
+                    }
+                }
+            } else if (key == "xray_vless_preference") {
+                bool ok;
+                int v = str.toInt(&ok);
+                xray_vless_preference = static_cast<Xray::XrayVlessPreference>(ok ? v : 0);
             }
         }
     }
 
     void SettingsRepo::saveAllSettings() const {
         if (noSave) return;
-        struct SettingEntry {
-            QString key;
-            QVariant value;
-        };
-        
-        QList<SettingEntry> settings = {
-            {"main_window_geometry", mainWindowGeometry},
-            {"log_level", log_level},
-            {"test_url", test_latency_url},
-            {"url_test_timeout_ms", url_test_timeout_ms},
-            {"disable_tray", disable_tray},
-            {"test_concurrent", test_concurrent},
-            {"disable_traffic_stats", disable_traffic_stats},
-            {"current_group", current_group},
-            {"mux_protocol", mux_protocol},
-            {"mux_padding", mux_padding},
-            {"mux_concurrency", mux_concurrency},
-            {"mux_default_on", mux_default_on},
-            {"theme", theme},
-            {"language", language},
-            {"font", font},
-            {"font_size", font_size},
-            {"mw_size", mw_size},
-            {"log_enable_include", log_enable_include},
-            {"log_enable_exclude", log_enable_exclude},
-            {"log_include_keyword", log_include_keyword},
-            {"log_include_regex", log_include_regex},
-            {"log_exclude_keyword", log_exclude_keyword},
-            {"log_exclude_regex", log_exclude_regex},
-            {"start_minimal", start_minimal},
-            {"max_log_line", max_log_line},
-            {"splitter_state", splitter_state},
-            {"enable_stats", enable_stats},
-            {"stats_tab", stats_tab},
-            {"speed_test_mode", speed_test_mode},
-            {"speed_test_timeout_ms", speed_test_timeout_ms},
-            {"simple_dl_url", simple_dl_url},
-            {"allow_beta_update", allow_beta_update},
-            {"show_system_dns", show_system_dns},
-            {"use_custom_icons", use_custom_icons},
-            {"net_use_proxy", net_use_proxy},
-            {"net_insecure", net_insecure},
-            {"user_agent2", user_agent},
-            {"sub_auto_update", sub_auto_update},
-            {"sub_clear", sub_clear},
-            {"sub_send_hwid", sub_send_hwid},
-            {"sub_custom_hwid_params", sub_custom_hwid_params},
-            {"skip_cert", skip_cert},
-            {"utlsFingerprint", utlsFingerprint},
-            {"disable_win_admin", disable_run_admin},
-            {"use_mozilla_certs", use_mozilla_certs},
-            {"remember_id", remember_id},
-            {"remember_enable", remember_enable},
-            {"windows_set_admin", windows_set_admin},
-            {"shortcuts", QVariant::fromValue(shortcuts)},
-            {"current_route_id", current_route_id},
-            {"remote_dns", remote_dns},
-            {"remote_dns_strategy", remote_dns_strategy},
-            {"direct_dns", direct_dns},
-            {"direct_dns_strategy", direct_dns_strategy},
-            {"use_dns_object", use_dns_object},
-            {"dns_object", dns_object},
-            {"dns_final_out", dns_final_out},
-            {"domain_strategy", resolve_domain_strategy},
-            {"outbound_domain_strategy", default_domain_strategy},
-            {"sniffing_mode", sniffing_mode},
-            {"ruleset_mirror", ruleset_mirror},
-            {"inbound_address", inbound_address},
-            {"inbound_socks_port", inbound_socks_port},
-            {"random_inbound_port", random_inbound_port},
-            {"custom_inbound", custom_inbound},
-            {"custom_route", custom_route_global},
-            {"active_routing", active_routing},
-            {"adblock_enable", adblock_enable},
-            {"fakedns", fake_dns},
-            {"enable_tun_routing", enable_tun_routing},
-            {"vpn_impl", vpn_implementation},
-            {"vpn_mtu", vpn_mtu},
-            {"vpn_ipv6", vpn_ipv6},
-            {"vpn_strict_route", vpn_strict_route},
-            {"vpn_tun_ipv4_cidr", vpn_tun_ipv4_cidr},
-            {"vpn_tun_ipv6_cidr", vpn_tun_ipv6_cidr},
-            {"disable_privilege_req", disable_privilege_req},
-            {"enable_ntp", enable_ntp},
-            {"ntp_server_address", ntp_server_address},
-            {"ntp_server_port", ntp_server_port},
-            {"ntp_interval", ntp_interval},
-            {"enable_dns_server", enable_dns_server},
-            {"dns_server_listen_lan", dns_server_listen_lan},
-            {"dns_server_listen_port", dns_server_listen_port},
-            {"dns_v4_resp", dns_v4_resp},
-            {"dns_v6_resp", dns_v6_resp},
-            {"dns_server_rules", dns_server_rules},
-            {"enable_redirect", enable_redirect},
-            {"redirect_listen_address", redirect_listen_address},
-            {"redirect_listen_port", redirect_listen_port},
-            {"system_dns_set", system_dns_set},
-            {"proxy_scheme", proxy_scheme},
-            {"hk_mw", hotkey_mainwindow},
-            {"hk_group", hotkey_group},
-            {"hk_route", hotkey_route},
-            {"hk_spmenu", hotkey_system_proxy_menu},
-            {"hk_toggle", hotkey_toggle_system_proxy},
-            {"core_box_clash_api", core_box_clash_api},
-            {"core_box_clash_listen_addr", core_box_clash_listen_addr},
-            {"core_box_clash_api_secret", core_box_clash_api_secret},
-            {"core_box_underlying_dns", core_box_underlying_dns},
-            {"xray_log_level", xray_log_level},
-            {"xray_mux_concurrency", xray_mux_concurrency},
-            {"xray_mux_default_on", xray_mux_default_on},
-            {"extra_core_paths", extraCorePaths},
-            {"skip_delete_confirmation", skip_delete_confirmation},
-            {"xray_vless_preference", xray_vless_preference},
-            {"core_dns_in_port", core_dns_in_port},
-            {"enable_warp", enable_warp},
-            {"warp_private_key", warp_private_key},
-            {"warp_public_key", warp_public_key},
-            {"warp_ifc_addrs", warp_ifc_addrs},
-            {"warp_ep", warp_ep},
-            {"enable_dns_routing", enable_dns_routing},
-            {"inbound_auth", inbound_auth},
-            {"inbound_user", inbound_user},
-            {"inbound_pass", inbound_pass},
-            {"allow_stopping_active_profile", allow_stopping_active_profile},
-            {"disable_mixed_inbound", disable_mixed_inbound},
-            {"system_proxy_enabled", system_proxy_enabled},
-            {"tun_mode_enabled", tun_mode_enabled}
-        };
 
         std::vector<std::pair<std::string, std::string>> keyValues;
-        keyValues.reserve(settings.size());
-        for (const auto& entry : settings) {
-            QString valueStr = valueToString(entry.value, entry.key);
-            keyValues.emplace_back(entry.key.toStdString(), valueStr.toStdString());
+        keyValues.reserve(boolMap.size() + intMap.size() + stringMap.size() + stringListMap.size() + 2);
+
+        for (auto it = boolMap.begin(); it != boolMap.end(); ++it)
+            keyValues.emplace_back(it.key().toStdString(), *it.value() ? "true" : "false");
+
+        for (auto it = intMap.begin(); it != intMap.end(); ++it)
+            keyValues.emplace_back(it.key().toStdString(), QString::number(*it.value()).toStdString());
+
+        for (auto it = stringMap.begin(); it != stringMap.end(); ++it)
+            keyValues.emplace_back(it.key().toStdString(), it.value()->toStdString());
+
+        for (auto it = stringListMap.begin(); it != stringListMap.end(); ++it) {
+            QJsonArray arr;
+            for (const QString& s : *it.value()) arr.append(s);
+            keyValues.emplace_back(it.key().toStdString(),
+                QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact)).toStdString());
         }
+
+        {
+            QJsonObject obj;
+            for (auto it = shortcuts.begin(); it != shortcuts.end(); ++it)
+                obj[it.key()] = it.value().toString();
+            keyValues.emplace_back("shortcuts",
+                QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)).toStdString());
+        }
+
+        keyValues.emplace_back("xray_vless_preference",
+            QString::number(static_cast<int>(xray_vless_preference)).toStdString());
+
         db.execBatchSettingsReplace(keyValues);
     }
 

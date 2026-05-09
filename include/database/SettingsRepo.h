@@ -17,14 +17,15 @@ namespace Configs {
     private:
         Database& db;
 
-        // Helper methods
+        QMap<QString, bool*>        boolMap;
+        QMap<QString, int*>         intMap;
+        QMap<QString, QString*>     stringMap;
+        QMap<QString, QStringList*> stringListMap;
+
+        void initMaps();
         void createTables() const;
         void loadAllSettings();
         void saveAllSettings() const;
-        
-        // Serialization helpers
-        QString valueToString(const QVariant& value, const QString& key) const;
-        QVariant stringToValue(const QString& str, const QString& key) const;
 
     public:
         bool noSave = false;
