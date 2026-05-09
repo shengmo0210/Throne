@@ -225,6 +225,11 @@ namespace Configs {
         // Extra Core Paths
         QStringList extraCorePaths = {};
 
+        // Bind address/interface custom entry history (last 5 per field)
+        QStringList dial_bind_interface_history = {};
+        QStringList dial_inet4_bind_address_history = {};
+        QStringList dial_inet6_bind_address_history = {};
+
         // Methods
         void UpdateStartedId(int id);
 

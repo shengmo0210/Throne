@@ -136,13 +136,16 @@ namespace Configs {
         };
 
         stringListMap = {
-            {"dns_server_rules",      &dns_server_rules},
-            {"extra_core_paths",      &extraCorePaths},
-            {"log_include_keyword",   &log_include_keyword},
-            {"log_include_regex",     &log_include_regex},
-            {"log_exclude_keyword",   &log_exclude_keyword},
-            {"log_exclude_regex",     &log_exclude_regex},
-            {"warp_ifc_addrs",        &warp_ifc_addrs},
+            {"dns_server_rules",         &dns_server_rules},
+            {"extra_core_paths",         &extraCorePaths},
+            {"log_include_keyword",      &log_include_keyword},
+            {"log_include_regex",        &log_include_regex},
+            {"log_exclude_keyword",      &log_exclude_keyword},
+            {"log_exclude_regex",        &log_exclude_regex},
+            {"warp_ifc_addrs",           &warp_ifc_addrs},
+            {"dial_bind_ifc_history",    &dial_bind_interface_history},
+            {"dial_inet4_bind_history",  &dial_inet4_bind_address_history},
+            {"dial_inet6_bind_history",  &dial_inet6_bind_address_history},
         };
     }
 

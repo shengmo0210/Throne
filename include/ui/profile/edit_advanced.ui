@@ -30,6 +30,48 @@
       <item row="2" column="1">
        <widget class="QLineEdit" name="connect_timeout"/>
       </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_bind_ifc">
+        <property name="text">
+         <string>Bind Interface</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QComboBox" name="bind_interface">
+        <property name="editable">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="label_inet4_bind">
+        <property name="text">
+         <string>IPv4 Bind Address</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QComboBox" name="inet4_bind_address">
+        <property name="editable">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="0">
+       <widget class="QLabel" name="label_inet6_bind">
+        <property name="text">
+         <string>IPv6 Bind Address</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="1">
+       <widget class="QComboBox" name="inet6_bind_address">
+        <property name="editable">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
       <item row="0" column="1">
        <widget class="QCheckBox" name="tcp_fast_open">
         <property name="text">
