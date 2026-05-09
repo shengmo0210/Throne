@@ -26,6 +26,7 @@
 
 
 #include "include/ui/profile/edit_advanced.h"
+#include "include/ui/profile/edit_direct.h"
 #include "include/ui/profile/edit_hysteria.h"
 #include "include/ui/profile/edit_socks.h"
 #include "include/ui/profile/edit_trojan.h"
@@ -248,6 +249,7 @@ DialogEditProfile::DialogEditProfile(const QString &_type, int profileOrGroupId,
         LOAD_TYPE("wireguard")
         LOAD_TYPE("tailscale")
         LOAD_TYPE("ssh")
+        LOAD_TYPE("direct")
         ui->type->addItem(tr("Custom (%1 outbound)").arg(software_core_name), Configs::Custom::CustomOutbound);
         ui->type->addItem(tr("Custom (%1 config)").arg(software_core_name), Configs::Custom::CustomFullConfig);
         ui->type->addItem(tr("Custom (Xray outbound)"), Configs::Custom::CustomXrayOutbound);
@@ -380,6 +382,10 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         auto _innerWidget = new EditNaive(this);
         innerWidget = _innerWidget;
         innerEditor = _innerWidget;
+    } else if (type == "direct") {
+        auto _innerWidget = new EditDirect(this);
+        innerWidget = _innerWidget;
+        innerEditor = _innerWidget;
     } else {
         validType = false;
     }
@@ -396,6 +402,7 @@ void DialogEditProfile::typeSelected(const QString &newType) {
 
     // hide some widget
     auto showAddressPort = type != "chain"
+                           && type != "direct"
                            && customType != Configs::Custom::CustomOutbound
                            && customType != Configs::Custom::CustomFullConfig
                            && customType != Configs::Custom::CustomXrayOutbound

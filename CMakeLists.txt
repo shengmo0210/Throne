@@ -312,6 +312,10 @@ set(PROJECT_SOURCES
         include/ui/profile/edit_xrayvless.h
         src/ui/profile/edit_xrayvless.cpp
         include/ui/profile/edit_xrayvless.ui
+        include/ui/profile/edit_direct.h
+        include/ui/profile/edit_direct.ui
+        src/ui/profile/edit_direct.cpp
+
         include/database/Database.h
         src/database/Database.cpp
         include/database/ProfilesRepo.h

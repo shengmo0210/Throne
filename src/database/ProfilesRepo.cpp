@@ -129,11 +129,13 @@ namespace Configs {
             outbound = new Configs::extracore();
         } else if (type == "naive") {
             outbound = new Configs::naive();
+        } else if (type == "direct") {
+            outbound = new Configs::direct();
         } else {
             outbound = new Configs::outbound();
             outbound->invalid = true;
         }
-        
+
         profile->outbound = std::shared_ptr<Configs::outbound>(outbound);
         
         // Parse complex objects from JSON
@@ -312,11 +314,13 @@ namespace Configs {
             outbound = new Configs::extracore();
         } else if (type == "naive") {
             outbound = new Configs::naive();
+        } else if (type == "direct") {
+            outbound = new Configs::direct();
         } else {
             outbound = new Configs::outbound();
             outbound->invalid = true;
         }
-        
+
         // Bean is legacy, pass nullptr
         return std::make_shared<Profile>(outbound, type);
     }
