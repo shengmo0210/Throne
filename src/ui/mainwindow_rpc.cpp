@@ -856,6 +856,9 @@ void MainWindow::set_spmode_system_proxy(bool enable, bool save) {
     Configs::dataManager->settingsRepo->spmode_system_proxy = enable;
     if (running) {
         set_system_proxy(false);
+        if (!enable && Configs::dataManager->settingsRepo->reset_proxy_on_disable_sp) {
+            profile_start(running->id);
+        }
     }
 
     if (save) {

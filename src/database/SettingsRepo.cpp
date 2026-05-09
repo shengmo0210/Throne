@@ -57,6 +57,7 @@ namespace Configs {
             {"disable_mixed_inbound",         &disable_mixed_inbound},
             {"system_proxy_enabled",          &system_proxy_enabled},
             {"tun_mode_enabled",              &tun_mode_enabled},
+            {"reset_proxy_on_disable_sp", &reset_proxy_on_disable_sp},
         };
 
         intMap = {

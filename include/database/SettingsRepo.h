@@ -102,6 +102,7 @@ namespace Configs {
         // Network
         bool net_use_proxy = false;
         bool net_insecure = false;
+        bool reset_proxy_on_disable_sp = false;
 
         // Subscription
         QString user_agent = ""; // set at main.cpp
