@@ -413,6 +413,14 @@ void DialogEditProfile::typeSelected(const QString &newType) {
     ui->port->setVisible(showAddressPort);
     ui->port_l->setVisible(showAddressPort);
 
+    auto showAdvancedDialOption = type != "chain"
+    && type != "extracore" && type != "tailscale"
+    && customType != Configs::Custom::CustomOutbound
+    && customType != Configs::Custom::CustomFullConfig
+    && customType != Configs::Custom::CustomXrayOutbound
+    && customType != Configs::Custom::CustomXrayFullConfig;
+    ui->advanced_button->setVisible(showAdvancedDialOption);
+
     if (ent->outbound->HasTLS() || ent->outbound->HasTransport()) {
         ui->right_all_w->setVisible(true);
         auto tls = ent->outbound->GetTLS();
