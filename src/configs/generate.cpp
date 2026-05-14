@@ -58,6 +58,7 @@ namespace Configs {
         {
             if (auto subEnt = Configs::dataManager->profilesRepo->GetProfile(id); subEnt != nullptr)
             {
+                if (subEnt->outbound != nullptr && subEnt->outbound->IsExtraCore()) continue;
                 if (auto addr = subEnt->outbound->GetAddress(); !addr.isEmpty() && !IsIpAddress(addr)) domains.append(addr);
             }
         }
@@ -71,7 +72,7 @@ namespace Configs {
         {
             if (auto ent = Configs::dataManager->profilesRepo->GetProfile(id); ent != nullptr)
             {
-                if (ent->type == "extracore") continue;
+                if (ent->outbound != nullptr && ent->outbound->IsExtraCore()) continue;
                 if (ent->type == "chain") domains << getChainDomains(ent, error);
                 else
                 {
@@ -128,6 +129,12 @@ namespace Configs {
         preReqs->routingDeps->outboundMap[-1] = "proxy";
         preReqs->routingDeps->outboundMap[-2] = "direct";
         int suffix = 0;
+        auto isCustomFullConfig = [](const std::shared_ptr<Profile>& p) {
+            return p->type == "custom" && p->Custom() != nullptr && p->Custom()->type == Custom::CustomFullConfig;
+        };
+        auto isXrayFullConfig = [](const std::shared_ptr<Profile>& p) {
+            return p->outbound != nullptr && p->outbound->IsXrayFullConfig();
+        };
         for (const auto &item: *neededOutbounds) {
             if (item < 0) continue;
             auto neededEnt = Configs::dataManager->profilesRepo->GetProfile(item);
@@ -135,8 +142,8 @@ namespace Configs {
                 ctx->error = "The routing profile is referencing outbounds that no longer exist, consider revising your settings";
                 return;
             }
-            if (neededEnt->type == "extracore" || neededEnt->type == "custom") {
-                ctx->error = "Outbounds used in routing profile cannot be of types extracore or custom";
+            if ((neededEnt->outbound != nullptr && neededEnt->outbound->IsExtraCore()) || isCustomFullConfig(neededEnt) || isXrayFullConfig(neededEnt)) {
+                ctx->error = "Outbounds used in routing profile cannot use an extra core or be a custom full config";
                 return;
             }
             if (neededEnt->type == "chain") {
@@ -152,8 +159,8 @@ namespace Configs {
                         ctx->error = "Chain outbound in routing profile contains a missing profile";
                         return;
                     }
-                    if (hopEnt->type == "extracore" || hopEnt->type == "custom" || hopEnt->type == "chain") {
-                        ctx->error = "Chain hops in routing profile cannot be of types extracore, custom or chain";
+                    if ((hopEnt->outbound != nullptr && hopEnt->outbound->IsExtraCore()) || isCustomFullConfig(hopEnt) || isXrayFullConfig(hopEnt) || hopEnt->type == "chain") {
+                        ctx->error = "Chain hops in routing profile cannot use an extra core, a custom full config, or be of type chain";
                         return;
                     }
                     // Collect domains for DNS direct rules
@@ -263,14 +270,35 @@ namespace Configs {
             }
         }
 
-        // Extra core
-        if (ctx->ent->type == "extracore")
+        // Extra core (single ent OR final hop in a chain)
+        std::shared_ptr<Profile> extraCoreEnt;
+        if (ctx->ent->outbound != nullptr && ctx->ent->outbound->IsExtraCore())
         {
-            auto outbound = ctx->ent->ExtraCore();
+            extraCoreEnt = ctx->ent;
+        }
+        else if (ctx->ent->type == "chain")
+        {
+            auto chain = ctx->ent->Chain();
+            if (chain != nullptr && !chain->list.isEmpty())
+            {
+                // Profiles using an extra core (when present in a chain) must
+                // be at list[0], which becomes the outermost detour after the
+                // chain reversal in buildOutboundsSection. entIDListtoEntList
+                // enforces this; we just look it up here.
+                auto firstEnt = Configs::dataManager->profilesRepo->GetProfile(chain->list[0]);
+                if (firstEnt != nullptr && firstEnt->outbound != nullptr && firstEnt->outbound->IsExtraCore())
+                {
+                    extraCoreEnt = firstEnt;
+                }
+            }
+        }
+        if (extraCoreEnt != nullptr)
+        {
+            auto outbound = extraCoreEnt->ExtraCore();
             if (outbound == nullptr)
             {
                 MW_show_log("INVALID ENT TYPE, NEEDED EXTRACORE GOT NULLPTR");
-                ctx->error = "failed to cast to extracore, type is: " + ctx->ent->type;
+                ctx->error = "failed to cast to extracore, type is: " + extraCoreEnt->type;
                 return;
             }
             ctx->buildConfigResult->extraCoreData->path = QFileInfo(outbound->extraCorePath).canonicalFilePath();
@@ -340,17 +368,19 @@ namespace Configs {
         if (address.startsWith("https://")) {
             type = "https";
             addr = addr.replace("https://", "");
-            if (addr.contains("/")) {
-                path = addr.split("/").last();
-                addr = addr.left(addr.indexOf("/"));
+            auto slashIndex = addr.indexOf("/");
+            if (slashIndex != -1) {
+                path = addr.mid(slashIndex);
+                addr = addr.left(slashIndex);
             }
         }
         if (address.startsWith("h3://")) {
             type = "h3";
             addr = addr.replace("h3://", "");
-            if (addr.contains("/")) {
-                path = addr.split("/").last();
-                addr = addr.left(addr.indexOf("/"));
+            auto slashIndex = addr.indexOf("/");
+            if (slashIndex != -1) {
+                path = addr.mid(slashIndex);
+                addr = addr.left(slashIndex);
             }
         }
         if (addr.contains(":")) {
@@ -387,28 +417,48 @@ namespace Configs {
         QJsonArray rules;
         // remote
         if (!ctx->forTest) {
+            auto remoteDnsObj = buildDnsObj(Configs::dataManager->settingsRepo->remote_dns, ctx);
+            remoteDnsObj["tag"] = "dns-remote";
+            remoteDnsObj["domain_resolver"] = "dns-local";
+            remoteDnsObj["detour"] = "proxy";
+            servers += remoteDnsObj;
+
             if (isTailscale)
             {
                 auto tailscale = ctx->ent->Tailscale();
-                if (tailscale == nullptr)
+                if (tailscale != nullptr)
                 {
-                    ctx->error = "Corrupted state, needed tailscale been but could not cast";
-                    return;
-                }
-                auto tailDns = QJsonObject{
+                    // Add an additional DNS server for Tailscale MagicDNS
+                    servers += QJsonObject{
                         {"type", "tailscale"},
-                        {"tag", "dns-remote"},
+                        {"tag", "dns-tailscale"},
                         {"endpoint", "proxy"},
                         {"accept_default_resolvers", tailscale->globalDNS},
                     };
-                servers += tailDns;
-            } else
-            {
-                auto remoteDnsObj = buildDnsObj(Configs::dataManager->settingsRepo->remote_dns, ctx);
-                remoteDnsObj["tag"] = "dns-remote";
-                remoteDnsObj["domain_resolver"] = "dns-local";
-                remoteDnsObj["detour"] = "proxy";
-                servers += remoteDnsObj;
+                    
+                    // Route Tailscale internal domains to MagicDNS
+                    rules.prepend(QJsonObject{
+                        {"domain_suffix", QJsonArray{"ts.net", "tailscale.net"}},
+                        {"action", "route"},
+                        {"server", "dns-tailscale"},
+                    });
+                }
+
+                // Add direct bootstrap rules for tailscale control plane and services
+                rules.prepend(QJsonObject{
+                    {"domain", QJsonArray{
+                        "controlplane.tailscale.com", 
+                        "login.tailscale.com",
+                        "log.tailscale.io"
+                    }},
+                    {"domain_suffix", QJsonArray{
+                        "tailscale.com", 
+                        "tailscale.net", 
+                        "tailscale.io"
+                    }},
+                    {"action", "route"},
+                    {"server", "dns-direct"},
+                });
             }
         }
 
@@ -435,6 +485,26 @@ namespace Configs {
                     {"rcode", "NOERROR"},
                     {"answer", "localhost. IN AAAA ::1"},
                 };
+        }
+
+        if (!ctx->forTest)
+        {
+            QJsonArray coreProcessPaths;
+            coreProcessPaths.append(FindCoreRealPath());
+            if (!ctx->buildConfigResult->extraCoreData->path.isEmpty())
+            {
+                auto extraCorePath = ctx->buildConfigResult->extraCoreData->path;
+#ifdef Q_OS_WIN
+                extraCorePath.replace("/", "\\");
+#endif
+                coreProcessPaths.append(extraCorePath);
+            }
+            rules += QJsonObject{
+                {"process_path", coreProcessPaths},
+                {"action", "route"},
+                {"strategy", dataManager->settingsRepo->direct_dns_strategy},
+                {"server", "dns-direct"},
+            };
         }
 
         // HijackRules
@@ -606,14 +676,24 @@ namespace Configs {
         ctx->buildConfigResult->coreConfig["inbounds"] = inbounds;
     }
 
-    void entIDListtoEntList(const QList<int>& entIDs, QList<std::shared_ptr<Profile>> &ents, QString& error)
+    void entIDListtoEntList(std::shared_ptr<BuildSingBoxConfigContext> &ctx, const QList<int>& entIDs, QList<std::shared_ptr<Profile>> &ents, QString& error)
     {
-        bool hasExtracore = false;
-        bool hasCustom = false;
-        bool hasXray = false;
+        int extracoreCount = 0;
+        int extracoreIdx = -1;
+        int xrayFullConfigCount = 0;
+        int xrayFullConfigIdx = -1;
+        int xrayHopCount = 0;
+        bool hasCustomFullConfig = false;
+        int coreTransitions = 0;
+        bool inXray = false;
         for (auto id : entIDs)
         {
             if (id == warpProfileID) {
+                if (inXray) {
+                    ctx->xrayToSingTransitioned = true;
+                    coreTransitions++;
+                }
+                inXray = false;
                 ents.append(getWarpProfile());
                 continue;
             }
@@ -623,19 +703,78 @@ namespace Configs {
                 error = "Null proxy in chain, you may want to check your configs";
                 return;
             }
+            if (!inXray && ent->outbound->IsXray()) {
+                ctx->singToXrayTransitioned = true;
+                coreTransitions++;
+            }
+            if (inXray && !ent->outbound->IsXray()) {
+                ctx->xrayToSingTransitioned = true;
+                coreTransitions++;
+            }
+            inXray = ent->outbound->IsXray();
             if (ent->type == "chain")
             {
                 error = "Chain in Chain is not allowed";
                 return;
             }
-            if (ent->type == "extracore") hasExtracore = true;
-            if (ent->type == "custom" && ent->Custom()->type == "fullconfig") hasCustom = true;
-            if (ent->outbound->IsXray()) hasXray = true;
+            if (ent->outbound != nullptr && ent->outbound->IsExtraCore()) {
+                extracoreCount++;
+                extracoreIdx = ents.size();
+            }
+            if (ent->outbound != nullptr && ent->outbound->IsXrayFullConfig()) {
+                xrayFullConfigCount++;
+                xrayFullConfigIdx = ents.size();
+            }
+            if (ent->outbound != nullptr && ent->outbound->IsXray()) {
+                xrayHopCount++;
+            }
+            if (ent->type == "custom" && ent->Custom() != nullptr && ent->Custom()->type == Custom::CustomFullConfig) hasCustomFullConfig = true;
             ents.append(ent);
         }
-        if (ents.size() > 1 && (hasExtracore || hasCustom || hasXray))
+        if (hasCustomFullConfig)
         {
-            error = "Cannot use Extracore or Custom or Xray configs in a chain";
+            error = "Custom full config profiles cannot be used in a chain; only custom outbound profiles are chainable";
+            return;
+        }
+        if (extracoreCount > 1)
+        {
+            error = "Only one extra-core profile is allowed in a chain";
+            return;
+        }
+        if (xrayFullConfigCount > 1)
+        {
+            error = "Only one custom Xray full config profile is allowed in a chain";
+            return;
+        }
+        if (extracoreCount > 0 && xrayFullConfigCount > 0)
+        {
+            error = "Extra-core and custom Xray full config profiles cannot be combined in a chain";
+            return;
+        }
+        if (xrayFullConfigCount > 0 && xrayHopCount > 0)
+        {
+            error = "Custom Xray full config cannot be combined with other Xray hops in a chain (only one Xray instance is supported at a time)";
+            return;
+        }
+        // A profile that uses an extra core must occupy the deepest detour
+        // slot (ents.last()) so its local socks server (127.0.0.1) is dialed
+        // directly. After this hop sing-box hands off to the extra core
+        // process and does no more hops.
+        if (extracoreCount == 1 && ents.size() > 1 && extracoreIdx != ents.size() - 1)
+        {
+            error = "Extra-core profiles can only be the final hop in a chain (top of the chain editor)";
+            return;
+        }
+        // Same constraint for custom Xray full config: traffic exits through
+        // its sing-box socks bridge, then user's Xray (running their full
+        // config) takes over.
+        if (xrayFullConfigCount == 1 && ents.size() > 1 && xrayFullConfigIdx != ents.size() - 1)
+        {
+            error = "Custom Xray full config can only be the final hop in a chain (top of the chain editor)";
+            return;
+        }
+        if (coreTransitions > 2) {
+            error = "Too many core transitions, the valid sequence is: (optional sing-box chain)->(optional xray chain)->(optional sing-box chain)";
         }
     }
 
@@ -653,16 +792,14 @@ namespace Configs {
         return {entID};
     }
 
-    void buildOutboundChain(std::shared_ptr<BuildSingBoxConfigContext> &ctx, const QList<int>& entIDs, const QString& prefix, bool includeProxy, bool link, int xrayPort = -1, int startSuffix = 0)
-    {
-        QList<std::shared_ptr<Profile>> ents;
-        entIDListtoEntList(entIDs, ents, ctx->error);
+    void buildSingboxChain(std::shared_ptr<BuildSingBoxConfigContext> &ctx, QList<std::shared_ptr<Profile>> &ents, const QString& prefix, bool includeProxy, bool link, int startSuffix = 0, bool markIngress = false) {
         for (int idx = 0; idx < ents.size(); idx++)
         {
             auto tag = prefix + "-" + Int2String(startSuffix + idx);
             QString nextTag;
             if (idx < ents.size() - 1) nextTag = prefix + "-" + Int2String(startSuffix + idx + 1);
             if (includeProxy && idx == 0) tag = "proxy";
+            if (markIngress && idx == 0) ctx->singIngressTags << tag;
             const auto& ent = ents[idx];
             auto [object, error] = ent->outbound->Build();
             if (!error.isEmpty())
@@ -672,20 +809,6 @@ namespace Configs {
             }
             object["tag"] = tag;
             if (!nextTag.isEmpty() && link) object["detour"] = nextTag;
-            if (ent->outbound->IsXray()) {
-                auto [xrayObj, xrayErr] = ent->outbound->BuildXray();
-                if (!xrayErr.isEmpty()) {
-                    ctx->error += xrayErr;
-                    return;
-                }
-                if (xrayPort == -1) xrayPort = MkPort();
-                QString xrayAuth = GetRandomString(32);
-                object["server_port"] = xrayPort;
-                object["username"] = xrayAuth;
-                object["password"] = xrayAuth;
-                xrayObj["tag"] = tag;
-                ctx->xrayOutbounds.append({xrayPort, xrayObj, xrayAuth});
-            }
             if (ent->outbound->IsEndpoint())
             {
                 ctx->endpoints.append(object);
@@ -697,9 +820,133 @@ namespace Configs {
         }
     }
 
+    void buildXrayChain(std::shared_ptr<BuildSingBoxConfigContext> &ctx, QList<std::shared_ptr<Profile>> &ents, const QString& prefix, bool includeProxy, bool link, int startSuffix = 0, coreBridgeConfig bridgeConfig = {}) {
+        for (int idx = 0; idx < ents.size(); idx++)
+        {
+            auto tag = prefix + "-" + Int2String(startSuffix + idx);
+            QString nextTag;
+            if (idx < ents.size() - 1 || bridgeConfig.needed) nextTag = prefix + "-" + Int2String(startSuffix + idx + 1);
+            if (includeProxy && idx == 0) tag = "proxy";
+            if (idx == 0) ctx->xrayIngressTags << tag;
+            const auto& ent = ents[idx];
+            auto [object, error] = ent->outbound->BuildXray();
+            if (!error.isEmpty())
+            {
+                ctx->error += error;
+                return;
+            }
+            object["tag"] = tag;
+            if (!nextTag.isEmpty() && link) object["proxySettings"] = QJsonObject{
+                {"tag", nextTag},
+                {"transportLayer", true}
+            };
+            ctx->xrayOutbounds.append(object);
+        }
+        if (bridgeConfig.needed) {
+            QJsonObject socksSettings = {
+                {"address", "127.0.0.1"},
+                {"port", bridgeConfig.port},
+                {"user", bridgeConfig.auth},
+                {"pass", bridgeConfig.auth},
+            };
+            QJsonObject socksOutbound = {
+                {"tag", prefix + "-" + Int2String(startSuffix + ents.size())},
+                {"protocol", "socks"},
+                {"settings", socksSettings}
+            };
+            ctx->xrayOutbounds.append(socksOutbound);
+        }
+    }
+
+    void buildOutboundChain(std::shared_ptr<BuildSingBoxConfigContext> &ctx, const QList<int>& entIDs, const QString& prefix, bool includeProxy, bool link, int singToXrayPort = -1, int xrayToSingPort = -1, int startSuffix = 0)
+    {
+        QList<std::shared_ptr<Profile>> ents;
+        entIDListtoEntList(ctx, entIDs, ents, ctx->error);
+        if (!ctx->error.isEmpty()) return;
+
+        // If the deepest hop is a custom Xray full config, allocate a bridge
+        // port the sing-box chain dials into and inject a matching socks
+        // inbound into the user's Xray config. The user's Xray runs as our
+        // Xray instance, so its full config becomes ctx->xrayConfig directly.
+        if (!ents.isEmpty() && ents.last()->outbound != nullptr && ents.last()->outbound->IsXrayFullConfig()) {
+            auto custom = ents.last()->Custom();
+            if (custom == nullptr) {
+                ctx->error = "Failed to cast to Custom for Xray full config hop";
+                return;
+            }
+            auto userXrayConfig = QString2QJsonObject(custom->config);
+            if (userXrayConfig.isEmpty()) {
+                ctx->error = "Custom Xray full config is not valid JSON";
+                return;
+            }
+            auto bridgePorts = MkManyPorts(1);
+            custom->bridgePort = bridgePorts[0];
+            custom->bridgeAuth = GetRandomString(32);
+
+            auto inbounds = userXrayConfig["inbounds"].toArray();
+            inbounds.prepend(QJsonObject{
+                {"tag", "throne-bridge"},
+                {"listen", "127.0.0.1"},
+                {"port", custom->bridgePort},
+                {"protocol", "socks"},
+                {"settings", QJsonObject{
+                    {"auth", "password"},
+                    {"udp", true},
+                    {"accounts", QJsonArray{
+                        QJsonObject{
+                            {"user", custom->bridgeAuth},
+                            {"pass", custom->bridgeAuth}
+                        }
+                    }}
+                }}
+            });
+            userXrayConfig["inbounds"] = inbounds;
+            ctx->buildConfigResult->xrayConfig = userXrayConfig;
+            ctx->buildConfigResult->isXrayNeeded = true;
+        }
+
+        QList<std::shared_ptr<Profile>> initialSingEnts;
+        QList<std::shared_ptr<Profile>> xrayEnts;
+        QList<std::shared_ptr<Profile>> tailingSingEnts;
+        for (const auto& ent : ents) {
+            if (ent->outbound->IsXray()) xrayEnts.append(ent);
+            else {
+                if (xrayEnts.isEmpty()) initialSingEnts.append(ent);
+                else tailingSingEnts.append(ent);
+            }
+        }
+        auto ports = MkManyPorts(2);
+        if (ctx->singToXrayTransitioned) {
+            coreBridgeConfig singToXrayBridgeConf = {
+                true, singToXrayPort == -1 ? ports[0] : singToXrayPort, GetRandomString(32)
+            };
+            ctx->singToXrayBridges << singToXrayBridgeConf;
+            auto bridgeEnt = ProfilesRepo::NewProfile("socks");
+            auto socksOutbound = bridgeEnt->Socks();
+            socksOutbound->username = singToXrayBridgeConf.auth;
+            socksOutbound->password = singToXrayBridgeConf.auth;
+            socksOutbound->server = "127.0.0.1";
+            socksOutbound->server_port = singToXrayBridgeConf.port;
+            initialSingEnts << bridgeEnt;
+        }
+        coreBridgeConfig xrayToSingBridgeConf;
+        if (ctx->xrayToSingTransitioned) {
+            xrayToSingBridgeConf = {true, xrayToSingPort == -1 ? ports[1] : xrayToSingPort, GetRandomString(32)};
+            ctx->xrayToSingBridges << xrayToSingBridgeConf;
+        }
+        if (!initialSingEnts.isEmpty()) {
+            buildSingboxChain(ctx, initialSingEnts, prefix, includeProxy, link, startSuffix);
+        }
+        if (!xrayEnts.isEmpty()) {
+            buildXrayChain(ctx, xrayEnts, prefix, includeProxy, link, startSuffix, xrayToSingBridgeConf);
+        }
+        if (!tailingSingEnts.isEmpty()) {
+            buildSingboxChain(ctx, tailingSingEnts, prefix, false, link, startSuffix + initialSingEnts.size(), true);
+        }
+    }
+
     void buildOutboundsSection(std::shared_ptr<BuildSingBoxConfigContext> &ctx) {
         // First, our own ent
-        bool noChain = ctx->ent->outbound->IsXray();
         QList<int> entIDs;
         auto group = Configs::dataManager->groupsRepo->GetGroup(ctx->ent->gid);
         if (group == nullptr)
@@ -707,7 +954,7 @@ namespace Configs {
             ctx->error = "No group found for ent, data is corrupted";
             return;
         }
-        if (group->landing_proxy_id >= 0 && !noChain) entIDs.prepend(group->landing_proxy_id);
+        if (group->landing_proxy_id >= 0) entIDs.prepend(group->landing_proxy_id);
         if (ctx->ent->type == "chain")
         {
             auto chain = ctx->ent->Chain();
@@ -721,7 +968,7 @@ namespace Configs {
         {
             entIDs.append(ctx->ent->id);
         }
-        if (group->front_proxy_id >= 0 && !noChain) entIDs.append(group->front_proxy_id);
+        if (group->front_proxy_id >= 0) entIDs.append(group->front_proxy_id);
         if (dataManager->settingsRepo->enable_warp) {
             entIDs.prepend(warpProfileID);
         }
@@ -729,11 +976,37 @@ namespace Configs {
 
         // Now, build the outbounds needed by the route profile
         int routeSuffix = 0;
-        for (const auto& group : ctx->buildPrerequisities->routingDeps->routeOutboundGroups) {
-            bool linked = group.size() > 1;
-            buildOutboundChain(ctx, group, "route", false, linked, -1, routeSuffix);
-            routeSuffix += group.size();
+        for (const auto& outboundGroup : ctx->buildPrerequisities->routingDeps->routeOutboundGroups) {
+            bool linked = outboundGroup.size() > 1;
+            buildOutboundChain(ctx, outboundGroup, "route", false, linked, -1, -1,  routeSuffix);
+            routeSuffix += outboundGroup.size();
         }
+
+        // Also add the needed socks inbound bridges
+        if (ctx->xrayToSingBridges.size() != ctx->singIngressTags.size()) {
+            ctx->error = "xray to sing-box bridges count does not match ingress tags count";
+            return;
+        }
+        QJsonArray inboundArr;
+        if (ctx->buildConfigResult->coreConfig.contains("inbounds")) {
+            inboundArr = ctx->buildConfigResult->coreConfig["inbounds"].toArray();
+        }
+        for (auto idx=0;idx<ctx->xrayToSingBridges.size();idx++) {
+            auto bridgeConf = ctx->xrayToSingBridges[idx];
+            QJsonObject userObj = {
+                {"username", bridgeConf.auth},
+                {"password", bridgeConf.auth}
+            };
+            QJsonObject socksBridge = {
+                {"type", "socks"},
+                {"tag", "bridge-"+ctx->singIngressTags[idx]},
+                {"listen", "127.0.0.1"},
+                {"listen_port", bridgeConf.port},
+                {"users", QJsonArray{userObj}}
+            };
+            inboundArr.append(socksBridge);
+        }
+        ctx->buildConfigResult->coreConfig["inbounds"] = inboundArr;
 
         // Add the direct outbound
         ctx->outbounds.append(QJsonObject{
@@ -849,6 +1122,20 @@ namespace Configs {
                     };
         }
 
+        // map ingress socks inbounds to their corresponding outbounds
+        if (ctx->xrayToSingBridges.size() != ctx->singIngressTags.size()) {
+            ctx->error = "xray to sing-box bridges count does not match ingress tags count";
+            return;
+        }
+        for (auto idx = 0; idx < ctx->xrayToSingBridges.size(); idx++) {
+            QJsonObject rule = {
+                {"inbound", "bridge-" + ctx->singIngressTags[idx]},
+                {"action", "route"},
+                {"outbound", ctx->singIngressTags[idx]},
+            };
+            routeRules.prepend(rule);
+        }
+
         // apply
         QJsonObject route;
         route["rules"] = routeRules;
@@ -900,7 +1187,6 @@ namespace Configs {
         ctx->buildConfigResult->isXrayNeeded = true;
         QJsonObject dnsObj;
         QJsonArray inbounds;
-        QJsonArray outbounds;
         QJsonArray routeRules;
         int dnsPort = dataManager->settingsRepo->core_dns_in_port;
 
@@ -923,35 +1209,41 @@ namespace Configs {
             };
         }
 
-        for (auto [port, outboundObj, auth] : ctx->xrayOutbounds) {
-            auto inboundTag = outboundObj["tag"].toString() + "-inbound";
+        if (ctx->xrayIngressTags.size() != ctx->singToXrayBridges.size()) {
+            ctx->error = "xray ingress tags size does not match bridge count!";
+            return;
+        }
+
+        for (int i = 0; i<ctx->xrayIngressTags.size(); i++) {
+            auto outboundTag = ctx->xrayIngressTags[i];
+            auto bridgeConf = ctx->singToXrayBridges[i];
+            auto inboundTag = outboundTag + "-" + "inbound";
             inbounds << QJsonObject{
                 {"tag", inboundTag},
                 {"listen", "127.0.0.1"},
-                {"port", port},
+                {"port", bridgeConf.port},
                 {"protocol", "socks"},
                 {"settings", QJsonObject{
                     {"auth", "password"},
                     {"udp", true},
                     {"accounts", QJsonArray{
                         QJsonObject{
-                            {"user", auth},
-                            {"pass", auth}
+                            {"user", bridgeConf.auth},
+                            {"pass", bridgeConf.auth}
                         }
                     }}
                 }}
             };
-            outbounds << outboundObj;
             routeRules << QJsonObject{
                 {"type", "field"},
                 {"inboundTag", QJsonArray{inboundTag}},
-                {"outboundTag", outboundObj["tag"].toString()}
+                {"outboundTag", outboundTag}
             };
         }
 
         // dnsRouting
         if (!ctx->forTest) {
-            outbounds << QJsonObject{
+            ctx->xrayOutbounds << QJsonObject{
                 {"tag", "direct"},
                 {"protocol", "freedom"},
             };
@@ -969,7 +1261,7 @@ namespace Configs {
         };
         ctx->buildConfigResult->xrayConfig["dns"] = dnsObj;
         ctx->buildConfigResult->xrayConfig["inbounds"] = inbounds;
-        ctx->buildConfigResult->xrayConfig["outbounds"] = outbounds;
+        ctx->buildConfigResult->xrayConfig["outbounds"] = ctx->xrayOutbounds;
         ctx->buildConfigResult->xrayConfig["routing"] = QJsonObject{
             {"domainStrategy", "AsIs"},
             {"rules", routeRules},
@@ -986,7 +1278,7 @@ namespace Configs {
                 res->error = "Corrupted data, needed custom ent, got nullptr";
                 return res;
             }
-            if (custom->type == "fullconfig")
+            if (custom->type == Custom::CustomFullConfig)
             {
                 res->coreConfig = custom->Build().object;
                 return res;
@@ -1090,10 +1382,20 @@ namespace Configs {
                 MW_show_log("Corrupted data in isValid, needed custom ent, got nullptr");
                 return false;
             }
-            if (custom->type == "fullconfig")
+            if (custom->type == Custom::CustomFullConfig)
             {
                 conf = QString2QJsonObject(custom->config);
                 fullConf = true;
+            }
+            if (custom->type == Custom::CustomXrayFullConfig)
+            {
+                // sing-box can't validate Xray-format configs; just check the
+                // user provided parseable JSON.
+                if (QString2QJsonObject(custom->config).isEmpty()) {
+                    MW_show_log("Custom Xray full config is not valid JSON");
+                    return false;
+                }
+                return true;
             }
         }
         if (!fullConf)
@@ -1141,17 +1443,38 @@ namespace Configs {
 
         int xrayPortIdx=0;
         int xrayCount=0;
+        int chainCount=0;
         for (const auto& proxy : profiles) {
             if (proxy->outbound->IsXray()) xrayCount++;
+            if (proxy->type == "chain") chainCount++;
         }
-        auto xrayPorts = MkManyPorts(xrayCount);
+        auto xrayPorts = MkManyPorts(xrayCount + 2*chainCount); // assume all chains transition twice and allocate port for them
 
         for (const auto& item : profiles)
         {
-            if (item->type == "extracore")
+            if (item->outbound != nullptr && item->outbound->IsExtraCore())
             {
-                MW_show_log("Skipping ExtraCore conf");
+                MW_show_log("Skipping extra-core conf");
                 continue;
+            }
+            if (item->outbound != nullptr && item->outbound->IsXrayFullConfig())
+            {
+                MW_show_log("Skipping custom Xray full config (cannot batch-test)");
+                continue;
+            }
+            if (item->type == "chain")
+            {
+                bool chainHasTerminal = false;
+                if (auto c = item->Chain(); c != nullptr) {
+                    for (int hopID : c->list) {
+                        auto hopEnt = Configs::dataManager->profilesRepo->GetProfile(hopID);
+                        if (hopEnt != nullptr && hopEnt->outbound != nullptr && (hopEnt->outbound->IsExtraCore() || hopEnt->outbound->IsXrayFullConfig())) { chainHasTerminal = true; break; }
+                    }
+                }
+                if (chainHasTerminal) {
+                    MW_show_log("Skipping chain with terminal (extra-core or Xray full config) hop (cannot test)");
+                    continue;
+                }
             }
             if (item->type == "tailscale")
             {
@@ -1172,7 +1495,7 @@ namespace Configs {
                     res->error = "Corrupted data in build test config";
                     return res;
                 }
-                if (custom->type == "fullconfig")
+                if (custom->type == Custom::CustomFullConfig)
                 {
                     auto obj = QString2QJsonObject(custom->config);
                     obj["inbounds"] = QJsonArray();
@@ -1186,9 +1509,18 @@ namespace Configs {
                 res->error = "Null group on profile, data is corrupted";
                 return res;
             }
-            if (group->landing_proxy_id >= 0 && !item->outbound->IsXray()) IDs.prepend(group->landing_proxy_id);
-            if (group->front_proxy_id >= 0 && !item->outbound->IsXray()) IDs.append(group->front_proxy_id);
-            buildOutboundChain(ctx, IDs, "proxy-" + Int2String(suffix), false, true, item->outbound->IsXray() ? xrayPorts[xrayPortIdx++] : -1);
+            if (group->landing_proxy_id >= 0) IDs.prepend(group->landing_proxy_id);
+            if (group->front_proxy_id >= 0) IDs.append(group->front_proxy_id);
+            int singToXrayPort = -1;
+            int xrayToSingPort = -1;
+            if (item->outbound->IsXray()) singToXrayPort = xrayPorts[xrayPortIdx++];
+            if (item->type == "chain") {
+                singToXrayPort = xrayPorts[xrayPortIdx++];
+                xrayToSingPort = xrayPorts[xrayPortIdx++];
+            }
+            ctx->singToXrayTransitioned = false;
+            ctx->xrayToSingTransitioned = false;
+            buildOutboundChain(ctx, IDs, "proxy-" + Int2String(suffix), false, true, singToXrayPort, xrayToSingPort);
             if (!ctx->error.isEmpty()) {
                 res->error = ctx->error;
                 return res;
@@ -1213,6 +1545,23 @@ namespace Configs {
                         {"strategy", Configs::dataManager->settingsRepo->default_domain_strategy},
                    }}
         };
+        // Also add the needed socks inbound bridges
+        QJsonArray inboundArr;
+        for (auto bridgeConf : ctx->xrayToSingBridges) {
+            QJsonObject userObj = {
+                {"username", bridgeConf.auth},
+                {"password", bridgeConf.auth}
+            };
+            QJsonObject socksBridge = {
+                {"type", "socks"},
+                {"tag", "bridge-"+Int2String(bridgeConf.port)},
+                {"listen", "127.0.0.1"},
+                {"listen_port", bridgeConf.port},
+                {"users", QJsonArray{userObj}}
+            };
+            inboundArr.append(socksBridge);
+        }
+        ctx->buildConfigResult->coreConfig["inbounds"] = inboundArr;
         res->coreConfig = ctx->buildConfigResult->coreConfig;
         res->xrayConfig = ctx->buildConfigResult->xrayConfig;
         res->isXrayNeeded = ctx->buildConfigResult->isXrayNeeded;

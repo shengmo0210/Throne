@@ -60,7 +60,6 @@ namespace Configs {
     }
 
     short isAdminCache = -1;
-    short hasNaiveCache = -1;
 
     bool isSetuidSet(const std::string& path) {
 #ifdef Q_OS_MACOS
@@ -95,19 +94,11 @@ namespace Configs {
 #endif
         isAdminCache = admin;
         return admin;
-    };
+    }
 
     QString GetBasePath() {
         if (Configs::dataManager->settingsRepo->flag_use_appdata) return QStandardPaths::writableLocation(
               QStandardPaths::AppConfigLocation);
         return qApp->applicationDirPath();
     }
-
-    bool HasNaive() {
-        if (hasNaiveCache >= 0) return hasNaiveCache;
-        bool ok;
-        auto hasNaive = API::defaultClient->CheckNaive(&ok);
-        if (ok) hasNaiveCache = hasNaive;
-        return ok && hasNaive;
-    };
 } // namespace Configs

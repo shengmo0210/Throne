@@ -127,14 +127,14 @@ RouteItem::RouteItem(QWidget *parent, const std::shared_ptr<Configs::RouteProfil
     ui->simple_block->hide();
     ui->simple_proxy->hide();
 
-    simpleDirect->setPlainText(chain->GetSimpleRules(Configs::direct));
+    simpleDirect->setPlainText(chain->GetSimpleRules(Configs::bypass));
     simpleBlock->setPlainText(chain->GetSimpleRules(Configs::block));
     simpleProxy->setPlainText(chain->GetSimpleRules(Configs::proxy));
 
     connect(ui->tabWidget->tabBar(), &QTabBar::currentChanged, this, [=, this]() {
         if (ui->tabWidget->tabBar()->currentIndex() == 1) {
             QString res;
-            res += chain->UpdateSimpleRules(simpleDirect->toPlainText(), Configs::direct);
+            res += chain->UpdateSimpleRules(simpleDirect->toPlainText(), Configs::bypass);
             res += chain->UpdateSimpleRules(simpleBlock->toPlainText(), Configs::block);
             res += chain->UpdateSimpleRules(simpleProxy->toPlainText(), Configs::proxy);
             if (!res.isEmpty()) {
@@ -152,7 +152,7 @@ RouteItem::RouteItem(QWidget *parent, const std::shared_ptr<Configs::RouteProfil
                 persistCurrentRuleAttrTabLabel();
             updateRouteItemsView();
             updateRuleSection();
-            simpleDirect->setPlainText(chain->GetSimpleRules(Configs::direct));
+            simpleDirect->setPlainText(chain->GetSimpleRules(Configs::bypass));
             simpleBlock->setPlainText(chain->GetSimpleRules(Configs::block));
             simpleProxy->setPlainText(chain->GetSimpleRules(Configs::proxy));
         }
@@ -272,7 +272,7 @@ void RouteItem::accept() {
     }
 
     QString res;
-    res += chain->UpdateSimpleRules(simpleDirect->toPlainText(), Configs::direct);
+    res += chain->UpdateSimpleRules(simpleDirect->toPlainText(), Configs::bypass);
     res += chain->UpdateSimpleRules(simpleBlock->toPlainText(), Configs::block);
     res += chain->UpdateSimpleRules(simpleProxy->toPlainText(), Configs::proxy);
     if (!res.isEmpty()) {

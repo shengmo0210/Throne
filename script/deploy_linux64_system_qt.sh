@@ -16,7 +16,6 @@ cd *${DEST_SUFFIX%-system-qt}
 tar xvzf artifacts.tgz -C ../../
 cd ../..
 cp deployment/${DEST_SUFFIX%-system-qt}/ThroneCore $DEST
-cp deployment/${DEST_SUFFIX%-system-qt}/libcronet.so $DEST
 rm -rf deployment/${DEST_SUFFIX%-system-qt}
 
 # handle debug info

@@ -27,6 +27,8 @@
 #include <QSemaphore>
 #include <QMutex>
 #include <QThreadPool>
+#include <QLocalServer>
+#include <QLocalSocket>
 
 #include "group/GroupSort.hpp"
 #include "include/global/GuiUtils.hpp"
@@ -175,7 +177,9 @@ private:
     QMutex speedtestRunning;
     std::atomic<bool> currentUnderTest = false;
     //
-    Configs_sys::CoreProcess *core_process;
+    Configs_sys::CoreProcess *core_process = nullptr;
+    QLocalServer *core_server = nullptr;
+    bool rpc_started = false;
     qint64 vpn_pid = 0;
     //
     bool qvLogAutoScoll = true;
@@ -243,6 +247,8 @@ private:
 
     QList<int> get_selected_or_group();
 
+    void set_system_proxy(bool mustDisable);
+
     void saveProfileFocusState();
 
     void restoreProfileFocusState();
@@ -281,7 +287,9 @@ private:
 
     // rpc
 
-    static void setup_rpc();
+    void setup_rpc(QLocalSocket *socket);
+
+    bool verify_core_pid(QLocalSocket *socket);
 
     void urltest_current_group(const QList<int>& profileIDs);
 

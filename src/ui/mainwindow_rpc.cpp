@@ -25,17 +25,22 @@
 
 using namespace API;
 
-void MainWindow::setup_rpc() {
-    // Setup Connection
+void MainWindow::setup_rpc(QLocalSocket *socket) {
+    // Replace old client (core restart case)
+    delete defaultClient;
+
     defaultClient = new Client(
         [=](const QString &errStr) {
             MW_show_log("[Error] Core: " + errStr);
         },
-        "127.0.0.1:" + Int2String(Configs::dataManager->settingsRepo->core_port));
+        socket);
 
-    // Looper
-    runOnNewThread([=] { Stats::trafficLooper->Loop(); });
-    runOnNewThread([=] {Stats::connection_lister->Loop(); });
+    // Loopers run for the lifetime of the app, start only once
+    if (!rpc_started) {
+        rpc_started = true;
+        runOnNewThread([=] { Stats::trafficLooper->Loop(); });
+        runOnNewThread([=] { Stats::connection_lister->Loop(); });
+    }
 }
 
 void MainWindow::runURLTest(const QString& config, const QString& xrayConfig, bool useDefault, const QStringList& outboundTags, const QMap<QString, int>& tag2entID, int entID) {
@@ -711,7 +716,7 @@ void MainWindow::profile_start(int _id) {
         req.disable_stats = Configs::dataManager->settingsRepo->disable_traffic_stats;
         req.xray_config = QJsonObject2QString(result->xrayConfig, true).toStdString();
         req.need_xray = !result->xrayConfig.isEmpty();
-        if (ent->type == "extracore")
+        if (!result->extraCoreData->path.isEmpty())
         {
             req.need_extra_process = true;
             req.extra_process_path = result->extraCoreData->path.toStdString();
@@ -750,7 +755,7 @@ void MainWindow::profile_start(int _id) {
                 });
                 return false;
             }
-            runOnUiThread([=,this] { MessageBoxWarning("LoadConfig return error", error); });
+            runOnUiThread([=] { MessageBoxWarning("LoadConfig return error", error); });
             return false;
         }
         //
@@ -761,6 +766,7 @@ void MainWindow::profile_start(int _id) {
 
         Configs::dataManager->settingsRepo->UpdateStartedId(ent->id);
         running = ent;
+        set_system_proxy(false);
 
         runOnUiThread([=, this] {
             refresh_status();
@@ -827,41 +833,12 @@ void MainWindow::profile_start(int _id) {
         }
         mu_starting.unlock();
         // cancel timeout
-        runOnUiThread([=,this] {
+        runOnUiThread([=] {
             restartMsgboxTimer->cancel();
             restartMsgboxTimer->deleteLater();
             restartMsgbox->deleteLater();
         });
     });
-}
-
-void MainWindow::set_spmode_system_proxy(bool enable, bool save) {
-    if (enable && Configs::dataManager->settingsRepo->disable_mixed_inbound) {
-        runOnUiThread([=] {
-           MessageBoxWarning("Invalid Operation", "Cannot set system proxy when mixed inbound is disabled.");
-        });
-        ui->checkBox_SystemProxy->setChecked(false);
-        return;
-    }
-    if (enable != Configs::dataManager->settingsRepo->spmode_system_proxy) {
-        if (enable) {
-            auto socks_port = Configs::dataManager->settingsRepo->inbound_socks_port;
-            SetSystemProxy(socks_port, socks_port, Configs::dataManager->settingsRepo->proxy_scheme);
-        } else {
-            ClearSystemProxy();
-        }
-    }
-
-    if (save) {
-        Configs::dataManager->settingsRepo->remember_spmode.removeAll("system_proxy");
-        if (enable && Configs::dataManager->settingsRepo->remember_enable) {
-            Configs::dataManager->settingsRepo->remember_spmode.append("system_proxy");
-        }
-        Configs::dataManager->settingsRepo->Save();
-    }
-
-    Configs::dataManager->settingsRepo->spmode_system_proxy = enable;
-    refresh_status();
 }
 
 void MainWindow::profile_stop(bool crash, bool block, bool manual) {
@@ -886,6 +863,7 @@ void MainWindow::profile_stop(bool crash, bool block, bool manual) {
                 return false;
             }
         }
+        set_system_proxy(true);
         return true;
     };
 
@@ -918,7 +896,6 @@ void MainWindow::profile_stop(bool crash, bool block, bool manual) {
         }
 
         if (manual) Configs::dataManager->settingsRepo->UpdateStartedId(-1919);
-        Configs::dataManager->settingsRepo->need_keep_vpn_off = false;
         running = nullptr;
 
         runOnUiThread([=, this, &restartMsgboxTimer, &restartMsgbox] {

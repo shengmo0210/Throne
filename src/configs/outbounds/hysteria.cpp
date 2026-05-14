@@ -67,7 +67,7 @@ namespace Configs {
         if (query.hasQueryItem("downmbps")) down_mbps = query.queryItemValue("downmbps").toInt();
         if (query.hasQueryItem("hop_interval")) hop_interval = query.queryItemValue("hop_interval");
         if (query.hasQueryItem("mport")) {
-            server_ports = portsToPorts(query.queryItemValue("mport").split(","));
+            server_ports = portsToPorts(query.queryItemValue("mport", QUrl::FullyDecoded).split(","));
         }
         
         tls->ParseFromLink(link);

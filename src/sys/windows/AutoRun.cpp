@@ -79,7 +79,8 @@ void enable_autorun() {
     QFile xmlFile(xmlFilePath);
     if (xmlFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
         QTextStream out(&xmlFile);
-        out.setEncoding(QStringConverter::Utf8);
+        out.setEncoding(QStringConverter::Utf16);
+        out.setGenerateByteOrderMark(true);
         out << xmlContent;
         xmlFile.close();
     }

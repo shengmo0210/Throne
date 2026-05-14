@@ -17,8 +17,6 @@ namespace Configs {
     bool isSetuidSet(const std::string& path);
 
     QString GetBasePath();
-
-    bool HasNaive();
 } // namespace Configs
 
 #define ROUTES_PREFIX_NAME QString("route_profiles")

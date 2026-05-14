@@ -34,15 +34,22 @@
 #ifdef Q_OS_WIN
 #include "3rdparty/WinCommander.hpp"
 #include "include/sys/windows/WinVersion.h"
+#include <Wbemidl.h>
 #else
 #ifdef Q_OS_LINUX
 #include "include/sys/linux/LinuxCap.h"
 #include <QDBusInterface>
 #include <QDBusReply>
-#include <QUuid>
+#include <sys/socket.h>
+#endif
+#ifdef Q_OS_MACOS
+#include <sys/socket.h>
+#include <sys/un.h>
 #endif
 #include <unistd.h>
 #endif
+
+#include <QUuid>
 
 #include <QClipboard>
 #include <QModelIndex>
@@ -73,6 +80,38 @@
 
 void UI_InitMainWindow() {
     mainwindow = new MainWindow;
+}
+
+bool MainWindow::verify_core_pid(QLocalSocket *socket) {
+    if (!core_process) return false;
+    qint64 expectedPid = core_process->processId();
+    if (expectedPid <= 0) return false;
+
+#if defined(Q_OS_LINUX)
+    struct ucred cred = {};
+    socklen_t credLen = sizeof(cred);
+    if (getsockopt(static_cast<int>(socket->socketDescriptor()), SOL_SOCKET, SO_PEERCRED, &cred, &credLen) == 0) {
+        return static_cast<qint64>(cred.pid) == expectedPid;
+    }
+    return false;
+#elif defined(Q_OS_MACOS)
+    pid_t pid = 0;
+    socklen_t pidLen = sizeof(pid);
+    if (getsockopt(static_cast<int>(socket->socketDescriptor()), SOL_LOCAL, LOCAL_PEERPID, &pid, &pidLen) == 0) {
+        return static_cast<qint64>(pid) == expectedPid;
+    }
+    return false;
+#elif defined(Q_OS_WIN)
+    ULONG pid = 0;
+    HANDLE hPipe = reinterpret_cast<HANDLE>(static_cast<qintptr>(socket->socketDescriptor()));
+    if (GetNamedPipeClientProcessId(hPipe, &pid)) {
+        return static_cast<qint64>(pid) == expectedPid;
+    }
+    return false;
+#else
+    Q_UNUSED(socket)
+    return true;
+#endif
 }
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWindow) {
@@ -169,27 +208,46 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     runOnNewThread([=, this] {GetDeviceDetails(); });
 
     // Prepare core
-    Configs::dataManager->settingsRepo->core_port = MkPort();
-    if (Configs::dataManager->settingsRepo->core_port <= 0) Configs::dataManager->settingsRepo->core_port = 19810;
-
     auto core_path = QApplication::applicationDirPath() + "/";
     core_path += "ThroneCore";
 
-    QStringList args;
-    args.push_back("-port");
-    args.push_back(Int2String(Configs::dataManager->settingsRepo->core_port));
-    if (Configs::dataManager->settingsRepo->log_level == "debug") args.push_back("-debug");
+    bool coreDebugMode = (Configs::dataManager->settingsRepo->log_level == "debug");
+
+    // Create IPC server with a random UUID name
+    Configs::dataManager->settingsRepo->core_socket_name =
+        "throneIPC-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
+    core_server = new QLocalServer(this);
+    core_server->setSocketOptions(QLocalServer::UserAccessOption);
+    if (!core_server->listen(Configs::dataManager->settingsRepo->core_socket_name)) {
+        qWarning() << "Failed to start IPC server:" << core_server->errorString();
+        qApp->quit();
+    }
+
+    connect(core_server, &QLocalServer::newConnection, this, [=, this]() {
+        auto socket = core_server->nextPendingConnection();
+        if (!verify_core_pid(socket)) {
+            MW_show_log("[Warn] IPC connection from unexpected process rejected");
+            socket->close();
+            socket->deleteLater();
+            return;
+        }
+        setup_rpc(socket);
+        auto profileId = core_process ? core_process->start_profile_when_core_is_up : -1;
+        if (core_process) core_process->start_profile_when_core_is_up = -1;
+        Configs::dataManager->settingsRepo->core_running = true;
+        MW_dialog_message("ExternalProcess", "CoreStarted," + Int2String(profileId));
+    });
 
     // Start core
+    auto socketFullName = core_server->fullServerName();
     runOnThread(
-        [=,this] {
-            core_process = new Configs_sys::CoreProcess(core_path, args);
-            // Remember last started
-            if (Configs::dataManager->settingsRepo->remember_enable && Configs::dataManager->settingsRepo->remember_id >= 0) {
-                core_process->start_profile_when_core_is_up = Configs::dataManager->settingsRepo->remember_id;
+        [=, this] {
+            core_process = new Configs_sys::CoreProcess(core_path, socketFullName, coreDebugMode);
+            if (Configs::dataManager->settingsRepo->remember_enable &&
+                Configs::dataManager->settingsRepo->remember_id >= 0) {
+                core_process->start_profile_when_core_is_up =
+                    Configs::dataManager->settingsRepo->remember_id;
             }
-            // Setup
-            setup_rpc();
             core_process->Start();
         },
         DS_cores);
@@ -541,7 +599,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     trayMenu->addAction(ui->actionAllow_LAN);
     trayMenu->addSeparator();
     // Select Server submenu (dynamically populated with pagination)
-    constexpr int PAGE_SIZE = 15;
+    constexpr int PAGE_CAPACITY = 15;
     trayServerMenu = new QMenu(tr("Select Server"));
     trayMenu->addMenu(trayServerMenu);
     connect(trayServerMenu, &QMenu::aboutToShow, this, [=, this]() {
@@ -569,10 +627,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
         }
         int totalProfiles = allProfileIDs.size();
         // Clamp page
-        int maxPage = qMax(0, (totalProfiles - 1) / PAGE_SIZE);
+        int maxPage = qMax(0, (totalProfiles - 1) / PAGE_CAPACITY);
         trayServerPage = qBound(0, trayServerPage, maxPage);
-        int offset = trayServerPage * PAGE_SIZE;
-        int end = qMin(offset + PAGE_SIZE, totalProfiles);
+        int offset = trayServerPage * PAGE_CAPACITY;
+        int end = qMin(offset + PAGE_CAPACITY, totalProfiles);
         // Show ↑ if not on first page
         if (trayServerPage > 0) {
             auto *upAction = trayServerMenu->addAction(QStringLiteral("\u2191"));
@@ -896,7 +954,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
         }
 
         ui->menu_export_config->setVisible(true);
-        if (profile->outbound->IsXray()) ui->actionExport_Xray_config->setVisible(true);
+        if (profile->outbound->IsXray() || profile->type == "chain") ui->actionExport_Xray_config->setVisible(true);
     });
     connect(ui->actionExport_Xray_config, &QAction::triggered, this, [=,this]() {
         auto ents = get_now_selected_list();
@@ -1226,10 +1284,10 @@ void MainWindow::dialog_message_impl(const QString &sender, const QString &info)
             profile_stop();
         } else if (info.startsWith("CoreStarted")) {
             Configs::IsAdmin(true);
-            if (Configs::dataManager->settingsRepo->remember_spmode.contains("system_proxy")) {
+            if (Configs::dataManager->settingsRepo->system_proxy_enabled) {
                 set_spmode_system_proxy(true, false);
             }
-            if (Configs::dataManager->settingsRepo->remember_spmode.contains("vpn") || Configs::dataManager->settingsRepo->flag_restart_tun_on) {
+            if (Configs::dataManager->settingsRepo->tun_mode_enabled || Configs::dataManager->settingsRepo->flag_restart_tun_on) {
                 set_spmode_vpn(true, false);
             }
             if (Configs::dataManager->settingsRepo->flag_dns_set) {
@@ -1379,7 +1437,7 @@ void MainWindow::on_menu_exit_triggered() {
             if (exit_reason == 3) arguments << "-flag_restart_tun_on";
             if (exit_reason == 4) arguments << "-flag_restart_dns_set";
 #ifdef Q_OS_WIN
-            WinCommander::runProcessElevated(program, arguments, "", WinCommander::SW_NORMAL, false);
+            WinCommander::runProcessElevated(program, arguments, "", 1, false);
 #else
             QProcess::startDetached(program, arguments);
 #endif
@@ -1462,6 +1520,39 @@ bool MainWindow::get_elevated_permissions(int reason) {
     return false;
 }
 
+void MainWindow::set_system_proxy(bool mustDisable) {
+    if (!mustDisable && Configs::dataManager->settingsRepo->spmode_system_proxy) {
+        auto socks_port = Configs::dataManager->settingsRepo->inbound_socks_port;
+        SetSystemProxy(socks_port, socks_port, Configs::dataManager->settingsRepo->proxy_scheme);
+    } else {
+        ClearSystemProxy();
+    }
+}
+
+void MainWindow::set_spmode_system_proxy(bool enable, bool save) {
+    if (enable && Configs::dataManager->settingsRepo->disable_mixed_inbound) {
+        runOnUiThread([=] {
+           MessageBoxWarning("Invalid Operation", "Cannot set system proxy when mixed inbound is disabled.");
+        });
+        ui->checkBox_SystemProxy->setChecked(false);
+        return;
+    }
+    Configs::dataManager->settingsRepo->spmode_system_proxy = enable;
+    if (running) {
+        set_system_proxy(false);
+        if (!enable && Configs::dataManager->settingsRepo->reset_proxy_on_disable_sp) {
+            profile_start(running->id);
+        }
+    }
+
+    if (save) {
+        Configs::dataManager->settingsRepo->system_proxy_enabled = enable && Configs::dataManager->settingsRepo->remember_enable;
+        Configs::dataManager->settingsRepo->Save();
+    }
+
+    refresh_status();
+}
+
 void MainWindow::set_spmode_vpn(bool enable, bool save) {
     if (enable == Configs::dataManager->settingsRepo->spmode_vpn) return;
 
@@ -1476,10 +1567,7 @@ void MainWindow::set_spmode_vpn(bool enable, bool save) {
     }
 
     if (save) {
-        Configs::dataManager->settingsRepo->remember_spmode.removeAll("vpn");
-        if (enable) {
-            Configs::dataManager->settingsRepo->remember_spmode.append("vpn");
-        }
+        Configs::dataManager->settingsRepo->tun_mode_enabled = enable;
         Configs::dataManager->settingsRepo->Save();
     }
 
@@ -2037,7 +2125,9 @@ void MainWindow::on_menu_copy_links_triggered() {
     QStringList links;
     auto ents = Configs::dataManager->profilesRepo->GetProfileBatch(entIDs);
     for (const auto &ent: ents) {
-        links += ent->outbound->ExportToLink();
+        auto link = ent->outbound->ExportToLink();
+        if (link.isEmpty()) link = ent->outbound->ExportJsonLink();
+        links += link;
     }
     if (links.length() == 0) return;
     QApplication::clipboard()->setText(links.join("\n"));

@@ -39,7 +39,7 @@ bool EditWireguard::onEnd() {
         if (item.trimmed().isEmpty()) continue;
         outbound->peer->reserved += item.trimmed().toInt();
     }
-    outbound->peer->persistent_keepalive = ui->persistent_keepalive->text().toInt();
+    outbound->peer->persistent_keepalive = ui->persistent_keepalive->text().trimmed().toInt();
     outbound->mtu = ui->mtu->text().toInt();
     outbound->system = ui->sys_ifc->isChecked();
     outbound->address = ui->local_addr->text().replace(" ", "").split(",");
