@@ -86,6 +86,7 @@ namespace Configs {
         QStringList log_include_regex = {};
         QStringList log_exclude_keyword = {};
         QStringList log_exclude_regex = {};
+        bool log_auto_scroll = true;
         bool start_minimal = false;
         int max_log_line = 200;
         QString splitter_state = "";

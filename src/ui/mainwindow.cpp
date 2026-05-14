@@ -179,21 +179,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
             new SyntaxHighlighter(isDarkMode(), qvLogDocument);
         }
     });
-    logAutoScrollCheckBox = new QCheckBox(tr("Auto-scroll log"), ui->stats_widget);
-    logAutoScrollCheckBox->setChecked(qvLogAutoScoll);
-    ui->stats_widget->setCornerWidget(logAutoScrollCheckBox, Qt::TopRightCorner);
-    auto updateAutoScrollVisibility = [=,this]() {
-        logAutoScrollCheckBox->setVisible(ui->stats_widget->currentWidget() == ui->Logs);
-    };
-    updateAutoScrollVisibility();
-    connect(ui->stats_widget, &QTabWidget::currentChanged, this, [=](int) { updateAutoScrollVisibility(); });
-    connect(logAutoScrollCheckBox, &QCheckBox::toggled, this, [=,this](bool checked) {
-        qvLogAutoScoll = checked;
-        if (checked) {
-            auto bar = ui->masterLogBrowser->verticalScrollBar();
-            bar->setValue(bar->maximum());
-        }
-    });
     MW_show_log = [=,this](const QString &log) {
         append_log(log);
     };
@@ -2689,7 +2674,7 @@ void MainWindow::log_process_loop() {
                 QTextBlock anchorBlock = ui->masterLogBrowser->cursorForPosition(QPoint(0, 0)).block();
                 int viewportOffset = bar->value() - static_cast<int>(layout->blockBoundingRect(anchorBlock).y());
                 FastAppendTextDocument(trimmedBatch, qvLogDocument);
-                if (qvLogAutoScoll) {
+                if (Configs::dataManager->settingsRepo->log_auto_scroll) {
                     bar->setValue(bar->maximum());
                 } else if (anchorBlock.isValid()) {
                     int newY = static_cast<int>(layout->blockBoundingRect(anchorBlock).y());

@@ -182,9 +182,7 @@ private:
     bool rpc_started = false;
     qint64 vpn_pid = 0;
     //
-    bool qvLogAutoScoll = true;
     QTextDocument *qvLogDocument = new QTextDocument(this);
-    QCheckBox *logAutoScrollCheckBox = nullptr;
     //
     QString title_error;
     int icon_status = -1;
