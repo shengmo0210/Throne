@@ -2415,6 +2415,9 @@ void MainWindow::on_menu_remove_invalid_triggered() {
      QMutex mu;
      QMutex access;
      int profileSize = currentGroup->Profiles().size();
+     // Empty group: no worker is ever queued, so the join-mutex would never be
+     // unlocked and the worker thread would block forever on mu.lock() below.
+     if (profileSize == 0) return;
      mu.lock();
      for (const auto& profileID : currentGroup->Profiles()) {
          auto profile = Configs::dataManager->profilesRepo->GetProfile(profileID);
