@@ -3,6 +3,7 @@
 #include <QString>
 
 bool Linux_HavePkexec();
+bool Linux_HaveSetcap();
 
 QString Linux_FindCapProgsExec(const QString &name);
 

@@ -1408,21 +1408,21 @@ bool MainWindow::get_elevated_permissions(int reason) {
         MessageBoxWarning(software_name, "Please install \"pkexec\" first.");
         return false;
     }
-    auto n = QMessageBox::warning(GetMessageBoxParent(), software_name, tr("Please give the core root privileges"), QMessageBox::Yes | QMessageBox::No);
+    if (!Linux_HaveSetcap()) {
+        MessageBoxWarning(software_name, "Please install \"libcap2-bin\" (or the equivalent package providing setcap) first.");
+        return false;
+    }
+    auto n = QMessageBox::warning(GetMessageBoxParent(), software_name, tr("Please grant the core network capabilities for TUN mode"), QMessageBox::Yes | QMessageBox::No);
     if (n == QMessageBox::Yes) {
         runOnNewThread([=,this]
         {
-            auto chownArgs = QString("root:root " + Configs::FindCoreRealPath());
-            auto ret = Linux_Run_Command("chown", chownArgs);
-            if (ret != 0) {
-                MW_show_log(QString("Failed to run chown %1 code is %2").arg(chownArgs).arg(ret));
-            }
-            auto chmodArgs = QString("u+s " + Configs::FindCoreRealPath());
-            ret = Linux_Run_Command("chmod", chmodArgs);
+            auto corePath = Configs::FindCoreRealPath();
+            auto setcapArgs = QString("cap_net_admin,cap_net_raw,cap_net_bind_service+eip ") + corePath;
+            auto ret = Linux_Run_Command("setcap", setcapArgs);
             if (ret == 0) {
                 StopVPNProcess();
             } else {
-                MW_show_log(QString("Failed to run chmod %1").arg(chmodArgs));
+                MW_show_log(QString("Failed to set capabilities on %1, exit code %2").arg(corePath).arg(ret));
             }
         });
         return false;
