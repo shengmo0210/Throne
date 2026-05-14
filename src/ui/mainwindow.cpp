@@ -216,7 +216,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     core_server = new QLocalServer(this);
     core_server->setSocketOptions(QLocalServer::UserAccessOption);
     if (!core_server->listen(Configs::dataManager->settingsRepo->core_socket_name)) {
-        qFatal() << "Failed to start IPC server:" << core_server->errorString();
+        qWarning() << "Failed to start IPC server:" << core_server->errorString();
+        qApp->quit();
     }
 
     connect(core_server, &QLocalServer::newConnection, this, [=, this]() {
@@ -1514,6 +1515,39 @@ bool MainWindow::get_elevated_permissions(int reason) {
     }
 #endif
     return false;
+}
+
+void MainWindow::set_system_proxy(bool mustDisable) {
+    if (!mustDisable && Configs::dataManager->settingsRepo->spmode_system_proxy) {
+        auto socks_port = Configs::dataManager->settingsRepo->inbound_socks_port;
+        SetSystemProxy(socks_port, socks_port, Configs::dataManager->settingsRepo->proxy_scheme);
+    } else {
+        ClearSystemProxy();
+    }
+}
+
+void MainWindow::set_spmode_system_proxy(bool enable, bool save) {
+    if (enable && Configs::dataManager->settingsRepo->disable_mixed_inbound) {
+        runOnUiThread([=] {
+           MessageBoxWarning("Invalid Operation", "Cannot set system proxy when mixed inbound is disabled.");
+        });
+        ui->checkBox_SystemProxy->setChecked(false);
+        return;
+    }
+    Configs::dataManager->settingsRepo->spmode_system_proxy = enable;
+    if (running) {
+        set_system_proxy(false);
+        if (!enable && Configs::dataManager->settingsRepo->reset_proxy_on_disable_sp) {
+            profile_start(running->id);
+        }
+    }
+
+    if (save) {
+        Configs::dataManager->settingsRepo->system_proxy_enabled = enable && Configs::dataManager->settingsRepo->remember_enable;
+        Configs::dataManager->settingsRepo->Save();
+    }
+
+    refresh_status();
 }
 
 void MainWindow::set_spmode_vpn(bool enable, bool save) {
