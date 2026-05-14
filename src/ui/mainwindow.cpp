@@ -172,15 +172,13 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     auto core_path = QApplication::applicationDirPath() + "/";
     core_path += "ThroneCore";
 
-    QStringList args;
-    args.push_back("-port");
-    args.push_back(Int2String(Configs::dataManager->settingsRepo->core_port));
-    if (Configs::dataManager->settingsRepo->log_level == "debug") args.push_back("-debug");
+    bool coreDebugMode = (Configs::dataManager->settingsRepo->log_level == "debug");
+    int corePort = Configs::dataManager->settingsRepo->core_port;
 
     // Start core
     runOnThread(
         [=,this] {
-            core_process = new Configs_sys::CoreProcess(core_path, args);
+            core_process = new Configs_sys::CoreProcess(core_path, corePort, coreDebugMode);
             // Remember last started
             if (Configs::dataManager->settingsRepo->remember_enable && Configs::dataManager->settingsRepo->remember_id >= 0) {
                 core_process->start_profile_when_core_is_up = Configs::dataManager->settingsRepo->remember_id;

@@ -18,9 +18,9 @@ namespace Configs_sys {
         waitForFinished();
     }
 
-    CoreProcess::CoreProcess(const QString &core_path, const QStringList &args) {
+    CoreProcess::CoreProcess(const QString &core_path, int port, bool debugMode)
+        : m_port(port), m_debugMode(debugMode) {
         program = core_path;
-        arguments = args;
 
         connect(this, &QProcess::readyReadStandardOutput, this, [&]() {
             auto log = readAllStandardOutput();
@@ -90,8 +90,11 @@ namespace Configs_sys {
         if (started) return;
         started = true;
 
-        setEnvironment(QProcessEnvironment::systemEnvironment().toStringList());
-        start(program, arguments);
+        auto env = QProcessEnvironment::systemEnvironment();
+        env.insert("THRONE_CORE_PORT", QString::number(m_port));
+        if (m_debugMode) env.insert("THRONE_CORE_DEBUG", "1");
+        setProcessEnvironment(env);
+        start(program, {});
     }
 
     void CoreProcess::Restart() {
