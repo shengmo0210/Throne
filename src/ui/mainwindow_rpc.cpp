@@ -25,17 +25,22 @@
 
 using namespace API;
 
-void MainWindow::setup_rpc() {
-    // Setup Connection
+void MainWindow::setup_rpc(QLocalSocket *socket) {
+    // Replace old client (core restart case)
+    delete defaultClient;
+
     defaultClient = new Client(
         [=](const QString &errStr) {
             MW_show_log("[Error] Core: " + errStr);
         },
-        "127.0.0.1:" + Int2String(Configs::dataManager->settingsRepo->core_port));
+        socket);
 
-    // Looper
-    runOnNewThread([=] { Stats::trafficLooper->Loop(); });
-    runOnNewThread([=] {Stats::connection_lister->Loop(); });
+    // Loopers run for the lifetime of the app, start only once
+    if (!rpc_started) {
+        rpc_started = true;
+        runOnNewThread([=] { Stats::trafficLooper->Loop(); });
+        runOnNewThread([=] { Stats::connection_lister->Loop(); });
+    }
 }
 
 void MainWindow::runURLTest(const QString& config, const QString& xrayConfig, bool useDefault, const QStringList& outboundTags, const QMap<QString, int>& tag2entID, int entID) {

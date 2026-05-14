@@ -18,23 +18,12 @@ namespace Configs_sys {
         waitForFinished();
     }
 
-    CoreProcess::CoreProcess(const QString &core_path, int port, bool debugMode)
-        : m_port(port), m_debugMode(debugMode) {
+    CoreProcess::CoreProcess(const QString &core_path, const QString &socketName, bool debugMode)
+        : m_socketName(socketName), m_debugMode(debugMode) {
         program = core_path;
 
         connect(this, &QProcess::readyReadStandardOutput, this, [&]() {
             auto log = readAllStandardOutput();
-            if (!Configs::dataManager->settingsRepo->core_running) {
-                if (log.contains("Core listening at")) {
-                    // The core really started
-                    Configs::dataManager->settingsRepo->core_running = true;
-                    MW_dialog_message("ExternalProcess", "CoreStarted," + Int2String(start_profile_when_core_is_up));
-                    start_profile_when_core_is_up = -1;
-                } else if (log.contains("failed to serve")) {
-                    // The core failed to start
-                    kill();
-                }
-            }
             if (log.contains("Extra process exited unexpectedly"))
             {
                 MW_show_log("Extra Core exited, stopping profile...");
@@ -91,7 +80,7 @@ namespace Configs_sys {
         started = true;
 
         auto env = QProcessEnvironment::systemEnvironment();
-        env.insert("THRONE_CORE_PORT", QString::number(m_port));
+        env.insert("THRONE_CORE_SOCKET", m_socketName);
         if (m_debugMode) env.insert("THRONE_CORE_DEBUG", "1");
         setProcessEnvironment(env);
         start(program, {});
