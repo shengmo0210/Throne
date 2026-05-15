@@ -451,7 +451,7 @@ QTabBar::tab:hover:!selected {
              <item>
               <widget class="QLabel" name="label_3">
                <property name="text">
-                <string notr="true">Sing-box Log level</string>
+                <string>Sing-box Log level</string>
                </property>
               </widget>
              </item>
