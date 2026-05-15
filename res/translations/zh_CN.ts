@@ -2777,6 +2777,10 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
         <translation>点击“按出站排序”</translation>
     </message>
     <message>
+        <source>Auto-scroll log</source>
+        <translation>自动滚动日志</translation>
+    </message>
+    <message>
         <source>Select Server</source>
         <translation>选择服务器</translation>
     </message>

@@ -23,6 +23,7 @@
 #include <QProcess>
 #include <QTextDocument>
 #include <QShortcut>
+#include <QCheckBox>
 #include <QSemaphore>
 #include <QMutex>
 #include <QThreadPool>
@@ -182,7 +183,6 @@ private:
     QMutex defaultClientMutex;
     qint64 vpn_pid = 0;
     //
-    bool qvLogAutoScoll = true;
     QTextDocument *qvLogDocument = new QTextDocument(this);
     //
     QString title_error;

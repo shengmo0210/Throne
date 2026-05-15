@@ -86,6 +86,7 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
 
     // Logging
     ui->max_log_line->setText(QString::number(Configs::dataManager->settingsRepo->max_log_line));
+    D_LOAD_BOOL(log_auto_scroll)
     ui->log_level->setCurrentText(Configs::dataManager->settingsRepo->log_level);
     ui->xray_loglevel->setCurrentText(Configs::dataManager->settingsRepo->xray_log_level);
     ui->enable_log_include->setChecked(Configs::dataManager->settingsRepo->log_enable_include);
@@ -303,6 +304,7 @@ void DialogBasicSettings::accept() {
     Configs::dataManager->settingsRepo->xray_log_level = ui->xray_loglevel->currentText();
     Configs::dataManager->settingsRepo->log_enable_include = ui->enable_log_include->isChecked();
     Configs::dataManager->settingsRepo->log_enable_exclude = ui->enable_log_exclude->isChecked();
+    D_SAVE_BOOL(log_auto_scroll)
     Configs::dataManager->settingsRepo->log_include_keyword = SplitAndTrim(ui->log_include_keyword->toPlainText(), "\n", false);
     Configs::dataManager->settingsRepo->log_exclude_keyword = SplitAndTrim(ui->log_exclude_keyword->toPlainText(), "\n", false);
 

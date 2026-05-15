@@ -179,18 +179,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
             new SyntaxHighlighter(isDarkMode(), qvLogDocument);
         }
     });
-    connect(ui->masterLogBrowser->verticalScrollBar(), &QSlider::valueChanged, this, [=,this](int value) {
-        if (ui->masterLogBrowser->verticalScrollBar()->maximum() == value)
-            qvLogAutoScoll = true;
-        else
-            qvLogAutoScoll = false;
-    });
-    connect(ui->masterLogBrowser, &QTextBrowser::textChanged, this, [=,this]() {
-        if (!qvLogAutoScoll)
-            return;
-        auto bar = ui->masterLogBrowser->verticalScrollBar();
-        bar->setValue(bar->maximum());
-    });
     MW_show_log = [=,this](const QString &log) {
         append_log(log);
     };
@@ -2680,8 +2668,21 @@ void MainWindow::log_process_loop() {
         logMutex.unlock();
 
         if (!batchToPrint.isEmpty()) {
-            runOnUiThread([=, this] {
-               FastAppendTextDocument(batchToPrint.trimmed(), qvLogDocument);
+            QString trimmedBatch = batchToPrint.trimmed();
+            runOnUiThread([trimmedBatch = std::move(trimmedBatch), this] {
+                auto bar = ui->masterLogBrowser->verticalScrollBar();
+                auto layout = qvLogDocument->documentLayout();
+                // Anchor to the block at the top of the viewport; if trim shifts its
+                // document-Y afterwards, we replay the original sub-block offset.
+                QTextBlock anchorBlock = ui->masterLogBrowser->cursorForPosition(QPoint(0, 0)).block();
+                int viewportOffset = bar->value() - static_cast<int>(layout->blockBoundingRect(anchorBlock).y());
+                FastAppendTextDocument(trimmedBatch, qvLogDocument);
+                if (Configs::dataManager->settingsRepo->log_auto_scroll) {
+                    bar->setValue(bar->maximum());
+                } else if (anchorBlock.isValid()) {
+                    int newY = static_cast<int>(layout->blockBoundingRect(anchorBlock).y());
+                    bar->setValue(newY + viewportOffset);
+                }
             });
         }
     }

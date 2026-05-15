@@ -50,6 +50,7 @@ namespace Configs {
             {"skip_delete_confirmation",      &skip_delete_confirmation},
             {"log_enable_include",            &log_enable_include},
             {"log_enable_exclude",            &log_enable_exclude},
+            {"log_auto_scroll",               &log_auto_scroll},
             {"enable_warp",                   &enable_warp},
             {"enable_dns_routing",            &enable_dns_routing},
             {"inbound_auth",                  &inbound_auth},

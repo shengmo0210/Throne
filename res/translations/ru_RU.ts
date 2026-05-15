@@ -2694,6 +2694,10 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
         <translation>Добавить профиль из файла</translation>
     </message>
     <message>
+        <source>Auto-scroll log</source>
+        <translation>Авто-скролл логов</translation>
+    </message>
+    <message>
         <source>Select Server</source>
         <translation>Выбрать сервер</translation>
     </message>
