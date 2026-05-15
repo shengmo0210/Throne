@@ -10,7 +10,7 @@ class QLocalSocket;
 namespace API {
     class Client {
     public:
-        explicit Client(std::function<void(const QString &)> onError, QLocalSocket *socket);
+        explicit Client(QLocalSocket *socket);
 
         ~Client();
 
@@ -51,7 +51,6 @@ namespace API {
     private:
         class LocalSocketChannel;
         std::unique_ptr<LocalSocketChannel> channel;
-        std::function<void(const QString &)> onError;
     };
 
     inline Client *defaultClient;

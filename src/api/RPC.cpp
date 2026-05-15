@@ -205,16 +205,15 @@ namespace API {
 
     Client::~Client() = default;
 
-    Client::Client(std::function<void(const QString &)> onError, QLocalSocket *socket) {
+    Client::Client(QLocalSocket *socket) {
         this->channel = std::make_unique<LocalSocketChannel>(socket);
-        this->onError = std::move(onError);
     }
 
 #define CALL_OK 0
 
 #define NOT_OK      \
     *rpcOK = false; \
-    onError(QString("IPC call failed (code %1)\n").arg(status));
+    MW_show_log(QString("IPC call failed (code %1)\n").arg(status));
 
     QString Client::Start(bool *rpcOK, const libcore::LoadConfigReq &request) {
         libcore::ErrorResp reply;

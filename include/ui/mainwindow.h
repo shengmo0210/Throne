@@ -179,6 +179,7 @@ private:
     Configs_sys::CoreProcess *core_process = nullptr;
     QLocalServer *core_server = nullptr;
     bool rpc_started = false;
+    QMutex defaultClientMutex;
     qint64 vpn_pid = 0;
     //
     bool qvLogAutoScoll = true;

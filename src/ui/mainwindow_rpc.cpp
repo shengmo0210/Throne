@@ -27,13 +27,10 @@ using namespace API;
 
 void MainWindow::setup_rpc(QLocalSocket *socket) {
     // Replace old client (core restart case)
-    delete defaultClient;
-
-    defaultClient = new Client(
-        [=](const QString &errStr) {
-            MW_show_log("[Error] Core: " + errStr);
-        },
-        socket);
+    QMutexLocker lock(&defaultClientMutex);
+    auto oldClientPtr = defaultClient;
+    defaultClient = new Client(socket);
+    delete oldClientPtr;
 
     // Loopers run for the lifetime of the app, start only once
     if (!rpc_started) {
