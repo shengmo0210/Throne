@@ -722,7 +722,6 @@ void MainWindow::profile_start(int _id) {
             req.extra_process_path = result->extraCoreData->path.toStdString();
             req.extra_process_args = result->extraCoreData->args.toStdString();
             req.extra_process_conf = result->extraCoreData->config.toStdString();
-            req.extra_process_conf_dir = result->extraCoreData->configDir.toStdString();
             req.extra_no_out = result->extraCoreData->noLog;
         }
         //
