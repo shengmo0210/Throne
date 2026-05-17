@@ -120,8 +120,8 @@ namespace Configs {
         bool use_mozilla_certs = false;
 
         // Remember
-        bool system_proxy_enabled = false;
-        bool tun_mode_enabled = false;
+        bool remember_system_proxy = false;
+        bool remember_tun = false;
         int remember_id = -1919;
         bool remember_enable = false;
         bool windows_set_admin = false;

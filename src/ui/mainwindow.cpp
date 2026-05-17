@@ -1269,10 +1269,10 @@ void MainWindow::dialog_message_impl(const QString &sender, const QString &info)
             profile_stop();
         } else if (info.startsWith("CoreStarted")) {
             Configs::IsAdmin(true);
-            if (Configs::dataManager->settingsRepo->system_proxy_enabled) {
+            if (Configs::dataManager->settingsRepo->remember_system_proxy) {
                 set_spmode_system_proxy(true, false);
             }
-            if (Configs::dataManager->settingsRepo->tun_mode_enabled || Configs::dataManager->settingsRepo->flag_restart_tun_on) {
+            if (Configs::dataManager->settingsRepo->remember_tun || Configs::dataManager->settingsRepo->flag_restart_tun_on) {
                 set_spmode_vpn(true, false);
             }
             if (Configs::dataManager->settingsRepo->flag_dns_set) {
@@ -1342,24 +1342,30 @@ void MainWindow::on_menu_hotkey_settings_triggered() {
 
 void MainWindow::on_commitDataRequest() {
     qDebug() << "Start of data save";
-    //
-    Configs::dataManager->settingsRepo->mainWindowGeometry = this->saveGeometry().toBase64(QByteArray::Base64Encoding);
+
+    auto* settings = Configs::dataManager->settingsRepo.get();
+
+    settings->mainWindowGeometry = this->saveGeometry().toBase64(QByteArray::Base64Encoding);
     if (!isMaximized()) {
-        auto olds = Configs::dataManager->settingsRepo->mw_size;
         auto news = QString("%1x%2").arg(size().width()).arg(size().height());
-        if (olds != news) {
-            Configs::dataManager->settingsRepo->mw_size = news;
-        }
+        if (settings->mw_size != news) settings->mw_size = news;
     }
-    //
-    Configs::dataManager->settingsRepo->splitter_state = ui->splitter->saveState().toBase64();
-    //
-    auto last_id = Configs::dataManager->settingsRepo->started_id;
-    if (Configs::dataManager->settingsRepo->remember_enable && last_id >= 0) {
-        Configs::dataManager->settingsRepo->remember_id = last_id;
+    settings->splitter_state = ui->splitter->saveState().toBase64();
+
+    // Snapshot the live app state on exit so "remember last proxy" restores it
+    // on the next launch. Capturing it here, rather than when each toggle
+    // happens, makes the result independent of the order in which the user
+    // toggled the proxy/tun modes vs. the remember option itself.
+    if (settings->remember_enable) {
+        if (settings->started_id >= 0) settings->remember_id = settings->started_id;
+        settings->remember_system_proxy = settings->spmode_system_proxy;
+        settings->remember_tun = settings->spmode_vpn;
+    } else {
+        settings->remember_system_proxy = false;
+        settings->remember_tun = false;
     }
-    //
-    Configs::dataManager->settingsRepo->Save();
+
+    settings->Save();
     qDebug() << "End of data save";
 }
 
@@ -1531,7 +1537,6 @@ void MainWindow::set_spmode_system_proxy(bool enable, bool save) {
     }
 
     if (save) {
-        Configs::dataManager->settingsRepo->system_proxy_enabled = enable && Configs::dataManager->settingsRepo->remember_enable;
         Configs::dataManager->settingsRepo->Save();
     }
 
@@ -1552,7 +1557,6 @@ void MainWindow::set_spmode_vpn(bool enable, bool save) {
     }
 
     if (save) {
-        Configs::dataManager->settingsRepo->tun_mode_enabled = enable;
         Configs::dataManager->settingsRepo->Save();
     }
 
