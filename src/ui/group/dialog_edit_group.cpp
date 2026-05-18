@@ -46,7 +46,16 @@ DialogEditGroup::DialogEditGroup(const std::shared_ptr<Configs::Group> &ent, QWi
         }
     }
 
-    auto proxyList = Configs::dataManager->profilesRepo->GetAllProfileIDNameMapped();
+    QList<std::pair<int, QString>> proxyList;
+    auto groupIDs = Configs::dataManager->groupsRepo->GetGroupsTabOrder();
+    for (auto groupID: groupIDs) {
+        auto group = Configs::dataManager->groupsRepo->GetGroup(groupID);
+        if (!group) continue;
+        auto profileIdName = Configs::dataManager->profilesRepo->GetProfileIDNameMappedBatch(group->Profiles());
+        for (const auto&[id, name] : profileIdName) {
+            proxyList << std::make_pair(id, QString("[" + group->name + "] ") + name);
+        }
+    }
     QStringList proxyNameList;
     ui->front_proxy->blockSignals(true);
     ui->landing_proxy->blockSignals(true);
@@ -134,7 +143,9 @@ void DialogEditGroup::accept() {
 QString DialogEditGroup::get_proxy_name(int id) {
     if (id == -1) return "None";
     if (auto profile = Configs::dataManager->profilesRepo->GetProfile(id)) {
-        return profile->name;
+        auto group = Configs::dataManager->groupsRepo->GetGroup(profile->gid);
+        if (group == nullptr) return "INVALID";
+        return QString("[" + group->name + "] ") + profile->name;
     }
     return "INVALID";
 }

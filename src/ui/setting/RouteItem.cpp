@@ -1,6 +1,6 @@
 #include "include/ui/setting/RouteItem.h"
-#include "include/api/RPC.h"
 #include "include/database/ProfilesRepo.h"
+#include "include/database/GroupsRepo.h"
 #include "include/global/Configs.hpp"
 
 #include <QComboBox>
@@ -75,12 +75,17 @@ RouteItem::RouteItem(QWidget *parent, const std::shared_ptr<Configs::RouteProfil
     }
 
     outbounds = {"proxy", "direct"};
-    auto outboundIdNamePairs = Configs::dataManager->profilesRepo->GetAllProfileIDNameMapped();
     outboundMap[0] = -1;
     outboundMap[1] = -2;
-    for (const auto& item: outboundIdNamePairs) {
-        outboundMap[outboundMap.size()] = item.first;
-        outbounds << item.second;
+    auto groupIDs = Configs::dataManager->groupsRepo->GetGroupsTabOrder();
+    for (auto groupID : groupIDs) {
+        auto group = Configs::dataManager->groupsRepo->GetGroup(groupID);
+        if (!group) continue;
+        auto outboundIdNamePairs = Configs::dataManager->profilesRepo->GetProfileIDNameMappedBatch(group->Profiles());
+        for (const auto& item: outboundIdNamePairs) {
+            outboundMap[outboundMap.size()] = item.first;
+            outbounds << QString("[" + group->name + "] ") + item.second;
+        }
     }
 
     for (const auto& item : ruleSetMap) {
