@@ -178,6 +178,7 @@ private:
     std::atomic<bool> currentUnderTest = false;
     //
     Configs_sys::CoreProcess *core_process = nullptr;
+    QMutex coreProcessMutex; // serializes core_process init (DS_cores) vs IPC newConnection (UI)
     QLocalServer *core_server = nullptr;
     bool rpc_started = false;
     QMutex defaultClientMutex;

@@ -82,6 +82,7 @@ void UI_InitMainWindow() {
     mainwindow = new MainWindow;
 }
 
+// Caller must hold coreProcessMutex (reads core_process lock-free by design).
 bool MainWindow::verify_core_pid(QLocalSocket *socket) {
     if (!core_process) return false;
     qint64 expectedPid = core_process->processId();
@@ -210,15 +211,23 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
 
     connect(core_server, &QLocalServer::newConnection, this, [=, this]() {
         auto socket = core_server->nextPendingConnection();
-        if (!verify_core_pid(socket)) {
-            MW_show_log("[Warn] IPC connection from unexpected process rejected");
-            socket->close();
-            socket->deleteLater();
-            return;
+        int profileId = -1;
+        {
+            // Hold coreProcessMutex so we never observe a half-published
+            // core_process while DS_cores is still constructing/starting it.
+            QMutexLocker lock(&coreProcessMutex);
+            if (!verify_core_pid(socket)) {
+                MW_show_log("[Warn] IPC connection from unexpected process rejected");
+                socket->close();
+                socket->deleteLater();
+                return;
+            }
+            if (core_process) {
+                profileId = core_process->start_profile_when_core_is_up;
+                core_process->start_profile_when_core_is_up = -1;
+            }
         }
         setup_rpc(socket);
-        auto profileId = core_process ? core_process->start_profile_when_core_is_up : -1;
-        if (core_process) core_process->start_profile_when_core_is_up = -1;
         Configs::dataManager->settingsRepo->core_running = true;
         MW_dialog_message("ExternalProcess", "CoreStarted," + Int2String(profileId));
     });
@@ -227,6 +236,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     auto socketFullName = core_server->fullServerName();
     runOnThread(
         [=, this] {
+            QMutexLocker lock(&coreProcessMutex);
             core_process = new Configs_sys::CoreProcess(core_path, socketFullName, coreDebugMode);
             if (Configs::dataManager->settingsRepo->remember_enable &&
                 Configs::dataManager->settingsRepo->remember_id >= 0) {
@@ -236,15 +246,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
             core_process->Start();
         },
         DS_cores);
-
-#ifdef Q_OS_LINUX
-    for (int i=0;i<20;i++)
-    {
-        QThread::msleep(100);
-        if (Configs::dataManager->settingsRepo->core_running) break;
-    }
-    if (!Configs::dataManager->settingsRepo->core_running) qDebug() << "[Warn] Core is taking too much time to start";
-#endif
 
     if (!Configs::dataManager->settingsRepo->font.isEmpty()) {
         auto font = qApp->font();
