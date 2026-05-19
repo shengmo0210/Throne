@@ -26,6 +26,8 @@ namespace Configs {
         }
         
         packet_encoding = GetQueryValue(query, "packetEncoding", "xudp");
+        if (!Configs::vPacketEncoding.contains(packet_encoding)) packet_encoding = "";
+
         multiplex->ParseFromLink(link);
 
         return !(uuid.isEmpty() || server.isEmpty());
@@ -50,7 +52,7 @@ namespace Configs {
         outbound::ParseFromClash(object);
         uuid = QString::fromStdString(object.uuid);
         if (!object.flow.empty()) flow = QString::fromStdString(object.flow);
-        if (!object.packet_encoding.empty()) packet_encoding = QString::fromStdString(object.packet_encoding);
+        packet_encoding = QString::fromStdString(object.packet_encoding);
 
         tls->ParseFromClash(object);
         transport->ParseFromClash(object);
@@ -75,7 +77,7 @@ namespace Configs {
         mergeUrlQuery(query, transport->ExportToLink());
         mergeUrlQuery(query, multiplex->ExportToLink());
         
-        if (!packet_encoding.isEmpty()) query.addQueryItem("packetEncoding", packet_encoding);
+        query.addQueryItem("packetEncoding", packet_encoding.isEmpty() ? "none" : packet_encoding);
         
         if (!query.isEmpty()) url.setQuery(query);
         return url.toString(QUrl::FullyEncoded);
@@ -88,7 +90,7 @@ namespace Configs {
         mergeJsonObjects(object, outbound::ExportToJson());
         if (!uuid.isEmpty()) object["uuid"] = uuid;
         if (!flow.isEmpty()) object["flow"] = flow;
-        if (!packet_encoding.isEmpty()) object["packet_encoding"] = packet_encoding;
+        object["packet_encoding"] = packet_encoding;
         if (auto tlsObj = tls->ExportToJson(); !tlsObj.isEmpty()) object["tls"] = tlsObj;
         if (auto transportObj = transport->ExportToJson(); !transportObj.isEmpty()) object["transport"] = transportObj;
         if (auto muxObj = multiplex->ExportToJson(); !muxObj.isEmpty()) object["multiplex"] = muxObj;
@@ -102,7 +104,7 @@ namespace Configs {
         mergeJsonObjects(object, outbound::Build().object);
         if (!uuid.isEmpty()) object["uuid"] = uuid;
         if (!flow.isEmpty()) object["flow"] = flow;
-        if (!packet_encoding.isEmpty()) object["packet_encoding"] = packet_encoding;
+        object["packet_encoding"] = packet_encoding;
         if (auto tlsObj = tls->Build().object; !tlsObj.isEmpty()) object["tls"] = tlsObj;
         if (auto transportObj = transport->Build().object; !transportObj.isEmpty()) object["transport"] = transportObj;
         if (auto muxObj = multiplex->Build().object; !muxObj.isEmpty()) object["multiplex"] = muxObj;

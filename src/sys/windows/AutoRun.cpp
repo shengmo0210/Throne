@@ -79,7 +79,8 @@ void enable_autorun() {
     QFile xmlFile(xmlFilePath);
     if (xmlFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
         QTextStream out(&xmlFile);
-        out.setEncoding(QStringConverter::Utf8);
+        out.setEncoding(QStringConverter::Utf16);
+        out.setGenerateByteOrderMark(true);
         out << xmlContent;
         xmlFile.close();
     }
@@ -147,7 +148,7 @@ void AutoRun_FixPrivilegeIfNeeded() {
     if (process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0) {
         QString output = QString::fromLocal8Bit(process.readAllStandardOutput());
         if (!output.contains("xml")) return;
-        if (!output.contains(runLevel)) AutoRun_SetEnabled(true);
+        if (runLevel == "HighestAvailable" && !output.contains("HighestAvailable") || runLevel == "LeastPrivilege" && output.contains("HighestAvailable")) AutoRun_SetEnabled(true);
     }
 }
 

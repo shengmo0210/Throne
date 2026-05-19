@@ -68,6 +68,7 @@ namespace Configs {
         if (query.hasQueryItem("ech_enabled")) enabled = query.queryItemValue("ech_enabled") == "true";
         if (query.hasQueryItem("ech_config")) config = query.queryItemValue("ech_config").split(",");
         if (query.hasQueryItem("ech_config_path")) config_path = query.queryItemValue("ech_config_path");
+        if (query.hasQueryItem("ech_server_name")) serverName = query.queryItemValue("ech_server_name");
         return true;
     }
     bool ECH::ParseFromJson(const QJsonObject& object)
@@ -78,6 +79,7 @@ namespace Configs {
             config = QJsonArray2QListString(object["config"].toArray());
         }
         if (object.contains("config_path")) config_path = object["config_path"].toString();
+        if (object.contains("query_server_name")) serverName = object["query_server_name"].toString();
         return true;
     }
     QString ECH::ExportToLink()
@@ -87,6 +89,7 @@ namespace Configs {
         query.addQueryItem("ech_enabled", "true");
         if (!config.isEmpty()) query.addQueryItem("ech_config", config.join(","));
         if (!config_path.isEmpty()) query.addQueryItem("ech_config_path", config_path);
+        if (!serverName.isEmpty()) query.addQueryItem("ech_server_name", serverName);
         return query.toString();
     }
     QJsonObject ECH::ExportToJson()
@@ -98,6 +101,7 @@ namespace Configs {
             object["config"] = QListStr2QJsonArray(config);
         }
         if (!config_path.isEmpty()) object["config_path"] = config_path;
+        if (!serverName.isEmpty()) object["query_server_name"] = serverName;
         return object;
     }
     BuildResult ECH::Build()

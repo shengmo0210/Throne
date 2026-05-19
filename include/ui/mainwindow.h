@@ -23,9 +23,12 @@
 #include <QProcess>
 #include <QTextDocument>
 #include <QShortcut>
+#include <QCheckBox>
 #include <QSemaphore>
 #include <QMutex>
 #include <QThreadPool>
+#include <QLocalServer>
+#include <QLocalSocket>
 
 #include "group/GroupSort.hpp"
 #include "include/global/GuiUtils.hpp"
@@ -174,10 +177,13 @@ private:
     QMutex speedtestRunning;
     std::atomic<bool> currentUnderTest = false;
     //
-    Configs_sys::CoreProcess *core_process;
+    Configs_sys::CoreProcess *core_process = nullptr;
+    QMutex coreProcessMutex; // serializes core_process init (DS_cores) vs IPC newConnection (UI)
+    QLocalServer *core_server = nullptr;
+    bool rpc_started = false;
+    QMutex defaultClientMutex;
     qint64 vpn_pid = 0;
     //
-    bool qvLogAutoScoll = true;
     QTextDocument *qvLogDocument = new QTextDocument(this);
     //
     QString title_error;
@@ -241,6 +247,12 @@ private:
 
     QList<int> get_selected_or_group();
 
+    void set_system_proxy(bool mustDisable);
+
+    void saveProfileFocusState();
+
+    void restoreProfileFocusState();
+
     void clearUnavailableProfiles(bool confirm = true, QList<int> profileIDs = {});
 
     void dialog_message_impl(const QString &sender, const QString &info);
@@ -275,7 +287,9 @@ private:
 
     // rpc
 
-    static void setup_rpc();
+    void setup_rpc(QLocalSocket *socket);
+
+    bool verify_core_pid(QLocalSocket *socket);
 
     void urltest_current_group(const QList<int>& profileIDs);
 

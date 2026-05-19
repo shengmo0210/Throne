@@ -39,6 +39,8 @@ namespace Configs
 
         QString DisplayType() override { return "ExtraCore"; };
 
+        bool IsExtraCore() override { return true; }
+
         BuildResult Build() override
         {
             QJsonObject socksOutbound;

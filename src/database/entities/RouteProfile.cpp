@@ -295,7 +295,7 @@ namespace Configs {
             types << simpleAddressProxy;
             types << simpleProcessNameProxy;
             types << simpleProcessPathProxy;
-        } else if (action == direct) {
+        } else if (action == bypass) {
             types << simpleAddressBypass;
             types << simpleProcessNameBypass;
             types << simpleProcessPathBypass;
@@ -332,7 +332,7 @@ namespace Configs {
             types << simpleAddressProxy;
             types << simpleProcessNameProxy;
             types << simpleProcessPathProxy;
-        } else if (action == direct) {
+        } else if (action == bypass) {
             types << simpleAddressBypass;
             types << simpleProcessNameBypass;
             types << simpleProcessPathBypass;
@@ -441,17 +441,17 @@ namespace Configs {
             content.startsWith("ruleset") ||
             content.startsWith("ip")) {
             if (action == proxy) return simpleAddressProxy;
-            if (action == direct) return simpleAddressBypass;
+            if (action == bypass) return simpleAddressBypass;
             return simpleAddressBlock;
         }
         if (content.startsWith("processName")) {
             if (action == proxy) return simpleProcessNameProxy;
-            if (action == direct) return simpleProcessNameBypass;
+            if (action == bypass) return simpleProcessNameBypass;
             return simpleProcessNameBlock;
         }
         if (content.startsWith("processPath")) {
             if (action == proxy) return simpleProcessPathProxy;
-            if (action == direct) return simpleProcessPathBypass;
+            if (action == bypass) return simpleProcessPathBypass;
             return simpleProcessPathBlock;
         }
         return custom;

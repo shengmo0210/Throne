@@ -72,19 +72,16 @@ func (s *server) Start(ctx context.Context, in *gen.LoadConfigReq) (out *gen.Err
 			err = E.Cause(e, "Failed to parse args")
 			return
 		}
+		var extraConfPath, extraCleanupPath string
 		if in.ExtraProcessConf != nil {
-			extraConfPath := *in.ExtraProcessConfDir + string(os.PathSeparator) + "extra.conf"
-			f, e := os.OpenFile(extraConfPath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 700)
+			// The Core (not the GUI) creates the config, in a fresh randomly
+			// named temp file that cannot be hijacked by symlink/pre-existing
+			// file tricks even when the Core is elevated. See CreateExtraConfig.
+			extraConfPath, extraCleanupPath, e = process.CreateExtraConfig(*in.ExtraProcessConf)
 			if e != nil {
-				err = E.Cause(e, "Failed to open extra.conf")
+				err = E.Cause(e, "Failed to create extra.conf")
 				return
 			}
-			_, e = f.WriteString(*in.ExtraProcessConf)
-			if e != nil {
-				err = E.Cause(e, "Failed to write extra.conf")
-				return
-			}
-			_ = f.Close()
 			for idx, arg := range args {
 				if strings.Contains(arg, "%s") {
 					args[idx] = fmt.Sprintf(arg, extraConfPath)
@@ -94,6 +91,7 @@ func (s *server) Start(ctx context.Context, in *gen.LoadConfigReq) (out *gen.Err
 		}
 
 		extraProcess = process.NewProcess(*in.ExtraProcessPath, args, *in.ExtraNoOut)
+		extraProcess.SetCleanupPath(extraCleanupPath)
 		err = extraProcess.Start()
 		if err != nil {
 			return
@@ -203,8 +201,20 @@ func (s *server) Stop(ctx context.Context, in *gen.EmptyReq) (out *gen.ErrorResp
 }
 
 func (s *server) CheckConfig(ctx context.Context, in *gen.LoadConfigReq) (out *gen.ErrorResp, _ error) {
-	err := boxmain.Check([]byte(*in.CoreConfig))
 	out = &gen.ErrorResp{}
+	// Recover from panics inside boxmain.Check (e.g. malformed configs that trigger
+	// sing-box internal panics). Without this, the panic propagates to main() which
+	// calls os.Exit(0) and kills the entire core process. The full goroutine stack
+	// goes to the operator log; the wire response carries only the panic value.
+	defer func() {
+		if r := recover(); r != nil {
+			buf := make([]byte, 4096)
+			n := runtime.Stack(buf, false)
+			log.Printf("CheckConfig panic: %v\n%s", r, buf[:n])
+			out.Error = To(fmt.Sprintf("CheckConfig panic: %v", r))
+		}
+	}()
+	err := boxmain.Check([]byte(*in.CoreConfig))
 	if err != nil {
 		out.Error = To(err.Error())
 	}

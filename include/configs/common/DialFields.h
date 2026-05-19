@@ -11,6 +11,9 @@ namespace Configs
         bool tcp_fast_open = false;
         bool tcp_multi_path = false;
         bool udp_fragment = false;
+        QString bind_interface;
+        QString inet4_bind_address;
+        QString inet6_bind_address;
 
         // baseConfig overrides
         bool ParseFromLink(const QString& link) override;

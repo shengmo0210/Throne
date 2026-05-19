@@ -27,7 +27,7 @@ namespace Configs {
                 }
             }
         }
-        if (query.hasQueryItem("persistent_keepalive_interval")) persistent_keepalive = query.queryItemValue("persistent_keepalive").toInt();
+        if (query.hasQueryItem("persistent_keepalive_interval")) persistent_keepalive = query.queryItemValue("persistent_keepalive_interval").toInt();
         
         return true;
     }
@@ -42,7 +42,7 @@ namespace Configs {
         if (object.contains("reserved")) {
             reserved = QJsonArray2QListInt(object["reserved"].toArray());
         }
-        if (object.contains("persistent_keepalive_interval")) persistent_keepalive = object["persistent_keepalive"].toInt();
+        if (object.contains("persistent_keepalive_interval")) persistent_keepalive = object["persistent_keepalive_interval"].toInt();
         return true;
     }
 

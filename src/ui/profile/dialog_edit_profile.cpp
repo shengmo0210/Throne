@@ -26,6 +26,7 @@
 
 
 #include "include/ui/profile/edit_advanced.h"
+#include "include/ui/profile/edit_direct.h"
 #include "include/ui/profile/edit_hysteria.h"
 #include "include/ui/profile/edit_socks.h"
 #include "include/ui/profile/edit_trojan.h"
@@ -60,6 +61,8 @@ DialogEditProfile::DialogEditProfile(const QString &_type, int profileOrGroupId,
     ui->xray_network->addItems(Configs::XrayNetworks);
     ui->xray_fp->addItems(Configs::tlsFingerprints);
     ui->xray_mode->addItems(Configs::XrayXHTTPModes);
+    ui->xray_xpadding_placement->addItems({"", "queryInHeader", "cookie", "header", "query"});
+    ui->xray_xpadding_method->addItems({"", "repeat-x", "tokenish"});
     ui->xray_ed_length->setValidator(new QIntValidator(0, 8192));
     toggleXrayWidgets(false);
 
@@ -241,15 +244,18 @@ DialogEditProfile::DialogEditProfile(const QString &_type, int profileOrGroupId,
         LOAD_TYPE("hysteria")
         LOAD_TYPE("tuic")
         LOAD_TYPE("juicity")
-        if (Configs::HasNaive()) LOAD_TYPE("naive")
+        LOAD_TYPE("naive")
         LOAD_TYPE("trusttunnel")
         LOAD_TYPE("anytls")
         LOAD_TYPE("shadowtls")
         LOAD_TYPE("wireguard")
         LOAD_TYPE("tailscale")
         LOAD_TYPE("ssh")
-        ui->type->addItem(tr("Custom (%1 outbound)").arg(software_core_name), "outbound");
-        ui->type->addItem(tr("Custom (%1 config)").arg(software_core_name), "fullconfig");
+        LOAD_TYPE("direct")
+        ui->type->addItem(tr("Custom (%1 outbound)").arg(software_core_name), Configs::Custom::CustomOutbound);
+        ui->type->addItem(tr("Custom (%1 config)").arg(software_core_name), Configs::Custom::CustomFullConfig);
+        ui->type->addItem(tr("Custom (Xray outbound)"), Configs::Custom::CustomXrayOutbound);
+        ui->type->addItem(tr("Custom (Xray config)"), Configs::Custom::CustomXrayFullConfig);
         ui->type->addItem(tr("Extra Core"), "extracore");
         LOAD_TYPE("chain")
 
@@ -360,7 +366,9 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         auto _innerWidget = new EditSSH(this);
         innerWidget = _innerWidget;
         innerEditor = _innerWidget;
-    } else if (type == "outbound" || type == "fullconfig" || type == "custom") {
+    } else if (type == Configs::Custom::CustomOutbound || type == Configs::Custom::CustomFullConfig ||
+               type == Configs::Custom::CustomXrayOutbound || type == Configs::Custom::CustomXrayFullConfig ||
+               type == "custom") {
         auto _innerWidget = new EditCustom(this);
         innerWidget = _innerWidget;
         innerEditor = _innerWidget;
@@ -372,8 +380,12 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         auto _innerWidget = new EditExtraCore(this);
         innerWidget = _innerWidget;
         innerEditor = _innerWidget;
-    } else if (Configs::HasNaive() && type == "naive") {
+    } else if (type == "naive") {
         auto _innerWidget = new EditNaive(this);
+        innerWidget = _innerWidget;
+        innerEditor = _innerWidget;
+    } else if (type == "direct") {
+        auto _innerWidget = new EditDirect(this);
         innerWidget = _innerWidget;
         innerEditor = _innerWidget;
     } else {
@@ -391,11 +403,25 @@ void DialogEditProfile::typeSelected(const QString &newType) {
     }
 
     // hide some widget
-    auto showAddressPort = type != "chain" && customType != "outbound" && customType != "fullconfig" && type != "extracore" && type != "tailscale";
+    auto showAddressPort = type != "chain"
+                           && type != "direct"
+                           && customType != Configs::Custom::CustomOutbound
+                           && customType != Configs::Custom::CustomFullConfig
+                           && customType != Configs::Custom::CustomXrayOutbound
+                           && customType != Configs::Custom::CustomXrayFullConfig
+                           && type != "extracore" && type != "tailscale";
     ui->address->setVisible(showAddressPort);
     ui->address_l->setVisible(showAddressPort);
     ui->port->setVisible(showAddressPort);
     ui->port_l->setVisible(showAddressPort);
+
+    auto showAdvancedDialOption = type != "chain"
+    && type != "extracore" && type != "tailscale"
+    && customType != Configs::Custom::CustomOutbound
+    && customType != Configs::Custom::CustomFullConfig
+    && customType != Configs::Custom::CustomXrayOutbound
+    && customType != Configs::Custom::CustomXrayFullConfig;
+    ui->advanced_button->setVisible(showAdvancedDialOption);
 
     if (ent->outbound->HasTLS() || ent->outbound->HasTransport()) {
         ui->right_all_w->setVisible(true);
@@ -442,6 +468,11 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         updateXrayCommons(xrayStream->network);
 
         ui->xray_xpaddingbytes->setText(xrayStream->xhttp->xPaddingBytes);
+        ui->xray_xpadding_obfs_mode->setChecked(xrayStream->xhttp->xPaddingObfsMode);
+        ui->xray_xpadding_key->setText(xrayStream->xhttp->xPaddingKey);
+        ui->xray_xpadding_header->setText(xrayStream->xhttp->xPaddingHeader);
+        ui->xray_xpadding_placement->setCurrentText(xrayStream->xhttp->xPaddingPlacement);
+        ui->xray_xpadding_method->setCurrentText(xrayStream->xhttp->xPaddingMethod);
         ui->xray_no_grpc->setChecked(xrayStream->xhttp->noGRPCHeader);
         ui->xray_scMaxEachPostBytes->setText(xrayStream->xhttp->scMaxEachPostBytes);
         ui->xray_scMinPostsIntervalMs->setText(xrayStream->xhttp->scMinPostsIntervalMs);
@@ -658,6 +689,11 @@ bool DialogEditProfile::onEnd() {
             xrayStream->xhttp->mode = ui->xray_mode->currentText();
             xrayStream->xhttp->headers = Configs::parseHeaderPairs(ui->xray_headers->text());
             xrayStream->xhttp->xPaddingBytes = ui->xray_xpaddingbytes->text();
+            xrayStream->xhttp->xPaddingObfsMode = ui->xray_xpadding_obfs_mode->isChecked();
+            xrayStream->xhttp->xPaddingKey = ui->xray_xpadding_key->text();
+            xrayStream->xhttp->xPaddingHeader = ui->xray_xpadding_header->text();
+            xrayStream->xhttp->xPaddingPlacement = ui->xray_xpadding_placement->currentText();
+            xrayStream->xhttp->xPaddingMethod = ui->xray_xpadding_method->currentText();
             xrayStream->xhttp->noGRPCHeader = ui->xray_no_grpc->isChecked();
             xrayStream->xhttp->scMaxEachPostBytes = ui->xray_scMaxEachPostBytes->text();
             xrayStream->xhttp->scMinPostsIntervalMs = ui->xray_scMinPostsIntervalMs->text();
