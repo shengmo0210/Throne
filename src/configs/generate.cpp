@@ -218,6 +218,29 @@ namespace Configs {
                 }
                 preReqs->dnsDeps->needDirectDnsRules = true;
             }
+
+            // Proxy sites (symmetric to direct sites): when the final DNS is
+            // direct these need an explicit remote-DNS carve-out, otherwise
+            // they'd resolve via direct DNS.
+            auto proxySets = routeChain->get_proxy_sites();
+            for (const auto &item: proxySets) {
+                if (item.startsWith("ruleset:")) {
+                    preReqs->dnsDeps->proxyRuleSets << item.mid(8);
+                }
+                if (item.startsWith("domain:")) {
+                    preReqs->dnsDeps->proxyDomains << item.mid(7);
+                }
+                if (item.startsWith("suffix:")) {
+                    preReqs->dnsDeps->proxySuffixes << item.mid(7);
+                }
+                if (item.startsWith("keyword:")) {
+                    preReqs->dnsDeps->proxyKeywords << item.mid(8);
+                }
+                if (item.startsWith("regex:")) {
+                    preReqs->dnsDeps->proxyRegexes << item.mid(6);
+                }
+                preReqs->dnsDeps->needProxyDnsRules = true;
+            }
         }
         if (auto entAddrs = getEntDomains({ctx->ent->id}, ctx->error); !entAddrs.isEmpty())
         {
@@ -564,6 +587,24 @@ namespace Configs {
                     {"action", "route"},
                     {"strategy", dataManager->settingsRepo->direct_dns_strategy},
                     {"server", "dns-direct"},
+                };
+        }
+
+        // Symmetric to the direct carve-out above: when the final DNS is direct,
+        // proxy-routed sites would otherwise resolve via direct DNS, so route
+        // them to remote DNS (when final is remote they reach it via the final
+        // rule, and the direct carve-out already runs first to keep server
+        // hostnames on direct DNS).
+        if (dnsDeps->needProxyDnsRules && dataManager->settingsRepo->dns_final_out != "remote") {
+            rules += QJsonObject{
+                    {"rule_set", dnsDeps->proxyRuleSets},
+                    {"domain", dnsDeps->proxyDomains},
+                    {"domain_suffix", dnsDeps->proxySuffixes},
+                    {"domain_keyword", dnsDeps->proxyKeywords},
+                    {"domain_regex", dnsDeps->proxyRegexes},
+                    {"action", "route"},
+                    {"strategy", dataManager->settingsRepo->remote_dns_strategy},
+                    {"server", "dns-remote"},
                 };
         }
 

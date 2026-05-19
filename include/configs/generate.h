@@ -24,6 +24,12 @@ namespace Configs
         QJsonArray directSuffixes;
         QJsonArray directKeywords;
         QJsonArray directRegexes;
+        bool needProxyDnsRules = false;
+        QJsonArray proxyDomains;
+        QJsonArray proxyRuleSets;
+        QJsonArray proxySuffixes;
+        QJsonArray proxyKeywords;
+        QJsonArray proxyRegexes;
     };
 
     class HijackDeps

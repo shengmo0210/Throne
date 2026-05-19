@@ -245,6 +245,30 @@ namespace Configs {
         return res;
     }
 
+    QStringList RouteProfile::get_proxy_sites() {
+        auto res = QStringList();
+        for (const auto& item: Rules) {
+            if (item->outboundID == proxyID && item->action == "route") {
+                for (const auto& rset: item->rule_set) {
+                    if (rset.startsWith("geosite-")) res << QString("ruleset:" + rset);
+                }
+                for (const auto& domain: item->domain) {
+                    res << QString("domain:" + domain);
+                }
+                for (const auto& suffix: item->domain_suffix) {
+                    res << QString("suffix:" + suffix);
+                }
+                for (const auto& keyword: item->domain_keyword) {
+                    res << QString("keyword:" + keyword);
+                }
+                for (const auto& regex: item->domain_regex) {
+                    res << QString("regex:" + regex);
+                }
+            }
+        }
+        return res;
+    }
+
     QStringList RouteProfile::get_direct_ips()
     {
         auto res = QStringList();
