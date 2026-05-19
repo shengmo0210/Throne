@@ -23,8 +23,6 @@ private:
 
     std::shared_ptr<Configs::Group> ent;
 
-    QMap<int, QString> proxyMapping;
-
     struct {
         int front_proxy;
     } CACHE;
