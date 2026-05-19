@@ -859,6 +859,11 @@ namespace Configs {
 
     void buildOutboundChain(std::shared_ptr<BuildSingBoxConfigContext> &ctx, const QList<int>& entIDs, const QString& prefix, bool includeProxy, bool link, int singToXrayPort = -1, int xrayToSingPort = -1, int startSuffix = 0)
     {
+        // Core-transition flags are per-chain: entIDListtoEntList only ever
+        // sets them true, so clear any value left by a previous chain in this
+        // context before evaluating this one.
+        ctx->singToXrayTransitioned = false;
+        ctx->xrayToSingTransitioned = false;
         QList<std::shared_ptr<Profile>> ents;
         entIDListtoEntList(ctx, entIDs, ents, ctx->error);
         if (!ctx->error.isEmpty()) return;
@@ -1517,8 +1522,6 @@ namespace Configs {
                 singToXrayPort = xrayPorts[xrayPortIdx++];
                 xrayToSingPort = xrayPorts[xrayPortIdx++];
             }
-            ctx->singToXrayTransitioned = false;
-            ctx->xrayToSingTransitioned = false;
             buildOutboundChain(ctx, IDs, "proxy-" + Int2String(suffix), false, true, singToXrayPort, xrayToSingPort);
             if (!ctx->error.isEmpty()) {
                 res->error = ctx->error;
