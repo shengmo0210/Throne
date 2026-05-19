@@ -46,14 +46,17 @@ DialogEditGroup::DialogEditGroup(const std::shared_ptr<Configs::Group> &ent, QWi
         }
     }
 
+    auto proxyListRaw = Configs::dataManager->profilesRepo->GetAllProfileIDNameMapped();
+    QMap<int, QString> idToName;
+    for (const auto& [id, name] : proxyListRaw) idToName.insert(id, name);
     QList<std::pair<int, QString>> proxyList;
     auto groupIDs = Configs::dataManager->groupsRepo->GetGroupsTabOrder();
     for (auto groupID: groupIDs) {
         auto group = Configs::dataManager->groupsRepo->GetGroup(groupID);
         if (!group) continue;
-        auto profileIdName = Configs::dataManager->profilesRepo->GetProfileIDNameMappedBatch(group->Profiles());
-        for (const auto&[id, name] : profileIdName) {
-            proxyList << std::make_pair(id, QString("[" + group->name + "] ") + name);
+        for (int profileID : group->profiles) {
+            if (!idToName.contains(profileID)) continue;
+            proxyList << std::make_pair(profileID, QString("[" + group->name + "] ") + idToName[profileID]);
         }
     }
     QStringList proxyNameList;

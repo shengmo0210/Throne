@@ -77,14 +77,17 @@ RouteItem::RouteItem(QWidget *parent, const std::shared_ptr<Configs::RouteProfil
     outbounds = {"proxy", "direct"};
     outboundMap[0] = -1;
     outboundMap[1] = -2;
+    auto proxyListRaw = Configs::dataManager->profilesRepo->GetAllProfileIDNameMapped();
+    QMap<int, QString> idToName;
+    for (const auto& [id, name] : proxyListRaw) idToName.insert(id, name);
     auto groupIDs = Configs::dataManager->groupsRepo->GetGroupsTabOrder();
     for (auto groupID : groupIDs) {
         auto group = Configs::dataManager->groupsRepo->GetGroup(groupID);
         if (!group) continue;
-        auto outboundIdNamePairs = Configs::dataManager->profilesRepo->GetProfileIDNameMappedBatch(group->Profiles());
-        for (const auto& item: outboundIdNamePairs) {
-            outboundMap[outboundMap.size()] = item.first;
-            outbounds << QString("[" + group->name + "] ") + item.second;
+        for (int profileID : group->profiles) {
+            if (!idToName.contains(profileID)) continue;
+            outboundMap[outboundMap.size()] = profileID;
+            outbounds << QString("[" + group->name + "] ") + idToName[profileID];
         }
     }
 
