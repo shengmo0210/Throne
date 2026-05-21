@@ -758,8 +758,7 @@ void MainWindow::profile_start(int _id) {
             return false;
         }
         //
-        Stats::trafficLooper->SetEnts(result->outboundEntsForTraffic);
-        Stats::trafficLooper->isChain = result->isChained;
+        Stats::trafficLooper->SetChainGroups(result->chainGroups);
         Stats::trafficLooper->loop_enabled = true;
         Stats::connection_lister->suspend = false;
 

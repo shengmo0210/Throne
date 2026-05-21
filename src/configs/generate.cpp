@@ -175,7 +175,7 @@ namespace Configs {
                 // Build reversed hop list (matching main-chain build order: outer first)
                 QList<int> reversedHops;
                 for (int idx = chain->list.size() - 1; idx >= 0; idx--) reversedHops << chain->list[idx];
-                preReqs->routingDeps->routeOutboundGroups << reversedHops;
+                preReqs->routingDeps->routeOutboundGroups << RoutingDeps::RouteOutboundGroup{reversedHops, neededEnt};
                 suffix += chain->list.size();
             } else {
                 // Single-hop outbound (existing logic)
@@ -189,7 +189,7 @@ namespace Configs {
                     preReqs->dnsDeps->needDirectDnsRules = true;
                 }
                 preReqs->routingDeps->outboundMap[item] = "route-" + Int2String(suffix++);
-                preReqs->routingDeps->routeOutboundGroups << QList<int>{item};
+                preReqs->routingDeps->routeOutboundGroups << RoutingDeps::RouteOutboundGroup{QList<int>{item}, nullptr};
             }
         }
 
@@ -856,7 +856,6 @@ namespace Configs {
             {
                 ctx->outbounds.append(object);
             }
-            ctx->buildConfigResult->outboundEntsForTraffic.append({ent, tag});
         }
     }
 
@@ -988,6 +987,27 @@ namespace Configs {
         if (!tailingSingEnts.isEmpty()) {
             buildSingboxChain(ctx, tailingSingEnts, prefix, false, link, startSuffix + initialSingEnts.size(), true);
         }
+
+        // Traffic group: watchTag is the matched outbound of the last routing
+        // rule that points into this chain on the sing-box side. With no xray
+        // re-entry that's the first hop of initialSingEnts; with an xray->sing
+        // re-entry (interlocking [sing,xray,sing] pattern) the bridge inbound's
+        // route rule sends traffic to the first hop of tailingSingEnts and that
+        // becomes the egress-side watch point. profiles is the original user
+        // chain — synthetic socks bridges are appended to initialSingEnts above
+        // but never enter `ents`, so they're naturally excluded.
+        if (!ents.isEmpty()) {
+            TrafficChainGroup group;
+            group.profiles = ents;
+            if (!tailingSingEnts.isEmpty()) {
+                group.watchTag = prefix + "-" + Int2String(startSuffix + initialSingEnts.size());
+            } else if (includeProxy) {
+                group.watchTag = "proxy";
+            } else {
+                group.watchTag = prefix + "-" + Int2String(startSuffix);
+            }
+            ctx->buildConfigResult->chainGroups.append(group);
+        }
     }
 
     void buildOutboundsSection(std::shared_ptr<BuildSingBoxConfigContext> &ctx) {
@@ -1019,12 +1039,24 @@ namespace Configs {
         }
         buildOutboundChain(ctx, entIDs, "config", true, true);
 
+        // A chain-typed profile wrapper isn't in entIDs (only its hops are),
+        // so the chainGroup just built doesn't include it. Add it so the
+        // chain's row in the proxy list also accumulates traffic.
+        if (ctx->ent->type == "chain" && !ctx->buildConfigResult->chainGroups.isEmpty()) {
+            ctx->buildConfigResult->chainGroups.last().profiles.append(ctx->ent);
+        }
+
         // Now, build the outbounds needed by the route profile
         int routeSuffix = 0;
-        for (const auto& outboundGroup : ctx->buildPrerequisities->routingDeps->routeOutboundGroups) {
-            bool linked = outboundGroup.size() > 1;
-            buildOutboundChain(ctx, outboundGroup, "route", false, linked, -1, -1,  routeSuffix);
-            routeSuffix += outboundGroup.size();
+        for (const auto& routeGroup : ctx->buildPrerequisities->routingDeps->routeOutboundGroups) {
+            bool linked = routeGroup.hopIDs.size() > 1;
+            buildOutboundChain(ctx, routeGroup.hopIDs, "route", false, linked, -1, -1, routeSuffix);
+            // Same as main chain: credit the chain wrapper if the route rule's
+            // referenced outbound was a chain.
+            if (routeGroup.chainWrapper != nullptr && !ctx->buildConfigResult->chainGroups.isEmpty()) {
+                ctx->buildConfigResult->chainGroups.last().profiles.append(routeGroup.chainWrapper);
+            }
+            routeSuffix += routeGroup.hopIDs.size();
         }
 
         // Also add the needed socks inbound bridges
@@ -1059,7 +1091,6 @@ namespace Configs {
         {"tag", "direct"}
         });
 
-        if (entIDs.size() > 1) ctx->buildConfigResult->isChained = true;
         ctx->buildConfigResult->coreConfig["endpoints"] = ctx->endpoints;
         ctx->buildConfigResult->coreConfig["outbounds"] = ctx->outbounds;
     }

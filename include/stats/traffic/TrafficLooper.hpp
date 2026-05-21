@@ -5,14 +5,13 @@
 #include <QMutex>
 
 #include "include/database/entities/Profile.h"
+#include "include/configs/generate.h"
 
 namespace Stats {
+    // Aggregate rate accumulator used for the status-bar / traffic-graph
+    // numbers (one for all proxied traffic combined, one for direct).
     struct TrafficLooperEntry {
         QString tag;
-        Configs::Profile* ent = nullptr;  // nullptr for "direct"
-        long long downlink = 0;
-        long long uplink = 0;
-        long long last_update = 0;
         double downlink_rate = 0;
         double uplink_rate = 0;
     };
@@ -21,13 +20,22 @@ namespace Stats {
         return UNICODE_LRO + QString("%1↑ %2↓").arg(ReadableSize(entry->uplink_rate), ReadableSize(entry->downlink_rate));
     }
 
+    // Runtime view of a TrafficChainGroup: same watchTag + profile list, plus
+    // bookkeeping for delta-based rate computation.
+    struct TrafficLooperGroup {
+        QString watchTag;
+        QList<std::shared_ptr<Configs::Profile>> profiles;
+        long long last_update = 0;
+        double uplink_rate = 0;
+        double downlink_rate = 0;
+    };
+
     class TrafficLooper {
     public:
         bool loop_enabled = false;
         bool looping = false;
         QMutex loop_mutex;
 
-        bool isChain;
         std::shared_ptr<TrafficLooperEntry> proxy;
         std::shared_ptr<TrafficLooperEntry> direct;
 
@@ -35,12 +43,11 @@ namespace Stats {
 
         void Loop();
 
-        // (profile, tag) pairs from config build
-        void SetEnts(const QList<std::pair<std::shared_ptr<Configs::Profile>, QString>>& profsAndTags);
+        void SetChainGroups(const QList<Configs::TrafficChainGroup>& configGroups);
 
     private:
-        QList<std::shared_ptr<Configs::Profile>> profiles;
-        QList<TrafficLooperEntry> entries;
+        QList<TrafficLooperGroup> groups;
+        long long direct_last_update = 0;
     };
 
     extern TrafficLooper *trafficLooper;

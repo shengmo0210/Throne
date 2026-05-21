@@ -21,50 +21,45 @@ namespace Stats {
         }
 
         auto resp = API::defaultClient->QueryStats();
+        const auto now = elapsedTimer.elapsed();
+
         proxy->uplink_rate = 0;
         proxy->downlink_rate = 0;
 
-        int proxyUp = 0, proxyDown = 0;
-
-        for (auto& e : entries) {
-            const QString tag = e.tag;
-            if (!resp.ups.contains(tag.toStdString())) continue;
-            auto now = elapsedTimer.elapsed();
-            auto interval = now - e.last_update;
-            e.last_update = now;
+        // For each chain group, read the matched-outbound's delta-since-last-query
+        // and credit it to every user-visible profile in the chain. Aggregate
+        // rates from all groups into the proxy entry for the status bar.
+        for (auto& group : groups) {
+            const auto tagKey = group.watchTag.toStdString();
+            if (!resp.ups.contains(tagKey)) continue;
+            const auto interval = now - group.last_update;
+            group.last_update = now;
             if (interval <= 0) continue;
-            const auto up = resp.ups.at(tag.toStdString());
-            const auto down = resp.downs.at(tag.toStdString());
-            if (e.tag == "proxy")
-            {
-                proxyUp = up;
-                proxyDown = down;
+            const auto up = resp.ups.at(tagKey);
+            const auto down = resp.downs.at(tagKey);
+            for (auto& profile : group.profiles) {
+                profile->traffic_uplink += up;
+                profile->traffic_downlink += down;
             }
-            e.uplink += up;
-            e.downlink += down;
-            if (e.ent) {
-                e.ent->traffic_uplink += up;
-                e.ent->traffic_downlink += down;
-            }
-            e.uplink_rate = static_cast<double>(up) * 1000.0 / static_cast<double>(interval);
-            e.downlink_rate = static_cast<double>(down) * 1000.0 / static_cast<double>(interval);
-            if (e.tag == "direct")
-            {
-                direct->uplink_rate = e.uplink_rate;
-                direct->downlink_rate = e.downlink_rate;
-            } else
-            {
-                proxy->uplink_rate += e.uplink_rate;
-                proxy->downlink_rate += e.downlink_rate;
-            }
+            group.uplink_rate = static_cast<double>(up) * 1000.0 / static_cast<double>(interval);
+            group.downlink_rate = static_cast<double>(down) * 1000.0 / static_cast<double>(interval);
+            proxy->uplink_rate += group.uplink_rate;
+            proxy->downlink_rate += group.downlink_rate;
         }
 
-        if (isChain) {
-            for (auto& e : entries) {
-                if (e.ent && e.tag != entries.last().tag && e.tag != "direct" && e.tag != "proxy" && !e.tag.contains("route")) {
-                    e.ent->traffic_downlink += proxyDown;
-                    e.ent->traffic_uplink += proxyUp;
-                }
+        // direct: not part of any chain group, tracked on its own for the
+        // status-bar split.
+        direct->uplink_rate = 0;
+        direct->downlink_rate = 0;
+        const std::string directTag = "direct";
+        if (resp.ups.contains(directTag)) {
+            const auto interval = now - direct_last_update;
+            direct_last_update = now;
+            if (interval > 0) {
+                const auto up = resp.ups.at(directTag);
+                const auto down = resp.downs.at(directTag);
+                direct->uplink_rate = static_cast<double>(up) * 1000.0 / static_cast<double>(interval);
+                direct->downlink_rate = static_cast<double>(down) * 1000.0 / static_cast<double>(interval);
             }
         }
     }
@@ -115,31 +110,37 @@ namespace Stats {
                     m->refresh_status(QObject::tr("Proxy: %1\nDirect: %2").arg(DisplaySpeed(proxy), DisplaySpeed(direct)));
                     m->update_traffic_graph(proxy->downlink_rate, proxy->uplink_rate, direct->downlink_rate, direct->uplink_rate);
                 }
-                for (const auto &profile: profiles) {
-                    m->refresh_proxy_list({profile->id});
-                    Configs::dataManager->profilesRepo->SaveTraffic(profile);
+                for (const auto& group : groups) {
+                    for (const auto& profile : group.profiles) {
+                        m->refresh_proxy_list({profile->id});
+                        Configs::dataManager->profilesRepo->SaveTraffic(profile);
+                    }
                 }
             });
         }
     }
 
-    void TrafficLooper::SetEnts(const QList<std::pair<std::shared_ptr<Configs::Profile>, QString>>& profsAndTags) {
-        proxy = std::make_shared<TrafficLooperEntry>("proxy");
-        direct = std::make_shared<TrafficLooperEntry>("direct");
+    void TrafficLooper::SetChainGroups(const QList<Configs::TrafficChainGroup>& configGroups) {
+        proxy = std::make_shared<TrafficLooperEntry>();
+        proxy->tag = "proxy";
+        direct = std::make_shared<TrafficLooperEntry>();
+        direct->tag = "direct";
 
-        entries.clear();
-        profiles.clear();
-        for (const auto& [profile, tag] : profsAndTags) {
-            if (tag.isEmpty()) continue;
-            profiles.append(profile);
-            TrafficLooperEntry e;
-            e.tag = tag;
-            e.ent = profile.get();
-            e.downlink = profile->traffic_downlink;
-            e.uplink = profile->traffic_uplink;
-            entries.append(e);
+        // Seed last_update to "now" so the first delta lands against the next
+        // tick rather than against time zero — otherwise the first rate sample
+        // gets divided by however long the app has been up.
+        const auto now = elapsedTimer.isValid() ? elapsedTimer.elapsed() : 0;
+
+        groups.clear();
+        for (const auto& configGroup : configGroups) {
+            if (configGroup.watchTag.isEmpty() || configGroup.profiles.isEmpty()) continue;
+            TrafficLooperGroup g;
+            g.watchTag = configGroup.watchTag;
+            g.profiles = configGroup.profiles;
+            g.last_update = now;
+            groups.append(g);
         }
-        entries.append(*direct.get());
+        direct_last_update = now;
     }
 
 } // namespace Stats

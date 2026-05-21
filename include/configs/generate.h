@@ -55,9 +55,17 @@ namespace Configs
         QList<int> neededOutbounds;       // kept for compatibility but no longer consumed
         QStringList neededRuleSets;
         std::map<int, QString> outboundMap;
-        // Each entry is one routing outbound group.
-        // Single profile -> [[id]]. Chain -> [[outerHop, ..., innerHop]] (reversed, matching existing chain build order).
-        QList<QList<int>> routeOutboundGroups;
+        // One routing outbound group. hopIDs is the list of profile IDs to
+        // build outbounds for: single profile -> [id], chain -> [outerHop,
+        // ..., innerHop] (reversed, matching existing chain build order).
+        // chainWrapper is set when the route rule's referenced outbound was a
+        // chain, so traffic accounting can also credit the wrapper (which
+        // isn't in hopIDs); nullptr otherwise.
+        struct RouteOutboundGroup {
+            QList<int> hopIDs;
+            std::shared_ptr<Profile> chainWrapper;
+        };
+        QList<RouteOutboundGroup> routeOutboundGroups;
     };
 
     class BuildPrerequisities
@@ -69,17 +77,28 @@ namespace Configs
         std::shared_ptr<RoutingDeps> routingDeps = std::make_shared<RoutingDeps>();
     };
 
+    // One per built chain (main chain + each route outbound group). watchTag is
+    // the sing-box outbound tag whose stats represent total bytes for the chain
+    // — it's the matched outbound of a routing rule. For chains that re-enter
+    // sing-box after an xray hop (e.g. [sing,xray,sing]) there are two such
+    // outbounds; we pick the last one in build order so we read traffic at the
+    // egress side. profiles is every user-visible hop to credit with the bytes,
+    // synthetic socks bridges excluded.
+    struct TrafficChainGroup {
+        QString watchTag;
+        QList<std::shared_ptr<Profile>> profiles;
+    };
+
     class BuildConfigResult {
     public:
         QString error;
-        bool isChained = false;
         QJsonObject coreConfig;
         QString tunIPv4CIDR;
         bool isXrayNeeded = false;
         QJsonObject xrayConfig;
         std::shared_ptr<ExtraCoreData> extraCoreData = std::make_shared<ExtraCoreData>();
 
-        QList<std::pair<std::shared_ptr<Profile>, QString>> outboundEntsForTraffic;
+        QList<TrafficChainGroup> chainGroups;
     };
 
     struct coreBridgeConfig {
