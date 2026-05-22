@@ -59,7 +59,7 @@
      <property name="styleSheet">
       <string notr="true">QTabWidget::pane {
     margin-top: 1px;
-    border: 1px solid palette(mid);
+    border: 1px solid #444444;
     border-radius: 4px;
 }
 
@@ -69,7 +69,7 @@ QTabBar {
 }
 
 QTabBar::tab {
-    border: 1px solid palette(midlight);
+    border: 1px solid #444444;
     border-radius: 4px;
 
     padding: 2px 4px;
@@ -81,11 +81,11 @@ QTabBar::tab:selected {
 }
 
 QTabBar::tab:!selected {
-    border: 1px solid palette(button);
+    border: 1px solid #444444;
 }
 
 QTabBar::tab:hover:!selected {
-    border: 1px solid palette(button);
+    border: 1px solid #444444;
 }</string>
      </property>
      <property name="currentIndex">
@@ -369,7 +369,7 @@ QTabBar::tab:hover:!selected {
             <property name="styleSheet">
              <string notr="true">QTabWidget::pane {
     margin-top: 1px;
-    border: 1px solid palette(mid);
+    border: 1px solid #444444;
     border-radius: 4px;
 }
 
@@ -379,7 +379,7 @@ QTabBar {
 }
 
 QTabBar::tab {
-    border: 1px solid palette(midlight);
+    border: 1px solid #444444;
     border-radius: 4px;
 
     padding: 2px 4px;
@@ -391,11 +391,11 @@ QTabBar::tab:selected {
 }
 
 QTabBar::tab:!selected {
-    border: 1px solid palette(button);
+    border: 1px solid #444444;
 }
 
 QTabBar::tab:hover:!selected {
-    border: 1px solid palette(button);
+    border: 1px solid #444444;
 }</string>
             </property>
             <property name="currentIndex">
