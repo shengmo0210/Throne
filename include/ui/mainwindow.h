@@ -269,9 +269,13 @@ private:
 
     void closeEvent(QCloseEvent *event) override;
 
+    void changeEvent(QEvent *event) override;
+
     void dragEnterEvent(QDragEnterEvent *event);
 
     void dropEvent(QDropEvent* event) override;
+
+    void applyLogBrowserFont();
 
     //
 

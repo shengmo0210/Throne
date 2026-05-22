@@ -156,7 +156,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     qvLogDocument->setMaximumBlockCount(Configs::dataManager->settingsRepo->max_log_line);
     ui->masterLogBrowser->setUndoRedoEnabled(false);
     ui->masterLogBrowser->setDocument(qvLogDocument);
-    ui->masterLogBrowser->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    applyLogBrowserFont();
     updateLogFilterFields();
     runOnThread([=, this] {
         log_process_loop();
@@ -1020,6 +1020,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(t, &QTimer::timeout, this, [&] { Configs_sys::logCounter.fetchAndStoreRelaxed(0); });
     t->start(1000);
 
+    // periodic refresh so font/theme/resize changes settle without manual interaction;
+    // mirrors what show_group does after a tab switch.
+    t = new QTimer;
+    connect(t, &QTimer::timeout, this, [=, this] { refresh_proxy_list({}, false); });
+    t->start(1000);
+
     // auto update timer
     TM_auto_update_subsctiption = new QTimer;
     TM_auto_update_subsctiption_Reset_Minute = [&](int m) {
@@ -1041,6 +1047,53 @@ void MainWindow::closeEvent(QCloseEvent *event) {
     } else {
         on_menu_exit_triggered();
     }
+}
+
+void MainWindow::applyLogBrowserFont() {
+    QFont logFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    int pt = qApp->font().pointSize();
+    if (pt <= 0) pt = Configs::dataManager->settingsRepo->font_size;
+    if (pt > 0) logFont.setPointSize(pt);
+    ui->masterLogBrowser->setFont(logFont);
+}
+
+void MainWindow::changeEvent(QEvent *event) {
+    if (event->type() == QEvent::FontChange) {
+        // masterLogBrowser keeps its monospace family but follows the user's point size
+        applyLogBrowserFont();
+
+        // Widgets with per-widget stylesheets (set in the .ui files — tabWidgets, toolButtons,
+        // etc.) get wrapped in QStyleSheetStyle, which caches font-dependent metrics like tab
+        // size hints and button paddings. Those caches don't invalidate on FontChange, so the
+        // visible size stays at the old font. Toggling the stylesheet through "" forces
+        // QStyleSheetStyle::repolish, which clears the cache and re-evaluates rules.
+        auto refreshStylesheetCache = [](QWidget *w) {
+            QString ss = w->styleSheet();
+            if (ss.isEmpty()) return;
+            w->setStyleSheet("");
+            w->setStyleSheet(ss);
+        };
+        const auto allChildren = findChildren<QWidget*>();
+        for (QWidget *w : allChildren) {
+            refreshStylesheetCache(w);
+        }
+
+        // profilesTableView has no per-widget stylesheet, so the stylesheet trick above
+        // doesn't apply. Toggle its font through a different point size to force a real
+        // FontChange (Qt skips setFont when the resolved font is unchanged), then return
+        // to inheriting from qApp so future changes still propagate. Both updates coalesce.
+        auto forceFontReapply = [](QWidget *w) {
+            if (!w) return;
+            QFont currentFont = QApplication::font();
+            QFont diffFont = currentFont;
+            diffFont.setPointSize(currentFont.pointSize() + 1);
+            w->setFont(diffFont);
+            w->setFont(QFont());
+            w->updateGeometry();
+        };
+        forceFontReapply(ui->profilesTableView);
+    }
+    QMainWindow::changeEvent(event);
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent *event)
