@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Throne
+GenericName=Proxy Configuration Manager
+Comment=Qt based cross-platform GUI proxy configuration manager (backend: sing-box)
+Exec=Throne -appdata
+Icon=org.throneproj.Throne
+Terminal=false
+Categories=Network;
+Keywords=proxy;vpn;singbox;sing-box;tun;
+StartupNotify=true
+StartupWMClass=Throne
