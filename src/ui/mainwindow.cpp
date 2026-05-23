@@ -179,6 +179,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
             // bi-mode themes, follow system preference
             new SyntaxHighlighter(isDarkMode(), qvLogDocument);
         }
+        scheduleProxyListRefresh();
     });
     MW_show_log = [=,this](const QString &log) {
         append_log(log);
@@ -1020,11 +1021,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(t, &QTimer::timeout, this, [&] { Configs_sys::logCounter.fetchAndStoreRelaxed(0); });
     t->start(1000);
 
-    // periodic refresh so font/theme/resize changes settle without manual interaction;
-    // mirrors what show_group does after a tab switch.
-    t = new QTimer;
-    connect(t, &QTimer::timeout, this, [=, this] { refresh_proxy_list({}, false); });
-    t->start(1000);
+    // debounced refresh so font/theme/resize changes settle without manual interaction;
+    // mirrors what show_group does after a tab switch. Fired from changeEvent (FontChange/
+    // PaletteChange/StyleChange), resizeEvent, and ThemeManager::themeChanged.
+    m_proxyListRefreshDebounce = new QTimer(this);
+    m_proxyListRefreshDebounce->setSingleShot(true);
+    connect(m_proxyListRefreshDebounce, &QTimer::timeout, this, [this] { refresh_proxy_list({}, false); });
 
     // auto update timer
     TM_auto_update_subsctiption = new QTimer;
@@ -1093,7 +1095,21 @@ void MainWindow::changeEvent(QEvent *event) {
         };
         forceFontReapply(ui->profilesTableView);
     }
+    if (event->type() == QEvent::FontChange ||
+        event->type() == QEvent::PaletteChange ||
+        event->type() == QEvent::StyleChange) {
+        scheduleProxyListRefresh();
+    }
     QMainWindow::changeEvent(event);
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event) {
+    QMainWindow::resizeEvent(event);
+    scheduleProxyListRefresh();
+}
+
+void MainWindow::scheduleProxyListRefresh() {
+    if (m_proxyListRefreshDebounce) m_proxyListRefreshDebounce->start(200);
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent *event)

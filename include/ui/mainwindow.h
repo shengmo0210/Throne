@@ -18,6 +18,7 @@
 
 #include <QKeyEvent>
 #include <QSystemTrayIcon>
+#include <QTimer>
 #include <QQueue>
 #include <QWaitCondition>
 #include <QProcess>
@@ -271,11 +272,17 @@ private:
 
     void changeEvent(QEvent *event) override;
 
+    void resizeEvent(QResizeEvent *event) override;
+
     void dragEnterEvent(QDragEnterEvent *event);
 
     void dropEvent(QDropEvent* event) override;
 
     void applyLogBrowserFont();
+
+    // Debounced refresh_proxy_list trigger for font/theme/resize events.
+    QTimer *m_proxyListRefreshDebounce = nullptr;
+    void scheduleProxyListRefresh();
 
     //
 
