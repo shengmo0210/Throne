@@ -219,7 +219,7 @@ namespace Subscription {
         if (str.count("\n") > 0 && needParse) {
             auto list = Disect(str);
             for (const auto &str2: list) {
-                update(str2.trimmed(), false, isBase64Decoded);
+                update(str2.trimmed(), false);
             }
             return;
         }
