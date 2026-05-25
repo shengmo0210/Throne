@@ -20,6 +20,7 @@
 #include <array>
 #include <cctype>
 #include <charconv>
+#include <cinttypes>
 #include <cstddef>
 #include <cstring>
 #include <map>
@@ -69,7 +70,7 @@ public:
         if( codepoint <= 0xffff )
         {
             char buffer[ 8 ] = { };
-            auto size        = snprintf( buffer, sizeof( buffer ), "\\u%04x", codepoint );
+            auto size        = snprintf( buffer, sizeof( buffer ), "\\u%04" PRIx32, codepoint );
             return write( std::string_view( buffer, size ) );
         }
         if( codepoint <= 0x10FFFF )
@@ -79,7 +80,8 @@ public:
             auto high         = static_cast< uint16_t >( ( codepoint >> 10 ) + 0xD800 );
             auto low          = static_cast< uint16_t >( ( codepoint & 0x3FF ) + 0xDC00 );
             char buffer[ 16 ] = { };
-            auto size         = snprintf( buffer, sizeof( buffer ), "\\u%04x\\u%04x", high, low );
+            auto size =
+                snprintf( buffer, sizeof( buffer ), "\\u%04" PRIx16 "\\u%04" PRIx16, high, low );
             return write( std::string_view( buffer, size ) );
         }
         throw std::invalid_argument( "invalid utf8" );
@@ -217,6 +219,8 @@ static inline void serialize( ostream & stream, std::string_view key,
                               const spb::detail::proto_field_bytes auto & value );
 static inline void serialize( ostream & stream, std::string_view key,
                               const spb::detail::proto_label_repeated auto & value );
+static inline void serialize( ostream & stream, std::string_view key,
+                              const spb::detail::proto_label_repeated_fixed_size auto & value );
 template < typename keyT, typename valueT >
 static inline void serialize( ostream & stream, std::string_view key,
                               const std::map< keyT, valueT > & map );
@@ -307,6 +311,28 @@ static inline void serialize( ostream & stream, std::string_view key,
         else
         {
             serialize( stream, { }, v );
+        }
+    }
+    stream.write( ']' );
+    stream.put_comma = true;
+}
+
+static inline void serialize( ostream & stream, std::string_view key,
+                              const spb::detail::proto_label_repeated_fixed_size auto & value )
+{
+    serialize_key( stream, key );
+    stream.write( '[' );
+    stream.put_comma = false;
+    for( size_t i = 0; i < value.size( ); i++ )
+    {
+        if constexpr( std::is_same_v< typename std::decay_t< decltype( value ) >::value_type,
+                                      bool > )
+        {
+            serialize( stream, { }, bool( value[ i ] ) );
+        }
+        else
+        {
+            serialize( stream, { }, value[ i ] );
         }
     }
     stream.write( ']' );
