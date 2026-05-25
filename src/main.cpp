@@ -99,15 +99,22 @@ int main(int argc, char* argv[]) {
 
     // dirs & clean
     auto wd = QDir(QApplication::applicationDirPath());
+    bool useAppdata = false;
+    QString appdataDir;
     if (arguments.contains("-appdata")) {
-        QString appDataDir;
+        useAppdata = true;
         int appdataIndex = arguments.indexOf("-appdata");
         if (arguments.size() > appdataIndex + 1 && !arguments.at(appdataIndex + 1).startsWith("-")) {
-            appDataDir = arguments.at(appdataIndex + 1);
+            appdataDir = arguments.at(appdataIndex + 1);
         }
+    }
+#ifdef NKR_CPP_USE_APPDATA
+    useAppdata = true; // Example: Package & MacOS
+#endif
+    if(useAppdata) {
         QApplication::setApplicationName("Throne");
-        if (!appDataDir.isEmpty()) {
-            wd.setPath(appDataDir);
+        if (!appdataDir.isEmpty()) {
+            wd.setPath(appdataDir);
         } else {
             wd.setPath(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation));
         }
@@ -123,20 +130,12 @@ int main(int argc, char* argv[]) {
     // Store Flags
     Configs::dataManager->settingsRepo->argv = arguments;
     if (Configs::dataManager->settingsRepo->argv.contains("-many")) Configs::dataManager->settingsRepo->flag_many = true;
-    if (Configs::dataManager->settingsRepo->argv.contains("-appdata")) {
-        Configs::dataManager->settingsRepo->flag_use_appdata = true;
-        int appdataIndex = Configs::dataManager->settingsRepo->argv.indexOf("-appdata");
-        if (Configs::dataManager->settingsRepo->argv.size() > appdataIndex + 1 && !Configs::dataManager->settingsRepo->argv.at(appdataIndex + 1).startsWith("-")) {
-            Configs::dataManager->settingsRepo->appdataDir = Configs::dataManager->settingsRepo->argv.at(appdataIndex + 1);
-        }
-    }
     if (Configs::dataManager->settingsRepo->argv.contains("-tray")) Configs::dataManager->settingsRepo->flag_tray = true;
     if (Configs::dataManager->settingsRepo->argv.contains("-debug")) Configs::dataManager->settingsRepo->flag_debug = true;
     if (Configs::dataManager->settingsRepo->argv.contains("-flag_restart_tun_on")) Configs::dataManager->settingsRepo->flag_restart_tun_on = true;
     if (Configs::dataManager->settingsRepo->argv.contains("-flag_restart_dns_set")) Configs::dataManager->settingsRepo->flag_dns_set = true;
-#ifdef NKR_CPP_USE_APPDATA
-    Configs::dataManager->settingsRepo->flag_use_appdata = true; // Example: Package & MacOS
-#endif
+    Configs::dataManager->settingsRepo->flag_use_appdata = useAppdata;
+    if(useAppdata && !appdataDir.isEmpty()) Configs::dataManager->settingsRepo->appdataDir = appdataDir;
 #ifdef NKR_CPP_DEBUG
     Configs::dataManager->settingsRepo->flag_debug = true;
 #endif
