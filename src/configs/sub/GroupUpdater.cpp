@@ -149,7 +149,7 @@ namespace Subscription {
         // Base64 encoded subscription
         if (!isBase64Decoded) {
             if (auto str2 = DecodeB64IfValid(str); !str2.isEmpty()) {
-                update(str2, needParse, true);
+                update(str2, true, true);
                 return;
             }
         }
