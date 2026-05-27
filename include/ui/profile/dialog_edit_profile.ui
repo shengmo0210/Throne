@@ -942,230 +942,459 @@
         </property>
         <layout class="QVBoxLayout" name="verticalLayout_10">
          <item>
-          <widget class="QWidget" name="xray_common_box" native="true">
-           <layout class="QGridLayout" name="gridLayout_11">
-            <item row="0" column="0">
-             <widget class="QLabel" name="xray_host_l">
-              <property name="text">
-               <string>Host</string>
+          <widget class="QScrollArea" name="xray_network_scroll">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="sizeAdjustPolicy">
+            <enum>QAbstractScrollArea::SizeAdjustPolicy::AdjustToContents</enum>
+           </property>
+           <property name="horizontalScrollBarPolicy">
+            <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOff</enum>
+           </property>
+           <property name="frameShape">
+            <enum>QFrame::Shape::NoFrame</enum>
+           </property>
+           <property name="widgetResizable">
+            <bool>true</bool>
+           </property>
+           <widget class="QWidget" name="xray_network_scroll_contents">
+            <property name="geometry">
+             <rect>
+              <x>0</x>
+              <y>0</y>
+              <width>16</width>
+              <height>16</height>
+             </rect>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_xray_network_scroll">
+             <property name="leftMargin">
+              <number>0</number>
+             </property>
+             <property name="topMargin">
+              <number>0</number>
+             </property>
+             <property name="rightMargin">
+              <number>0</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
+             <item>
+              <widget class="QWidget" name="xray_common_box" native="true">
+               <layout class="QGridLayout" name="gridLayout_11">
+                <item row="0" column="0">
+                 <widget class="QLabel" name="xray_host_l">
+                  <property name="text">
+                   <string>Host</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="0">
+                 <widget class="QLabel" name="xray_headers_l">
+                  <property name="text">
+                   <string>Headers</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="0" column="1">
+                 <widget class="QLineEdit" name="xray_host"/>
+                </item>
+                <item row="0" column="3">
+                 <widget class="QLineEdit" name="xray_path"/>
+                </item>
+                <item row="3" column="1">
+                 <widget class="QLineEdit" name="xray_headers"/>
+                </item>
+                <item row="0" column="2">
+                 <widget class="QLabel" name="xray_path_l">
+                  <property name="text">
+                   <string>Path</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="0">
+                 <widget class="QLabel" name="xray_ed_label">
+                  <property name="text">
+                   <string>EarlyData Length</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="1">
+                 <widget class="QLineEdit" name="xray_ed_length"/>
+                </item>
+                <item row="2" column="0">
+                 <widget class="QCheckBox" name="xray_multi_mode">
+                  <property name="text">
+                   <string>Multi Mode</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QWidget" name="xray_xhttp_box" native="true">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <layout class="QVBoxLayout" name="verticalLayout_xray_xhttp">
+                <item>
+             <widget class="QGroupBox" name="xray_xhttp_common_box">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Expanding" vsizetype="Maximum">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
               </property>
+              <property name="title">
+               <string>Common</string>
+              </property>
+              <layout class="QGridLayout" name="gridLayout_xray_xhttp_common">
+               <item row="0" column="0">
+                <widget class="QLabel" name="label_21">
+                 <property name="text">
+                  <string>Mode</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="1">
+                <widget class="QComboBox" name="xray_mode"/>
+               </item>
+               <item row="0" column="2">
+                <widget class="QLabel" name="label_23">
+                 <property name="text">
+                  <string>X Padding Bytes</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="3">
+                <widget class="QLineEdit" name="xray_xpaddingbytes"/>
+               </item>
+               <item row="1" column="0">
+                <widget class="QLabel" name="xray_serverMaxHeaderBytes_l">
+                 <property name="text">
+                  <string>Server Max Header Bytes</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="1">
+                <widget class="QLineEdit" name="xray_serverMaxHeaderBytes"/>
+               </item>
+              </layout>
              </widget>
             </item>
-            <item row="3" column="0">
-             <widget class="QLabel" name="xray_headers_l">
-              <property name="text">
-               <string>Headers</string>
+            <item>
+             <widget class="QGroupBox" name="xray_xhttp_padding_box">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Expanding" vsizetype="Maximum">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
               </property>
+              <property name="title">
+               <string>Padding Obfuscation</string>
+              </property>
+              <layout class="QGridLayout" name="gridLayout_xray_xhttp_padding">
+               <item row="0" column="0" colspan="4">
+                <widget class="QCheckBox" name="xray_xpadding_obfs_mode">
+                 <property name="text">
+                  <string>xPaddingObfsMode</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="0">
+                <widget class="QLabel" name="label_xpadding_method">
+                 <property name="text">
+                  <string>xPaddingMethod</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="1">
+                <widget class="QComboBox" name="xray_xpadding_method"/>
+               </item>
+               <item row="1" column="2">
+                <widget class="QLabel" name="label_xpadding_placement">
+                 <property name="text">
+                  <string>xPaddingPlacement</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="3">
+                <widget class="QComboBox" name="xray_xpadding_placement"/>
+               </item>
+               <item row="2" column="0">
+                <widget class="QLabel" name="label_xpadding_key">
+                 <property name="text">
+                  <string>xPaddingKey</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="1">
+                <widget class="QLineEdit" name="xray_xpadding_key"/>
+               </item>
+               <item row="2" column="2">
+                <widget class="QLabel" name="label_xpadding_header">
+                 <property name="text">
+                  <string>xPaddingHeader</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="3">
+                <widget class="QLineEdit" name="xray_xpadding_header"/>
+               </item>
+              </layout>
              </widget>
             </item>
-            <item row="0" column="1">
-             <widget class="QLineEdit" name="xray_host"/>
-            </item>
-            <item row="0" column="3">
-             <widget class="QLineEdit" name="xray_path"/>
-            </item>
-            <item row="3" column="1">
-             <widget class="QLineEdit" name="xray_headers"/>
-            </item>
-            <item row="0" column="2">
-             <widget class="QLabel" name="xray_path_l">
-              <property name="text">
-               <string>Path</string>
+            <item>
+             <widget class="QGroupBox" name="xray_xhttp_packet_box">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Expanding" vsizetype="Maximum">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
               </property>
+              <property name="title">
+               <string>Upload / Stream Tuning</string>
+              </property>
+              <layout class="QGridLayout" name="gridLayout_xray_xhttp_packet">
+               <item row="1" column="0">
+                <widget class="QLabel" name="label_24">
+                 <property name="text">
+                  <string>scMaxEachPostBytes</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="1">
+                <widget class="QLineEdit" name="xray_scMaxEachPostBytes"/>
+               </item>
+               <item row="1" column="2">
+                <widget class="QLabel" name="label_25">
+                 <property name="text">
+                  <string>scMinPostsIntervalMs</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="3">
+                <widget class="QLineEdit" name="xray_scMinPostsIntervalMs"/>
+               </item>
+               <item row="2" column="0">
+                <widget class="QLabel" name="xray_scMaxBufferedPosts_l">
+                 <property name="text">
+                  <string>scMaxBufferedPosts</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="1">
+                <widget class="QLineEdit" name="xray_scMaxBufferedPosts"/>
+               </item>
+               <item row="2" column="2">
+                <widget class="QLabel" name="xray_uplink_http_method_l">
+                 <property name="text">
+                  <string>uplinkHTTPMethod</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="3">
+                <widget class="QComboBox" name="xray_uplink_http_method"/>
+               </item>
+               <item row="3" column="0">
+                <widget class="QLabel" name="xray_uplink_data_placement_l">
+                 <property name="text">
+                  <string>uplinkDataPlacement</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="3" column="1">
+                <widget class="QComboBox" name="xray_uplink_data_placement"/>
+               </item>
+               <item row="3" column="2">
+                <widget class="QLabel" name="xray_uplink_data_key_l">
+                 <property name="text">
+                  <string>uplinkDataKey</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="3" column="3">
+                <widget class="QLineEdit" name="xray_uplink_data_key"/>
+               </item>
+               <item row="4" column="0">
+                <widget class="QLabel" name="xray_uplink_chunk_size_l">
+                 <property name="text">
+                  <string>uplinkChunkSize</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="4" column="1">
+                <widget class="QLineEdit" name="xray_uplink_chunk_size"/>
+               </item>
+               <item row="0" column="0" colspan="2">
+                <widget class="QCheckBox" name="xray_no_grpc">
+                 <property name="text">
+                  <string>noGRPCHeader</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="2" colspan="2">
+                <widget class="QCheckBox" name="xray_no_sse">
+                 <property name="text">
+                  <string>noSSEHeader</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="5" column="0">
+                <widget class="QLabel" name="xray_scStreamUpServerSecs_l">
+                 <property name="text">
+                  <string>scStreamUpServerSecs</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="5" column="1">
+                <widget class="QLineEdit" name="xray_scStreamUpServerSecs"/>
+               </item>
+               <item row="6" column="0">
+                <widget class="QLabel" name="xray_session_placement_l">
+                 <property name="text">
+                  <string>sessionPlacement</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="6" column="1">
+                <widget class="QComboBox" name="xray_session_placement"/>
+               </item>
+               <item row="6" column="2">
+                <widget class="QLabel" name="xray_session_key_l">
+                 <property name="text">
+                  <string>sessionKey</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="6" column="3">
+                <widget class="QLineEdit" name="xray_session_key"/>
+               </item>
+               <item row="7" column="0">
+                <widget class="QLabel" name="xray_seq_placement_l">
+                 <property name="text">
+                  <string>seqPlacement</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="7" column="1">
+                <widget class="QComboBox" name="xray_seq_placement"/>
+               </item>
+               <item row="7" column="2">
+                <widget class="QLabel" name="xray_seq_key_l">
+                 <property name="text">
+                  <string>seqKey</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="7" column="3">
+                <widget class="QLineEdit" name="xray_seq_key"/>
+               </item>
+               <item row="8" column="0">
+                <widget class="QLabel" name="label_32">
+                 <property name="text">
+                  <string>Download Settings</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="8" column="1" colspan="3">
+                <widget class="QPushButton" name="xray_downloadsettings_edit">
+                 <property name="text">
+                  <string>Edit</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
              </widget>
             </item>
-            <item row="1" column="0">
-             <widget class="QLabel" name="xray_ed_label">
-              <property name="text">
-               <string>EarlyData Length</string>
+            <item>
+             <widget class="QGroupBox" name="xray_xhttp_xmux_box">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Expanding" vsizetype="Maximum">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
               </property>
-             </widget>
-            </item>
-            <item row="1" column="1">
-             <widget class="QLineEdit" name="xray_ed_length"/>
-            </item>
-            <item row="2" column="0">
-             <widget class="QCheckBox" name="xray_multi_mode">
-              <property name="text">
-               <string>Multi Mode</string>
+              <property name="title">
+               <string>Xmux</string>
               </property>
+              <layout class="QGridLayout" name="gridLayout_xray_xhttp_xmux">
+               <item row="0" column="0">
+                <widget class="QLabel" name="label_26">
+                 <property name="text">
+                  <string>maxConcurrency</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="1">
+                <widget class="QLineEdit" name="xray_max_concurrency"/>
+               </item>
+               <item row="0" column="2">
+                <widget class="QLabel" name="label_31">
+                 <property name="text">
+                  <string>maxConnections</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="3">
+                <widget class="QLineEdit" name="xray_max_connections"/>
+               </item>
+               <item row="1" column="0">
+                <widget class="QLabel" name="label_27">
+                 <property name="text">
+                  <string>hMaxRequestTimes</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="1">
+                <widget class="QLineEdit" name="xray_hMaxRequestTimes"/>
+               </item>
+               <item row="1" column="2">
+                <widget class="QLabel" name="label_28">
+                 <property name="text">
+                  <string>hMaxReusableSecs</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="3">
+                <widget class="QLineEdit" name="xray_hMaxReusableSecs"/>
+               </item>
+               <item row="2" column="0">
+                <widget class="QLabel" name="label_29">
+                 <property name="text">
+                  <string>cMaxReuseTimes</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="1">
+                <widget class="QLineEdit" name="xray_max_reuse_times"/>
+               </item>
+               <item row="2" column="2">
+                <widget class="QLabel" name="label_30">
+                 <property name="text">
+                  <string>hKeepAlivePeriod</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="3">
+                <widget class="QLineEdit" name="xray_keep_alive_period"/>
+               </item>
+              </layout>
              </widget>
-            </item>
-           </layout>
-          </widget>
-         </item>
-         <item>
-          <widget class="QWidget" name="xray_xhttp_box" native="true">
-           <layout class="QGridLayout" name="gridLayout_10">
-            <item row="6" column="5">
-             <widget class="QLineEdit" name="xray_max_connections"/>
-            </item>
-            <item row="6" column="0">
-             <widget class="QLabel" name="label_26">
-              <property name="text">
-               <string>Max Concurrency</string>
-              </property>
-             </widget>
-            </item>
-            <item row="7" column="3" colspan="2">
-             <widget class="QLabel" name="label_28">
-              <property name="text">
-               <string>Max Reusable Secs</string>
-              </property>
-             </widget>
-            </item>
-            <item row="8" column="5">
-             <widget class="QLineEdit" name="xray_keep_alive_period"/>
-            </item>
-            <item row="0" column="2" colspan="2">
-             <widget class="QComboBox" name="xray_mode"/>
-            </item>
-            <item row="6" column="4">
-             <widget class="QLabel" name="label_31">
-              <property name="text">
-               <string>Max Connections</string>
-              </property>
-             </widget>
-            </item>
-            <item row="8" column="1" colspan="2">
-             <widget class="QLineEdit" name="xray_max_reuse_times"/>
-            </item>
-            <item row="9" column="0">
-             <widget class="QLabel" name="label_32">
-              <property name="text">
-               <string>Download Settings</string>
-              </property>
-             </widget>
-            </item>
-            <item row="8" column="4">
-             <widget class="QLabel" name="label_30">
-              <property name="text">
-               <string>Keep Alive Period</string>
-              </property>
-             </widget>
-            </item>
-            <item row="5" column="0" colspan="2">
-             <widget class="QLabel" name="label_24">
-              <property name="text">
-               <string>Max Post Bytes</string>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="0">
-             <widget class="QLabel" name="label_23">
-              <property name="text">
-               <string>X Padding Bytes</string>
-              </property>
-             </widget>
-            </item>
-            <item row="5" column="5">
-             <widget class="QLineEdit" name="xray_scMinPostsIntervalMs"/>
-            </item>
-            <item row="5" column="2" colspan="2">
-             <widget class="QLineEdit" name="xray_scMaxEachPostBytes"/>
-            </item>
-            <item row="6" column="1" colspan="2">
-             <widget class="QLineEdit" name="xray_max_concurrency"/>
-            </item>
-            <item row="1" column="2">
-             <widget class="QLineEdit" name="xray_xpaddingbytes"/>
-            </item>
-            <item row="0" column="0">
-             <widget class="QLabel" name="label_21">
-              <property name="text">
-               <string>Mode</string>
-              </property>
-             </widget>
-            </item>
-            <item row="8" column="0">
-             <widget class="QLabel" name="label_29">
-              <property name="text">
-               <string>Max Reuse times</string>
-              </property>
-             </widget>
-            </item>
-            <item row="7" column="2">
-             <widget class="QLineEdit" name="xray_hMaxRequestTimes"/>
-            </item>
-            <item row="7" column="5">
-             <widget class="QLineEdit" name="xray_hMaxReusableSecs"/>
-            </item>
-            <item row="1" column="4">
-             <widget class="QCheckBox" name="xray_no_grpc">
-              <property name="text">
-               <string>No GRPC Headers</string>
-              </property>
-             </widget>
-            </item>
-            <item row="9" column="2" colspan="5">
-             <widget class="QPushButton" name="xray_downloadsettings_edit">
-              <property name="text">
-               <string>Edit</string>
-              </property>
-             </widget>
-            </item>
-            <item row="10" column="0" colspan="2">
-             <widget class="QCheckBox" name="xray_xpadding_obfs_mode">
-              <property name="text">
-               <string>XPadding Obfs Mode</string>
-              </property>
-             </widget>
-            </item>
-            <item row="10" column="2">
-             <widget class="QLabel" name="label_xpadding_key">
-              <property name="text">
-               <string>XPadding Key</string>
-              </property>
-             </widget>
-            </item>
-            <item row="10" column="3">
-             <widget class="QLineEdit" name="xray_xpadding_key"/>
-            </item>
-            <item row="10" column="4">
-             <widget class="QLabel" name="label_xpadding_header">
-              <property name="text">
-               <string>XPadding Header</string>
-              </property>
-             </widget>
-            </item>
-            <item row="10" column="5">
-             <widget class="QLineEdit" name="xray_xpadding_header"/>
-            </item>
-            <item row="11" column="0">
-             <widget class="QLabel" name="label_xpadding_placement">
-              <property name="text">
-               <string>XPadding Placement</string>
-              </property>
-             </widget>
-            </item>
-            <item row="11" column="1" colspan="2">
-             <widget class="QComboBox" name="xray_xpadding_placement"/>
-            </item>
-            <item row="11" column="3" colspan="2">
-             <widget class="QLabel" name="label_xpadding_method">
-              <property name="text">
-               <string>XPadding Method</string>
-              </property>
-             </widget>
-            </item>
-            <item row="11" column="5">
-             <widget class="QComboBox" name="xray_xpadding_method"/>
-            </item>
-            <item row="5" column="4">
-             <widget class="QLabel" name="label_25">
-              <property name="text">
-               <string>Min Post Interval</string>
-              </property>
-             </widget>
-            </item>
-            <item row="7" column="0" colspan="2">
-             <widget class="QLabel" name="label_27">
-              <property name="text">
-               <string>Max Request Times</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
+                </item>
+               </layout>
+              </widget>
+             </item>
+            </layout>
+           </widget>
           </widget>
          </item>
         </layout>

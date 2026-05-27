@@ -53,7 +53,19 @@ private:
 
     void updateXrayCommons(QString network);
 
+    void setupXrayXHTTPControls();
+
+    void updateXrayXHTTPControls();
+
+    void setupXrayXHTTPDescriptions();
+
+    void setXrayXHTTPHelp(QWidget *caption, QWidget *field, const QString &text, const QString &jsonKey, const QString &description);
+
+    void queueRefreshDialogLayout();
+
     bool validateHeaders();
+
+    bool validateXrayXHTTPSettings();
 
     bool onEnd();
 
