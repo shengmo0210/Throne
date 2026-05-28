@@ -19,6 +19,7 @@ namespace Configs
         // generated Xray config receives a matching socks inbound.
         int bridgePort = 0;
         QString bridgeAuth;
+        QString bridgeHost = "127.0.0.1";
 
         bool ParseFromJson(const QJsonObject &object) override {
             if (object.isEmpty()) return false;
@@ -94,7 +95,7 @@ namespace Configs
             if (type == CustomXrayFullConfig) {
                 return {QJsonObject{
                             {"type", "socks"},
-                            {"server", "127.0.0.1"},
+                            {"server", bridgeHost},
                             {"server_port", bridgePort},
                             {"username", bridgeAuth},
                             {"password", bridgeAuth},

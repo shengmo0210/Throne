@@ -105,6 +105,18 @@ namespace Configs
         bool needed = false;
         int port = -1;
         QString auth;
+        // When true the sing-box socks inbound for this bridge routes to
+        // `direct` rather than re-entering a sing-box chain hop. Used when
+        // xray is the final egress under TUN, where sing-box's process_path
+        // rule fails to short-circuit xray's outbound and traffic loops back
+        // through TUN. Detouring xray's egress into sing-box `direct` (which
+        // honors auto_detect_interface) breaks the loop.
+        bool loopbackProtect = false;
+        // Loopback host (127.x.y.z) used as both listen and dial address for
+        // this bridge. Randomizing per-bridge spreads ephemeral source-port
+        // allocation across (dst_ip, dst_port) buckets, so a single bridge
+        // under load doesn't starve every other bridge of source ports.
+        QString host = "127.0.0.1";
     };
 
     class BuildSingBoxConfigContext
