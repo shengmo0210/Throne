@@ -590,12 +590,13 @@ namespace Configs {
                 };
         }
 
+        const bool useDirectFinalDNS = dataManager->settingsRepo->dns_final_out == "direct";
+
         // Symmetric to the direct carve-out above: when the final DNS is direct,
         // proxy-routed sites would otherwise resolve via direct DNS, so route
-        // them to remote DNS (when final is remote they reach it via the final
-        // rule, and the direct carve-out already runs first to keep server
-        // hostnames on direct DNS).
-        if (dnsDeps->needProxyDnsRules && dataManager->settingsRepo->dns_final_out != "remote") {
+        // them to remote DNS. "proxy" and "remote" both use remote DNS; only
+        // explicit "direct" should fall back to local DNS.
+        if (dnsDeps->needProxyDnsRules && useDirectFinalDNS) {
             rules += QJsonObject{
                     {"rule_set", dnsDeps->proxyRuleSets},
                     {"domain", dnsDeps->proxyDomains},
@@ -609,8 +610,8 @@ namespace Configs {
         }
 
         // final rule: proxy
-        auto finalStrategy = dataManager->settingsRepo->dns_final_out == "remote" ? dataManager->settingsRepo->remote_dns_strategy : dataManager->settingsRepo->direct_dns_strategy;
-        auto finalDNS = dataManager->settingsRepo->dns_final_out == "remote" ? "dns-remote" : "dns-direct";
+        auto finalStrategy = useDirectFinalDNS ? dataManager->settingsRepo->direct_dns_strategy : dataManager->settingsRepo->remote_dns_strategy;
+        auto finalDNS = useDirectFinalDNS ? "dns-direct" : "dns-remote";
         rules += QJsonObject{
             {"strategy", finalStrategy},
             {"action", "route"},
@@ -884,6 +885,23 @@ namespace Configs {
                 return;
             }
             object["tag"] = tag;
+            if (bridgeConfig.loopbackProtect) {
+                auto streamSettings = object["streamSettings"].toObject();
+                const auto network = streamSettings["network"].toString();
+                if (network == "xhttp" || network == "splithttp") {
+                    auto xhttpSettings = streamSettings["xhttpSettings"].toObject();
+                    if (xhttpSettings.isEmpty()) xhttpSettings = streamSettings["splithttpSettings"].toObject();
+                    auto extraSettings = xhttpSettings["extra"].toObject();
+                    if (extraSettings.contains("downloadSettings")) {
+                        // XHTTP downloadSettings gets its own stream config;
+                        // penetrate makes Xray copy this sockopt there too.
+                        auto sockopt = streamSettings["sockopt"].toObject();
+                        sockopt["penetrate"] = true;
+                        streamSettings["sockopt"] = sockopt;
+                        object["streamSettings"] = streamSettings;
+                    }
+                }
+            }
             // A bridge always requires chaining the preceding hop into it,
             // even when `link` is false (single-hop route groups). nextTag
             // already encodes whether anything follows, so honoring it
@@ -1089,8 +1107,8 @@ namespace Configs {
 
         // Also add the needed socks inbound bridges. Loopback-protect bridges
         // have no sing-box ingress to pair with (their inbound routes straight
-        // to `direct`), so the singIngressTags index only advances for normal
-        // xray->sing bridges.
+        // to the hidden `xray-direct`), so the singIngressTags index only
+        // advances for normal xray->sing bridges.
         int loopbackBridgeCount = 0;
         for (const auto& b : ctx->xrayToSingBridges) if (b.loopbackProtect) loopbackBridgeCount++;
         if (ctx->xrayToSingBridges.size() - loopbackBridgeCount != ctx->singIngressTags.size()) {
@@ -1121,6 +1139,13 @@ namespace Configs {
             inboundArr.append(socksBridge);
         }
         ctx->buildConfigResult->coreConfig["inbounds"] = inboundArr;
+
+        if (loopbackBridgeCount > 0) {
+            ctx->outbounds.append(QJsonObject{
+                {"type", "direct"},
+                {"tag", "xray-direct"}
+            });
+        }
 
         // Add the direct outbound
         ctx->outbounds.append(QJsonObject{
@@ -1236,8 +1261,9 @@ namespace Configs {
         }
 
         // map ingress socks inbounds to their corresponding outbounds.
-        // Loopback-protect bridges route to `direct` (auto_detect_interface
-        // bypasses TUN); normal bridges route to the paired sing-box ingress.
+        // Loopback-protect bridges route to hidden `xray-direct`
+        // (auto_detect_interface bypasses TUN); normal bridges route to the
+        // paired sing-box ingress.
         int routeLoopbackBridgeCount = 0;
         for (const auto& b : ctx->xrayToSingBridges) if (b.loopbackProtect) routeLoopbackBridgeCount++;
         if (ctx->xrayToSingBridges.size() - routeLoopbackBridgeCount != ctx->singIngressTags.size()) {
@@ -1250,7 +1276,7 @@ namespace Configs {
             QString inboundTag, outboundTag;
             if (bridgeConf.loopbackProtect) {
                 inboundTag = "bridge-loopback-" + Int2String(bridgeConf.port);
-                outboundTag = "direct";
+                outboundTag = "xray-direct";
             } else {
                 inboundTag = "bridge-" + ctx->singIngressTags[routeSingIngressIdx];
                 outboundTag = ctx->singIngressTags[routeSingIngressIdx];
