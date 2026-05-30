@@ -26,6 +26,29 @@
 #include <include/sys/linux/coreDump.h>
 #include <qfontdatabase.h>
 #endif
+#ifdef Q_OS_MACOS
+#include <QFileOpenEvent>
+
+// On macOS the OS reuses the running app and delivers throne:// URLs as a
+// QFileOpenEvent to the application object (never via argv). This filter feeds
+// them into the common deeplink pipeline.
+class MacDeeplinkFilter : public QObject {
+public:
+    using QObject::QObject;
+
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override {
+        if (event->type() == QEvent::FileOpen) {
+            const QString url = static_cast<QFileOpenEvent *>(event)->url().toString();
+            if (url.startsWith("throne://")) {
+                Deeplink_Submit(url);
+                return true;
+            }
+        }
+        return QObject::eventFilter(obj, event);
+    }
+};
+#endif
 
 void signal_handler(int signum) {
     GetMainWindow()->prepare_exit();
@@ -72,6 +95,11 @@ int main(int argc, char* argv[]) {
     QApplication::setQuitOnLastWindowClosed(false);
     QApplication a(argc, argv);
 
+#ifdef Q_OS_MACOS
+    // Install before the event loop so launch-by-deeplink FileOpen events are caught.
+    a.installEventFilter(new MacDeeplinkFilter(&a));
+#endif
+
 #if !defined(Q_OS_MACOS) && (QT_VERSION >= QT_VERSION_CHECK(6,9,0))
     // Load the emoji fonts
 #ifdef Q_OS_WIN
@@ -96,6 +124,9 @@ int main(int argc, char* argv[]) {
     }
 
     QStringList arguments = QApplication::arguments();
+    // A throne:// URL may be passed as a launch argument (Windows/Linux). Delivered
+    // after the window is up, or forwarded to the primary instance via the socket below.
+    const QString launchDeeplink = Deeplink_ExtractFromArgs(arguments);
 
     // dirs & clean
     auto wd = QDir(QApplication::applicationDirPath());
@@ -205,6 +236,12 @@ int main(int argc, char* argv[]) {
     if (socket.waitForConnected(250))
     {
         qDebug() << "Another instance is running, let's wake it up and quit";
+        // Hand off a deeplink (if any) so the primary instance handles it.
+        if (!launchDeeplink.isEmpty()) {
+            socket.write(launchDeeplink.toUtf8());
+            socket.flush();
+            socket.waitForBytesWritten(250);
+        }
         socket.disconnectFromServer();
         return 0;
     }
@@ -219,7 +256,14 @@ int main(int argc, char* argv[]) {
     QObject::connect(&server, &QLocalServer::newConnection, qApp, [&] {
         auto s = server.nextPendingConnection();
         qDebug() << "Another instance tried to wake us up on " << serverName << s;
-        s->close();
+        // The waking instance may forward a throne:// deeplink as payload.
+        auto readPayload = [s] {
+            if (s->bytesAvailable() <= 0) return;
+            Deeplink_Submit(QString::fromUtf8(s->readAll()).trimmed());
+        };
+        QObject::connect(s, &QLocalSocket::readyRead, s, readPayload);
+        QObject::connect(s, &QLocalSocket::disconnected, s, &QLocalSocket::deleteLater);
+        readPayload(); // in case the payload already arrived
         // raise main window
         MW_dialog_message("", "Raise");
     });
@@ -248,5 +292,11 @@ int main(int argc, char* argv[]) {
 #endif
 
     UI_InitMainWindow();
+
+    // Deliver a deeplink passed on the command line (cold start), and replay any that
+    // arrived during startup (e.g. a macOS FileOpen event before the window existed).
+    if (!launchDeeplink.isEmpty()) Deeplink_Submit(launchDeeplink);
+    Deeplink_FlushPending();
+
     return QApplication::exec();
 }

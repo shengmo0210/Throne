@@ -61,6 +61,14 @@ class QWidget;
 inline QWidget *mainwindow;
 inline std::function<void(QString)> MW_show_log;
 inline std::function<void(QString, QString)> MW_dialog_message;
+// Handles a "throne://" deeplink. Set by MainWindow; marshals to the UI thread.
+inline std::function<void(QString)> MW_handle_deeplink;
+
+// Deeplink plumbing (see Utils.cpp). Delivery channels feed URLs in here; the
+// pending buffer covers URLs that arrive before the main window exists.
+QString Deeplink_ExtractFromArgs(const QStringList &args);
+void Deeplink_Submit(const QString &url);
+void Deeplink_FlushPending();
 
 // Dispatchers
 

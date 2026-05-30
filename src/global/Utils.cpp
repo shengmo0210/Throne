@@ -334,6 +334,31 @@ void runOnUiThread(const std::function<void()> &callback, bool wait) {
     }
 }
 
+static QString g_pendingDeeplink;
+
+QString Deeplink_ExtractFromArgs(const QStringList &args) {
+    for (const auto &arg : args) {
+        if (arg.startsWith("throne://")) return arg;
+    }
+    return {};
+}
+
+void Deeplink_Submit(const QString &url) {
+    if (url.isEmpty() || !url.startsWith("throne://")) return;
+    if (MW_handle_deeplink) {
+        MW_handle_deeplink(url);
+    } else {
+        g_pendingDeeplink = url; // main window not up yet; replayed by Deeplink_FlushPending
+    }
+}
+
+void Deeplink_FlushPending() {
+    if (g_pendingDeeplink.isEmpty() || !MW_handle_deeplink) return;
+    const QString url = g_pendingDeeplink;
+    g_pendingDeeplink.clear();
+    MW_handle_deeplink(url);
+}
+
 void runOnNewThread(const std::function<void()> &callback, bool wait) {
     auto *timer = new QTimer();
     auto thread = new QThread();

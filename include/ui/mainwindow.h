@@ -121,7 +121,7 @@ private slots:
 
     void on_menu_add_from_input_triggered();
 
-    static void on_menu_add_from_clipboard_triggered();
+    void on_menu_add_from_clipboard_triggered();
 
     void on_menu_clone_triggered();
 
@@ -257,6 +257,14 @@ private:
     void clearUnavailableProfiles(bool confirm = true, QList<int> profileIDs = {});
 
     void dialog_message_impl(const QString &sender, const QString &info);
+
+    void handle_deeplink_impl(const QString &url);
+
+    void handle_addsub(const QString &url, const QString &name, bool autoUpdate);
+
+    // Routes user-supplied text: throne:// links go to the deeplink handler, the
+    // rest to the subscription/profile importer.
+    void import_or_handle_deeplink(const QString &text);
 
     void refresh_proxy_list_column_size();
 

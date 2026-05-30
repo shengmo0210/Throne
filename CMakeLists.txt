@@ -102,6 +102,9 @@ set(PROJECT_SOURCES
         include/sys/Process.hpp
         src/sys/Process.cpp
 
+        include/sys/UrlScheme.hpp
+        src/sys/UrlScheme.cpp
+
         include/ui/setting/ThemeManager.hpp
         src/ui/setting/ThemeManager.cpp
         src/ui/setting/Icon.cpp

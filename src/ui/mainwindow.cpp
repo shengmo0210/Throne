@@ -7,6 +7,7 @@
 #include "include/configs/sub/GroupUpdater.hpp"
 #include "include/sys/Process.hpp"
 #include "include/sys/AutoRun.hpp"
+#include "include/sys/UrlScheme.hpp"
 
 #include "include/ui/setting/ThemeManager.hpp"
 #include "include/ui/setting/Icon.hpp"
@@ -50,6 +51,7 @@
 #endif
 
 #include <QUuid>
+#include <QUrlQuery>
 
 #include <QClipboard>
 #include <QModelIndex>
@@ -124,10 +126,19 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
             dialog_message_impl(a, b);
         });
     };
+    MW_handle_deeplink = [=,this](const QString &url) {
+        runOnUiThread([=,this]
+        {
+            handle_deeplink_impl(url);
+        });
+    };
 
     // handle AutoRun migration and privilege matching
     AutoRun_FixPrivilegeIfNeeded();
     AutoRun_MigrateIfNeeded();
+
+    // register the throne:// URL scheme (self-heals if the install was moved)
+    UrlScheme_RegisterIfNeeded();
 
     // Setup misc UI
     // migrate old themes
@@ -1153,7 +1164,7 @@ void MainWindow::dropEvent(QDropEvent* event)
     }
 
     if (mimeData->hasText()) {
-        Subscription::groupUpdater->AsyncUpdate(mimeData->text());
+        import_or_handle_deeplink(mimeData->text());
         event->acceptProposedAction();
         return;
     }
@@ -1230,6 +1241,58 @@ void MainWindow::show_group(int gid) {
 }
 
 // callback
+
+void MainWindow::handle_deeplink_impl(const QString &url) {
+    const QUrl u(url);
+    // QUrl lowercases the host, so "throne://AddSub/" arrives with host "addsub".
+    const QString cmd = u.host();
+    const QUrlQuery q(u);
+
+    if (cmd.compare("addsub", Qt::CaseInsensitive) == 0) {
+        const QString subUrl = q.queryItemValue("url", QUrl::FullyDecoded);
+        const QString name = q.queryItemValue("name", QUrl::FullyDecoded);
+        const QString autoUpdateRaw = q.queryItemValue("autoupdate", QUrl::FullyDecoded).trimmed().toLower();
+        // Default ON when the param is absent (matches normal subscription behavior).
+        const bool autoUpdate = autoUpdateRaw.isEmpty() || autoUpdateRaw == "1"
+            || autoUpdateRaw == "true" || autoUpdateRaw == "on" || autoUpdateRaw == "yes";
+        handle_addsub(subUrl, name, autoUpdate);
+        return;
+    }
+
+    MW_show_log(tr("Ignored deeplink with unknown command: %1").arg(cmd));
+}
+
+void MainWindow::handle_addsub(const QString &url, const QString &name, bool autoUpdate) {
+    if (url.isEmpty()) {
+        MessageBoxWarning(tr("Add subscription"), tr("The link did not contain a subscription URL."));
+        return;
+    }
+
+    ActivateWindow(this);
+
+    const QString groupName = FIRST_OR_SECOND(name, QUrl(url).host());
+    const auto prompt = tr("Add this subscription?\n\nName: %1\nURL: %2\nAuto update: %3")
+                            .arg(groupName, url, autoUpdate ? tr("On") : tr("Off"));
+    if (QMessageBox::question(GetMessageBoxParent(), tr("Add subscription"), prompt) != QMessageBox::StandardButton::Yes) {
+        return;
+    }
+
+    auto group = Configs::GroupsRepo::NewGroup();
+    group->name = groupName;
+    group->url = url;
+    group->skip_auto_update = !autoUpdate;
+    Configs::dataManager->groupsRepo->AddGroup(group);
+    refresh_groups();
+    Subscription::groupUpdater->AsyncUpdate(url, group->id);
+}
+
+void MainWindow::import_or_handle_deeplink(const QString &text) {
+    if (const QString trimmed = text.trimmed(); trimmed.startsWith("throne://")) {
+        handle_deeplink_impl(trimmed);
+        return;
+    }
+    Subscription::groupUpdater->AsyncUpdate(text);
+}
 
 void MainWindow::dialog_message_impl(const QString &sender, const QString &info) {
     // info
@@ -2105,7 +2168,7 @@ void MainWindow::on_menu_add_from_input_triggered() {
 
 void MainWindow::on_menu_add_from_clipboard_triggered() {
     auto clipboard = QApplication::clipboard()->text();
-    Subscription::groupUpdater->AsyncUpdate(clipboard);
+    import_or_handle_deeplink(clipboard);
 }
 
 void MainWindow::on_menu_clone_triggered() {

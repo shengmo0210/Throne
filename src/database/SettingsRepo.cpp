@@ -135,6 +135,7 @@ namespace Configs {
             {"warp_ep",                    &warp_ep},
             {"inbound_user",               &inbound_user},
             {"inbound_pass",               &inbound_pass},
+            {"url_scheme_mirror",          &url_scheme_mirror},
         };
 
         stringListMap = {
