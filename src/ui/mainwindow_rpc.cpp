@@ -814,7 +814,7 @@ void MainWindow::profile_start(int _id) {
     // timeout message
     auto restartMsgbox = new QMessageBox(QMessageBox::Question, software_name, tr("If there is no response for a long time, it is recommended to restart the software."),
                                          QMessageBox::Yes | QMessageBox::No, this);
-    connect(restartMsgbox, &QMessageBox::accepted, this, [=,this] { MW_dialog_message("", "RestartProgram"); });
+    connect(restartMsgbox, &QMessageBox::accepted, this, [=,this] { MW_dialog_message(MwMessage::RestartProgram, {}); });
     auto restartMsgboxTimer = new MessageBoxTimer(this, restartMsgbox, 10000);
 
     runOnNewThread([=, this] {
@@ -883,7 +883,7 @@ void MainWindow::profile_stop(bool crash, bool block, bool manual) {
         runOnUiThread([=, this, &restartMsgbox, &restartMsgboxTimer] {
             restartMsgbox = new QMessageBox(QMessageBox::Question, software_name, tr("If there is no response for a long time, it is recommended to restart the software."),
                              QMessageBox::Yes | QMessageBox::No, this);
-            connect(restartMsgbox, &QMessageBox::accepted, this, [=] { MW_dialog_message("", "RestartProgram"); });
+            connect(restartMsgbox, &QMessageBox::accepted, this, [=] { MW_dialog_message(MwMessage::RestartProgram, {}); });
             restartMsgboxTimer = new MessageBoxTimer(this, restartMsgbox, 5000);
         }, true);
 

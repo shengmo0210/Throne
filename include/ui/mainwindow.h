@@ -256,7 +256,7 @@ private:
 
     void clearUnavailableProfiles(bool confirm = true, QList<int> profileIDs = {});
 
-    void dialog_message_impl(const QString &sender, const QString &info);
+    void dialog_message_impl(MwMessage cmd, const QStringList &args);
 
     void handle_deeplink_impl(const QString &url);
 

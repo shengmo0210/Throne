@@ -49,7 +49,7 @@ void DialogHotkey::accept()
     Configs::dataManager->settingsRepo->Save();
 
     Configs::dataManager->settingsRepo->Save();
-    MW_dialog_message(Dialog_DialogManageHotkeys, "UpdateShortcuts");
+    MW_dialog_message(MwMessage::UpdateShortcuts, {});
     GetMainWindow()->RegisterHotkey(false);
     QDialog::accept();
 }

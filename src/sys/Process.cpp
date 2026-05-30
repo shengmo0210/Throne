@@ -27,7 +27,7 @@ namespace Configs_sys {
             if (log.contains("Extra process exited unexpectedly"))
             {
                 MW_show_log("Extra Core exited, stopping profile...");
-                MW_dialog_message("ExternalProcess", "Crashed");
+                MW_dialog_message(MwMessage::CoreCrashed, {});
             }
             if (logCounter.fetchAndAddRelaxed(log.count("\n")) > Configs::dataManager->settingsRepo->max_log_line) return;
             MW_show_log(log);

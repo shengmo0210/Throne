@@ -111,7 +111,7 @@ void GroupItem::on_edit_clicked() {
         if (dialog->result() == QDialog::Accepted) {
             Configs::dataManager->groupsRepo->Save(ent);
             refresh_data();
-            MW_dialog_message(Dialog_DialogManageGroups, "refresh" + Int2String(ent->id));
+            MW_dialog_message(MwMessage::GroupsChanged, {});
         }
         dialog->deleteLater();
     });
@@ -124,7 +124,7 @@ void GroupItem::on_remove_clicked() {
         QMessageBox::StandardButton::Yes) {
         GetMainWindow()->profile_stop(false, true, false);
         Configs::dataManager->groupsRepo->DeleteGroup(ent->id);
-        MW_dialog_message(Dialog_DialogManageGroups, "refresh-1");
+        MW_dialog_message(MwMessage::GroupsChanged, {});
         delete item;
     }
 }

@@ -89,9 +89,7 @@ void DialogVPNSettings::accept() {
     Configs::dataManager->settingsRepo->vpn_tun_ipv4_cidr = tunIPv4CIDR;
     Configs::dataManager->settingsRepo->vpn_tun_ipv6_cidr = tunIPv6CIDR;
     //
-    QStringList msg{"UpdateConfigs::dataManager->settingsRepo"};
-    msg << "VPNChanged";
-    MW_dialog_message("", msg.join(","));
+    MW_dialog_message(MwMessage::UpdateSettings, {MwArg::Vpn});
     QDialog::accept();
 }
 

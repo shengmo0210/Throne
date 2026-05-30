@@ -786,7 +786,7 @@ void DialogEditProfile::accept() {
     }
 
     // finish
-    QStringList msg = {"accept"};
+    QStringList args;
 
     if (newEnt) {
         auto ok = Configs::dataManager->profilesRepo->AddProfile(ent);
@@ -795,10 +795,10 @@ void DialogEditProfile::accept() {
         }
     } else {
         auto changed = Configs::dataManager->profilesRepo->Save(ent);
-        if (changed && Configs::dataManager->settingsRepo->started_id == ent->id) msg << "restart";
+        if (changed && Configs::dataManager->settingsRepo->started_id == ent->id) args << MwArg::RestartProxy;
     }
 
-    MW_dialog_message(Dialog_DialogEditProfile, msg.join(","));
+    MW_dialog_message(MwMessage::ProfileChanged, args);
     QDialog::accept();
 }
 

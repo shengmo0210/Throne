@@ -120,10 +120,10 @@ bool MainWindow::verify_core_pid(QLocalSocket *socket) {
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWindow) {
     mainwindow = this;
     setAcceptDrops(true);
-    MW_dialog_message = [=,this](const QString &a, const QString &b) {
+    MW_dialog_message = [=,this](MwMessage cmd, QStringList args) {
         runOnUiThread([=,this]
         {
-            dialog_message_impl(a, b);
+            dialog_message_impl(cmd, args);
         });
     };
     MW_handle_deeplink = [=,this](const QString &url) {
@@ -241,7 +241,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
         }
         setup_rpc(socket);
         Configs::dataManager->settingsRepo->core_running = true;
-        MW_dialog_message("ExternalProcess", "CoreStarted," + Int2String(profileId));
+        MW_dialog_message(MwMessage::CoreStarted, {Int2String(profileId)});
     });
 
     // Start core
@@ -700,7 +700,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
             core_process->Kill();
         }, DS_cores);
     });
-    connect(ui->actionRestart_Program, &QAction::triggered, this, [=,this] { MW_dialog_message("", "RestartProgram"); });
+    connect(ui->actionRestart_Program, &QAction::triggered, this, [=,this] { MW_dialog_message(MwMessage::RestartProgram, {}); });
     connect(ui->actionShow_window, &QAction::triggered, this, [=,this] { ActivateWindow(this); });
     connect(ui->actionRemember_last_proxy, &QAction::triggered, this, [=,this](bool checked) {
         Configs::dataManager->settingsRepo->remember_enable = checked;
@@ -714,7 +714,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(ui->actionAllow_LAN, &QAction::triggered, this, [=,this](bool checked) {
         Configs::dataManager->settingsRepo->inbound_address = checked ? "::" : "127.0.0.1";
         ui->actionAllow_LAN->setChecked(checked);
-        MW_dialog_message("", "UpdateConfigs::dataManager->settingsRepo");
+        MW_dialog_message(MwMessage::UpdateSettings, {});
     });
     //
     connect(ui->checkBox_VPN, &QCheckBox::clicked, this, [=,this](bool checked) { set_spmode_vpn(checked); });
@@ -1294,133 +1294,111 @@ void MainWindow::import_or_handle_deeplink(const QString &text) {
     Subscription::groupUpdater->AsyncUpdate(text);
 }
 
-void MainWindow::dialog_message_impl(const QString &sender, const QString &info) {
-    // info
-    if (info.contains("UpdateTrayIcon")) {
-        icon_status = -1;
-        refresh_status();
-    }
-    if (info.contains("UpdateConfigs::dataManager->settingsRepo")) {
+void MainWindow::dialog_message_impl(MwMessage cmd, const QStringList &args) {
+    const auto changed = [&](const QString &flag) { return args.contains(flag); };
+    auto &settings = Configs::dataManager->settingsRepo;
+
+    switch (cmd) {
+    case MwMessage::UpdateSettings: {
         updateLogFilterFields();
-        if (info.contains("UpdateMaxLogLines")) {
-            qvLogDocument->setMaximumBlockCount(Configs::dataManager->settingsRepo->max_log_line);
+        if (changed(MwArg::TrayIcon)) {
+            icon_status = -1;
         }
-        if (info.contains("UpdateDisableTray")) {
-            tray->setVisible(!Configs::dataManager->settingsRepo->disable_tray);
+        if (changed(MwArg::MaxLogLines)) {
+            qvLogDocument->setMaximumBlockCount(settings->max_log_line);
         }
-        if (info.contains("UpdateSystemDns"))
-        {
-            if (Configs::dataManager->settingsRepo->show_system_dns) ui->system_dns->show();
+        if (changed(MwArg::DisableTray)) {
+            tray->setVisible(!settings->disable_tray);
+        }
+        if (changed(MwArg::SystemDns)) {
+            if (settings->show_system_dns) ui->system_dns->show();
             else ui->system_dns->hide();
         }
-        if (info.contains("NeedChoosePort"))
-        {
-            Configs::dataManager->settingsRepo->inbound_socks_port = MkPort();
-            if (Configs::dataManager->settingsRepo->spmode_system_proxy)
-            {
+        if (changed(MwArg::ChoosePort)) {
+            settings->inbound_socks_port = MkPort();
+            if (settings->spmode_system_proxy) {
                 set_spmode_system_proxy(false);
                 set_spmode_system_proxy(true);
             }
         }
-        if (info.contains("UpdateDisableAdmin")) {
+        if (changed(MwArg::DisableAdmin)) {
             AutoRun_FixPrivilegeIfNeeded();
         }
-        auto suggestRestartProxy = Configs::dataManager->settingsRepo->Save();
-        if (info.contains("RouteChanged")) {
-            Configs::dataManager->settingsRepo->Save();
+        auto suggestRestartProxy = settings->Save();
+        if (changed(MwArg::Route)) {
+            settings->Save();
             suggestRestartProxy = true;
         }
-        if (info.contains("NeedRestart")) {
+        if (changed(MwArg::NeedRestart)) {
             suggestRestartProxy = false;
         }
-        if (info.contains("VPNChanged") && Configs::dataManager->settingsRepo->spmode_vpn) {
+        if (changed(MwArg::Vpn) && settings->spmode_vpn) {
             MessageBoxWarning(tr("Tun Settings changed"), tr("Restart Tun to take effect."));
         }
-        if ((info.contains("NeedChoosePort") || suggestRestartProxy) && Configs::dataManager->settingsRepo->started_id >= 0 &&
+        if ((changed(MwArg::ChoosePort) || suggestRestartProxy) && settings->started_id >= 0 &&
             QMessageBox::question(GetMessageBoxParent(), tr("Confirmation"), tr("Settings changed, restart proxy?")) == QMessageBox::StandardButton::Yes) {
-            profile_start(Configs::dataManager->settingsRepo->started_id);
+            profile_start(settings->started_id);
         }
         refresh_status();
-    }
-    if (info.contains("DNSServerChanged"))
-    {
-        if (Configs::dataManager->settingsRepo->system_dns_set)
-        {
-            auto oldAddr = info.split(",")[1];
-            set_system_dns(false);
-            set_system_dns(true);
-        }
-    }
-    if (info.contains("NeedRestart")) {
-        auto n = QMessageBox::warning(GetMessageBoxParent(), tr("Settings changed"), tr("Restart the program to take effect."), QMessageBox::Yes | QMessageBox::No);
-        if (n == QMessageBox::Yes) {
+        if (changed(MwArg::NeedRestart) &&
+            QMessageBox::warning(GetMessageBoxParent(), tr("Settings changed"), tr("Restart the program to take effect."), QMessageBox::Yes | QMessageBox::No) == QMessageBox::Yes) {
             this->exit_reason = 2;
             on_menu_exit_triggered();
         }
+        break;
     }
-    //
-    if (info == "RestartProgram") {
+    case MwMessage::RestartProgram:
         this->exit_reason = 2;
         on_menu_exit_triggered();
-    }
-    if (info == "Raise") {
+        break;
+    case MwMessage::Raise:
         ActivateWindow(this);
-    }
-    if (info == "NeedAdmin") {
-        get_elevated_permissions();
-    }
-    if (info == "UpdateShortcuts")
-    {
+        break;
+    case MwMessage::UpdateShortcuts:
         loadShortcuts();
-    }
-    // sender
-    if (sender == Dialog_DialogEditProfile) {
-        auto msg = info.split(",");
-        if (msg.contains("accept")) {
-            refresh_proxy_list({}, true);
-            if (msg.contains("restart")) {
-                if (QMessageBox::question(GetMessageBoxParent(), tr("Confirmation"), tr("Settings changed, restart proxy?")) == QMessageBox::StandardButton::Yes) {
-                    profile_start(Configs::dataManager->settingsRepo->started_id);
-                }
-            }
+        break;
+    case MwMessage::ProfileChanged:
+        refresh_proxy_list({}, true);
+        if (changed(MwArg::RestartProxy) &&
+            QMessageBox::question(GetMessageBoxParent(), tr("Confirmation"), tr("Settings changed, restart proxy?")) == QMessageBox::StandardButton::Yes) {
+            profile_start(settings->started_id);
         }
-    } else if (sender == Dialog_DialogManageGroups) {
-        if (info.startsWith("refresh")) {
-            this->refresh_groups();
+        break;
+    case MwMessage::GroupsChanged:
+        refresh_groups();
+        break;
+    case MwMessage::SubscriptionFinished:
+        refresh_proxy_list({}, true);
+        if (!changed(MwArg::Quiet)) {
+            MW_show_log(tr("Imported %1 profile(s)").arg(settings->imported_count));
         }
-    } else if (sender == "SubUpdater") {
-        if (info.startsWith("finish")) {
-            refresh_proxy_list({}, true);
-            if (!info.contains("dingyue")) {
-                MW_show_log(tr("Imported %1 profile(s)").arg(Configs::dataManager->settingsRepo->imported_count));
-            }
-        } else if (info == "NewGroup") {
-            refresh_groups();
+        break;
+    case MwMessage::SubscriptionNewGroup:
+        refresh_groups();
+        break;
+    case MwMessage::CoreCrashed:
+        profile_stop();
+        break;
+    case MwMessage::CoreStarted:
+        Configs::IsAdmin(true);
+        if (settings->remember_system_proxy) {
+            set_spmode_system_proxy(true, false);
         }
-    } else if (sender == "ExternalProcess") {
-        if (info == "Crashed") {
-            profile_stop();
-        } else if (info.startsWith("CoreStarted")) {
-            Configs::IsAdmin(true);
-            if (Configs::dataManager->settingsRepo->remember_system_proxy) {
-                set_spmode_system_proxy(true, false);
-            }
-            if (Configs::dataManager->settingsRepo->remember_tun || Configs::dataManager->settingsRepo->flag_restart_tun_on) {
-                set_spmode_vpn(true, false);
-            }
-            if (Configs::dataManager->settingsRepo->flag_dns_set) {
-                set_system_dns(true);
-            }
-            if (auto id = info.split(",")[1].toInt(); id >= 0)
-            {
-                profile_start(id);
-            }
-            if (Configs::dataManager->settingsRepo->system_dns_set) {
-                set_system_dns(true);
-                ui->system_dns->setChecked(true);
-            }
-            refresh_status();
+        if (settings->remember_tun || settings->flag_restart_tun_on) {
+            set_spmode_vpn(true, false);
         }
+        if (settings->flag_dns_set) {
+            set_system_dns(true);
+        }
+        if (auto id = args.value(0).toInt(); id >= 0) {
+            profile_start(id);
+        }
+        if (settings->system_dns_set) {
+            set_system_dns(true);
+            ui->system_dns->setChecked(true);
+        }
+        refresh_status();
+        break;
     }
 }
 
@@ -2885,7 +2863,7 @@ void MainWindow::on_tabWidget_customContextMenuRequested(const QPoint &p) {
 
             if (ret == QDialog::Accepted) {
                 Configs::dataManager->groupsRepo->AddGroup(ent);
-                MW_dialog_message(Dialog_DialogManageGroups, "refresh-1");
+                MW_dialog_message(MwMessage::GroupsChanged, {});
             }
         });
 
@@ -2908,7 +2886,7 @@ void MainWindow::on_tabWidget_customContextMenuRequested(const QPoint &p) {
 
         if (ret == QDialog::Accepted) {
             Configs::dataManager->groupsRepo->AddGroup(ent);
-            MW_dialog_message(Dialog_DialogManageGroups, "refresh-1");
+            MW_dialog_message(MwMessage::GroupsChanged, {});
         }
     });
     connect(deleteAction, &QAction::triggered, this, [=,this] {
@@ -2919,7 +2897,7 @@ void MainWindow::on_tabWidget_customContextMenuRequested(const QPoint &p) {
                 if (running->gid == id) profile_stop(false, true, false);
             }
             Configs::dataManager->groupsRepo->DeleteGroup(id);
-            MW_dialog_message(Dialog_DialogManageGroups, "refresh-1");
+            MW_dialog_message(MwMessage::GroupsChanged, {});
         }
     });
     connect(editAction, &QAction::triggered, this, [=,this]{
@@ -2929,7 +2907,7 @@ void MainWindow::on_tabWidget_customContextMenuRequested(const QPoint &p) {
         connect(dialog, &QDialog::finished, this, [=,this] {
             if (dialog->result() == QDialog::Accepted) {
                 Configs::dataManager->groupsRepo->Save(ent);
-                MW_dialog_message(Dialog_DialogManageGroups, "refresh" + Int2String(ent->id));
+                MW_dialog_message(MwMessage::GroupsChanged, {});
             }
             dialog->deleteLater();
         });

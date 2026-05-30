@@ -270,9 +270,7 @@ void DialogManageRoutes::accept() {
     Configs::dataManager->settingsRepo->warp_public_key = ui->warp_public_key->text();
 
     //
-    QStringList msg{"UpdateConfigs::dataManager->settingsRepo"};
-    msg << "RouteChanged";
-    MW_dialog_message("", msg.join(","));
+    MW_dialog_message(MwMessage::UpdateSettings, {MwArg::Route});
 
     QDialog::accept();
 }

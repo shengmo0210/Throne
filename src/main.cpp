@@ -265,7 +265,7 @@ int main(int argc, char* argv[]) {
         QObject::connect(s, &QLocalSocket::disconnected, s, &QLocalSocket::deleteLater);
         readPayload(); // in case the payload already arrived
         // raise main window
-        MW_dialog_message("", "Raise");
+        MW_dialog_message(MwMessage::Raise, {});
     });
     QObject::connect(qApp, &QApplication::aboutToQuit, [&]
     {

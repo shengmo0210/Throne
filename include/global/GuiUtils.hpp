@@ -1,13 +1,5 @@
 #pragma once
 
-// Dialogs
-
-#define Dialog_DialogBasicSettings "DialogBasicSettings"
-#define Dialog_DialogEditProfile "DialogEditProfile"
-#define Dialog_DialogManageGroups "DialogManageGroups"
-#define Dialog_DialogManageRoutes "DialogManageRoutes"
-#define Dialog_DialogManageHotkeys "DialogManageHotkeys"
-
 // Utils
 
 #define QRegExpValidator_Number new QRegularExpressionValidator(QRegularExpression("^[0-9]+$"), this)

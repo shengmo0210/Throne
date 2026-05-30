@@ -48,7 +48,7 @@ void DialogManageGroups::on_add_clicked() {
     if (ret == QDialog::Accepted) {
         Configs::dataManager->groupsRepo->AddGroup(ent);
         AddGroupToListIfExist(ent->id);
-        MW_dialog_message(Dialog_DialogManageGroups, "refresh-1");
+        MW_dialog_message(MwMessage::GroupsChanged, {});
     }
 }
 

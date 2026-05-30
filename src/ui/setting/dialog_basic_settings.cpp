@@ -384,15 +384,15 @@ void DialogBasicSettings::accept() {
     Configs::dataManager->settingsRepo->disable_run_admin = ui->windows_no_admin->isChecked();
     Configs::dataManager->settingsRepo->use_mozilla_certs = ui->mozilla_cert->isChecked();
 
-    QStringList str{"UpdateConfigs::dataManager->settingsRepo"};
-    if (CACHE.needRestart) str << "NeedRestart";
-    if (CACHE.updateDisableTray) str << "UpdateDisableTray";
-    if (CACHE.updateSystemDns) str << "UpdateSystemDns";
-    if (CACHE.updateTrayIcon) str << "UpdateTrayIcon";
-    if (CACHE.updateMaxLogLines) str << "UpdateMaxLogLines";
-    if (CACHE.updateDisableAdmin) str << "UpdateDisableAdmin";
-    if (needChoosePort) str << "NeedChoosePort";
-    MW_dialog_message(Dialog_DialogBasicSettings, str.join(","));
+    QStringList changes;
+    if (CACHE.needRestart) changes << MwArg::NeedRestart;
+    if (CACHE.updateDisableTray) changes << MwArg::DisableTray;
+    if (CACHE.updateSystemDns) changes << MwArg::SystemDns;
+    if (CACHE.updateTrayIcon) changes << MwArg::TrayIcon;
+    if (CACHE.updateMaxLogLines) changes << MwArg::MaxLogLines;
+    if (CACHE.updateDisableAdmin) changes << MwArg::DisableAdmin;
+    if (needChoosePort) changes << MwArg::ChoosePort;
+    MW_dialog_message(MwMessage::UpdateSettings, changes);
     QDialog::accept();
 }
 
@@ -686,7 +686,7 @@ void DialogBasicSettings::on_backup_restore_clicked() {
 
     QMessageBox::information(this, tr("Restore Complete"),
         tr("Backup restored successfully. Throne will now restart for the changes to take effect."));
-    MW_dialog_message(Dialog_DialogBasicSettings, "RestartProgram");
+    MW_dialog_message(MwMessage::RestartProgram, {});
     QDialog::reject();
 }
 
@@ -726,7 +726,7 @@ void DialogBasicSettings::on_core_settings_clicked() {
         Configs::dataManager->settingsRepo->core_box_clash_api = core_box_clash_api->text().toInt();
         Configs::dataManager->settingsRepo->core_box_clash_listen_addr = core_box_clash_listen_addr->text();
         Configs::dataManager->settingsRepo->core_box_clash_api_secret = core_box_clash_api_secret->text();
-        MW_dialog_message(Dialog_DialogBasicSettings, "UpdateConfigs::dataManager->settingsRepo");
+        MW_dialog_message(MwMessage::UpdateSettings, {});
         w->accept();
     });
     connect(box, &QDialogButtonBox::rejected, w, &QDialog::reject);
