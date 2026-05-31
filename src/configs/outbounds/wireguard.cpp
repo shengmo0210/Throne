@@ -118,6 +118,22 @@ namespace Configs {
                         server_port = peer->port;
                     }
                 }
+                if (key == "Jc") jc = value.toInt(), enable_amnezia = true;
+                if (key == "Jmin") jmin = value.toInt(), enable_amnezia = true;
+                if (key == "Jmax") jmax = value.toInt(), enable_amnezia = true;
+                if (key == "S1") s1 = value.toInt(), enable_amnezia = true;
+                if (key == "S2") s2 = value.toInt(), enable_amnezia = true;
+                if (key == "S3") s3 = value.toInt(), enable_amnezia = true;
+                if (key == "S4") s4 = value.toInt(), enable_amnezia = true;
+                if (key == "H1") h1 = value, enable_amnezia = true;
+                if (key == "H2") h2 = value, enable_amnezia = true;
+                if (key == "H3") h3 = value, enable_amnezia = true;
+                if (key == "H4") h4 = value, enable_amnezia = true;
+                if (key == "I1") i1 = value, enable_amnezia = true;
+                if (key == "I2") i2 = value, enable_amnezia = true;
+                if (key == "I3") i3 = value, enable_amnezia = true;
+                if (key == "I4") i4 = value, enable_amnezia = true;
+                if (key == "I5") i5 = value, enable_amnezia = true;
             }
             return !private_key.isEmpty() && !peer->public_key.isEmpty();
         }
@@ -142,6 +158,24 @@ namespace Configs {
         if (query.hasQueryItem("workers")) worker_count = query.queryItemValue("workers").toInt();
         if (query.hasQueryItem("udp_timeout")) udp_timeout = query.queryItemValue("udp_timeout");
 
+        if (query.queryItemValue("enable_amnezia") == "true") enable_amnezia = true;
+        if (query.hasQueryItem("jc")) jc = query.queryItemValue("jc").toInt(), enable_amnezia = true;
+        if (query.hasQueryItem("jmin")) jmin = query.queryItemValue("jmin").toInt(), enable_amnezia = true;
+        if (query.hasQueryItem("jmax")) jmax = query.queryItemValue("jmax").toInt(), enable_amnezia = true;
+        if (query.hasQueryItem("s1")) s1 = query.queryItemValue("s1").toInt(), enable_amnezia = true;
+        if (query.hasQueryItem("s2")) s2 = query.queryItemValue("s2").toInt(), enable_amnezia = true;
+        if (query.hasQueryItem("s3")) s3 = query.queryItemValue("s3").toInt(), enable_amnezia = true;
+        if (query.hasQueryItem("s4")) s4 = query.queryItemValue("s4").toInt(), enable_amnezia = true;
+        if (query.hasQueryItem("h1")) h1 = query.queryItemValue("h1"), enable_amnezia = true;
+        if (query.hasQueryItem("h2")) h2 = query.queryItemValue("h2"), enable_amnezia = true;
+        if (query.hasQueryItem("h3")) h3 = query.queryItemValue("h3"), enable_amnezia = true;
+        if (query.hasQueryItem("h4")) h4 = query.queryItemValue("h4"), enable_amnezia = true;
+        if (query.hasQueryItem("i1")) i1 = query.queryItemValue("i1"), enable_amnezia = true;
+        if (query.hasQueryItem("i2")) i2 = query.queryItemValue("i2"), enable_amnezia = true;
+        if (query.hasQueryItem("i3")) i3 = query.queryItemValue("i3"), enable_amnezia = true;
+        if (query.hasQueryItem("i4")) i4 = query.queryItemValue("i4"), enable_amnezia = true;
+        if (query.hasQueryItem("i5")) i5 = query.queryItemValue("i5"), enable_amnezia = true;
+
         return !(private_key.isEmpty() || peer->public_key.isEmpty() || server.isEmpty());
     }
 
@@ -156,6 +190,7 @@ namespace Configs {
         if (object.contains("system")) system = object["system"].toBool();
         if (object.contains("worker_count")) worker_count = object["worker_count"].toInt();
         if (object.contains("udp_timeout")) udp_timeout = object["udp_timeout"].toString();
+        if (object.contains("amnezia_wg")) AmneziaFromJson(object["amnezia_wg"].toObject());
         return true;
     }
 
@@ -175,7 +210,27 @@ namespace Configs {
         if (system) query.addQueryItem("use_system_interface", "true");
         if (worker_count > 0) query.addQueryItem("workers", QString::number(worker_count));
         if (!udp_timeout.isEmpty()) query.addQueryItem("udp_timeout", udp_timeout);
-        
+
+        if (enable_amnezia) {
+            query.addQueryItem("enable_amnezia", "true");
+            if (jc > 0) query.addQueryItem("jc", QString::number(jc));
+            if (jmin > 0) query.addQueryItem("jmin", QString::number(jmin));
+            if (jmax > 0) query.addQueryItem("jmax", QString::number(jmax));
+            if (s1 > 0) query.addQueryItem("s1", QString::number(s1));
+            if (s2 > 0) query.addQueryItem("s2", QString::number(s2));
+            if (s3 > 0) query.addQueryItem("s3", QString::number(s3));
+            if (s4 > 0) query.addQueryItem("s4", QString::number(s4));
+            if (!h1.isEmpty()) query.addQueryItem("h1", h1);
+            if (!h2.isEmpty()) query.addQueryItem("h2", h2);
+            if (!h3.isEmpty()) query.addQueryItem("h3", h3);
+            if (!h4.isEmpty()) query.addQueryItem("h4", h4);
+            if (!i1.isEmpty()) query.addQueryItem("i1", i1);
+            if (!i2.isEmpty()) query.addQueryItem("i2", i2);
+            if (!i3.isEmpty()) query.addQueryItem("i3", i3);
+            if (!i4.isEmpty()) query.addQueryItem("i4", i4);
+            if (!i5.isEmpty()) query.addQueryItem("i5", i5);
+        }
+
         mergeUrlQuery(query, outbound::ExportToLink());
         mergeUrlQuery(query, peer->ExportToLink());
         
@@ -196,6 +251,9 @@ namespace Configs {
         if (worker_count > 0) object["worker_count"] = worker_count;
         if (!udp_timeout.isEmpty()) object["udp_timeout"] = udp_timeout;
         
+        auto amneziaObj = AmneziaToJson();
+        if (!amneziaObj.isEmpty()) object["amnezia_wg"] = amneziaObj;
+
         auto peerObj = peer->ExportToJson();
         if (!peerObj.isEmpty()) {
             object["peers"] = QJsonArray({peerObj});
@@ -216,6 +274,9 @@ namespace Configs {
         if (system) object["system"] = system;
         if (worker_count > 0) object["worker_count"] = worker_count;
         if (!udp_timeout.isEmpty()) object["udp_timeout"] = udp_timeout;
+
+        auto amneziaObj = AmneziaToJson();
+        if (!amneziaObj.isEmpty()) object["amnezia_wg"] = amneziaObj;
 
         auto peerObj = peer->Build().object;
         if (!peerObj.isEmpty()) {
@@ -253,5 +314,50 @@ namespace Configs {
     bool wireguard::IsEndpoint()
     {
         return true;
+    }
+
+    QJsonObject wireguard::AmneziaToJson()
+    {
+        QJsonObject object;
+        if (!enable_amnezia) return object;
+        if (jc > 0) object["jc"] = jc;
+        if (jmin > 0) object["jmin"] = jmin;
+        if (jmax > 0) object["jmax"] = jmax;
+        if (s1 > 0) object["s1"] = s1;
+        if (s2 > 0) object["s2"] = s2;
+        if (s3 > 0) object["s3"] = s3;
+        if (s4 > 0) object["s4"] = s4;
+        if (!h1.isEmpty()) object["h1"] = h1;
+        if (!h2.isEmpty()) object["h2"] = h2;
+        if (!h3.isEmpty()) object["h3"] = h3;
+        if (!h4.isEmpty()) object["h4"] = h4;
+        if (!i1.isEmpty()) object["i1"] = i1;
+        if (!i2.isEmpty()) object["i2"] = i2;
+        if (!i3.isEmpty()) object["i3"] = i3;
+        if (!i4.isEmpty()) object["i4"] = i4;
+        if (!i5.isEmpty()) object["i5"] = i5;
+        return object;
+    }
+
+    void wireguard::AmneziaFromJson(const QJsonObject& object)
+    {
+        if (object.isEmpty()) return;
+        enable_amnezia = true;
+        if (object.contains("jc")) jc = object["jc"].toInt();
+        if (object.contains("jmin")) jmin = object["jmin"].toInt();
+        if (object.contains("jmax")) jmax = object["jmax"].toInt();
+        if (object.contains("s1")) s1 = object["s1"].toInt();
+        if (object.contains("s2")) s2 = object["s2"].toInt();
+        if (object.contains("s3")) s3 = object["s3"].toInt();
+        if (object.contains("s4")) s4 = object["s4"].toInt();
+        if (object.contains("h1")) h1 = object["h1"].toString();
+        if (object.contains("h2")) h2 = object["h2"].toString();
+        if (object.contains("h3")) h3 = object["h3"].toString();
+        if (object.contains("h4")) h4 = object["h4"].toString();
+        if (object.contains("i1")) i1 = object["i1"].toString();
+        if (object.contains("i2")) i2 = object["i2"].toString();
+        if (object.contains("i3")) i3 = object["i3"].toString();
+        if (object.contains("i4")) i4 = object["i4"].toString();
+        if (object.contains("i5")) i5 = object["i5"].toString();
     }
 }
