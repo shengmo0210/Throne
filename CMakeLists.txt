@@ -222,6 +222,7 @@ set(PROJECT_SOURCES
         res/Throne.qrc
         ${QV2RAY_RC}
         res/darkstyle.qrc
+        res/theme/feiyangqingyun/qss.qrc
         src/ui/profile/edit_ssh.cpp
         include/ui/profile/edit_ssh.h
         include/ui/profile/edit_ssh.ui

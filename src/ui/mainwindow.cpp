@@ -117,6 +117,19 @@ bool MainWindow::verify_core_pid(QLocalSocket *socket) {
 #endif
 }
 
+// Maps a theme name to the log viewer's syntax-highlight mode (true = dark, false = light).
+// Stylesheet themes have a known brightness; plain QStyle themes follow the OS preference.
+static bool themeUsesDarkLog(const QString &theme) {
+    const auto lower = theme.toLower();
+    if (lower.contains("vista") || lower.contains("flatgray") || lower.contains("lightblue")) {
+        return false; // light themes
+    }
+    if (lower.contains("qdarkstyle") || lower.contains("blacksoft")) {
+        return true; // dark themes
+    }
+    return isDarkMode(); // bi-mode themes, follow system preference
+}
+
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWindow) {
     mainwindow = this;
     setAcceptDrops(true);
@@ -162,7 +175,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
 
     // setup log
     ui->splitter->restoreState(DecodeB64IfValid(Configs::dataManager->settingsRepo->splitter_state));
-    new SyntaxHighlighter(Configs::dataManager->settingsRepo->theme.toLower().contains("vista") ? false : (Configs::dataManager->settingsRepo->theme.toLower().contains("qdarkstyle") ? true : isDarkMode()), qvLogDocument);
+    new SyntaxHighlighter(themeUsesDarkLog(Configs::dataManager->settingsRepo->theme), qvLogDocument);
     qvLogDocument->setUndoRedoEnabled(false);
     qvLogDocument->setMaximumBlockCount(Configs::dataManager->settingsRepo->max_log_line);
     ui->masterLogBrowser->setUndoRedoEnabled(false);
@@ -180,16 +193,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     });
 #endif
     connect(themeManager, &ThemeManager::themeChanged, this, [=,this](const QString& theme){
-        if (theme.toLower().contains("vista")) {
-            // light themes
-            new SyntaxHighlighter(false, qvLogDocument);
-        } else if (theme.toLower().contains("qdarkstyle")) {
-            // dark themes
-            new SyntaxHighlighter(true, qvLogDocument);
-        } else {
-            // bi-mode themes, follow system preference
-            new SyntaxHighlighter(isDarkMode(), qvLogDocument);
-        }
+        new SyntaxHighlighter(themeUsesDarkLog(theme), qvLogDocument);
         scheduleProxyListRefresh();
     });
     MW_show_log = [=,this](const QString &log) {
