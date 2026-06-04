@@ -1004,7 +1004,7 @@ Release note:
         <source>Reality short id. Accept only one value.</source>
         <translation>Reality 短 ID。 仅接受一个值。</translation>
     </message>
-</context>g
+</context>
 <context>
     <name>DialogHotkey</name>
     <message>
