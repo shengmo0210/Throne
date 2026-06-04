@@ -71,7 +71,7 @@ namespace Configs {
         int test_concurrent = 10;
         bool disable_traffic_stats = false;
         int current_group = 0; // group id
-        QString mux_protocol = "smux";
+        QString mux_protocol = "yamux";
         bool mux_padding = false;
         int mux_concurrency = 8;
         bool mux_default_on = false;
@@ -133,7 +133,7 @@ namespace Configs {
 
         // Routing
         int current_route_id = 1;
-        QString remote_dns = "tls://8.8.8.8";
+        QString remote_dns = "8.8.8.8";
         QString remote_dns_strategy = "";
         QString direct_dns = "localhost";
         QString direct_dns_strategy = "";
