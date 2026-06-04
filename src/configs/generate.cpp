@@ -626,8 +626,12 @@ namespace Configs {
 
         auto dnsObj = QJsonObject{
             {"servers", servers},
-            {"rules", rules}
+            {"rules", rules},
+            {"cache_capacity", dataManager->settingsRepo->dns_cache_capacity},
         };
+        if (dataManager->settingsRepo->dns_disable_cache) dnsObj["disable_cache"] = true;
+        if (dataManager->settingsRepo->dns_disable_expire) dnsObj["disable_expire"] = true;
+        if (dataManager->settingsRepo->dns_reverse_mapping) dnsObj["reverse_mapping"] = true;
         if (independentCache) dnsObj["independent_cache"] = true;
         ctx->buildConfigResult->coreConfig["dns"] = dnsObj;
     }

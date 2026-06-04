@@ -19,7 +19,7 @@
      <property name="styleSheet">
       <string notr="true">QTabWidget::pane {
     margin-top: 1px;
-    border: 1px solid #444444;
+    border: 1px solid #555555;
     border-radius: 4px;
 }
 
@@ -29,7 +29,7 @@ QTabBar {
 }
 
 QTabBar::tab {
-    border: 1px solid #444444;
+    border: 1px solid #555555;
     border-radius: 4px;
 
     padding: 2px 4px;
@@ -41,11 +41,11 @@ QTabBar::tab:selected {
 }
 
 QTabBar::tab:!selected {
-    border: 1px solid #444444;
+    border: 1px solid #555555;
 }
 
 QTabBar::tab:hover:!selected {
-    border: 1px solid #444444;
+    border: 1px solid #555555;
 }</string>
      </property>
      <property name="currentIndex">
@@ -376,53 +376,6 @@ QTabBar::tab:hover:!selected {
           <string>Simple DNS Settings</string>
          </property>
          <layout class="QGridLayout" name="gridLayout">
-          <item row="2" column="0">
-           <widget class="QLabel" name="label_8">
-            <property name="toolTip">
-             <string>This is especially important and it is recommended to use the default value of &quot;localhost&quot;.
-If the default value does not work, try changing it to &quot;223.5.5.5&quot;.
-For more information, see the document &quot;Configuration/DNS&quot;.</string>
-            </property>
-            <property name="text">
-             <string>Direct DNS</string>
-            </property>
-           </widget>
-          </item>
-          <item row="6" column="3">
-           <layout class="QHBoxLayout" name="horizontalLayout_3">
-            <item>
-             <widget class="QComboBox" name="dns_final_out">
-              <item>
-               <property name="text">
-                <string notr="true">remote</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string notr="true">direct</string>
-               </property>
-              </item>
-             </widget>
-            </item>
-            <item>
-             <widget class="QCheckBox" name="enable_fakeip">
-              <property name="text">
-               <string>Enable FakeIP</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QCheckBox" name="enable_dns_routing">
-              <property name="toolTip">
-               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;When enabled, domains destined for direct outbound will also be resolved using direct dns&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
-              </property>
-              <property name="text">
-               <string>Enable DNS Routing</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
           <item row="2" column="3">
            <layout class="QHBoxLayout" name="horizontalLayout_8">
             <item>
@@ -522,6 +475,48 @@ For more information, see the document &quot;Configuration/DNS&quot;.</string>
             </item>
            </layout>
           </item>
+          <item row="4" column="3">
+           <layout class="QHBoxLayout" name="horizontalLayout_5">
+            <item>
+             <widget class="QLineEdit" name="local_override"/>
+            </item>
+           </layout>
+          </item>
+          <item row="6" column="3">
+           <layout class="QHBoxLayout" name="horizontalLayout_3">
+            <item>
+             <widget class="QComboBox" name="dns_final_out">
+              <item>
+               <property name="text">
+                <string notr="true">remote</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string notr="true">direct</string>
+               </property>
+              </item>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="enable_fakeip">
+              <property name="text">
+               <string>Enable FakeIP</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="enable_dns_routing">
+              <property name="toolTip">
+               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;When enabled, domains destined for direct outbound will also be resolved using direct dns&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+              </property>
+              <property name="text">
+               <string>Enable DNS Routing</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
           <item row="1" column="0">
            <widget class="QLabel" name="label_9">
             <property name="toolTip">
@@ -535,12 +530,24 @@ For more information, see the document &quot;Configuration/DNS&quot;.</string>
             </property>
            </widget>
           </item>
-          <item row="4" column="3">
-           <layout class="QHBoxLayout" name="horizontalLayout_5">
-            <item>
-             <widget class="QLineEdit" name="local_override"/>
-            </item>
-           </layout>
+          <item row="6" column="0">
+           <widget class="QLabel" name="dns_final_out_l">
+            <property name="text">
+             <string>Default DNS server</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="label_8">
+            <property name="toolTip">
+             <string>This is especially important and it is recommended to use the default value of &quot;localhost&quot;.
+If the default value does not work, try changing it to &quot;223.5.5.5&quot;.
+For more information, see the document &quot;Configuration/DNS&quot;.</string>
+            </property>
+            <property name="text">
+             <string>Direct DNS</string>
+            </property>
+           </widget>
           </item>
           <item row="4" column="0">
            <widget class="QLabel" name="label_2">
@@ -552,10 +559,38 @@ For more information, see the document &quot;Configuration/DNS&quot;.</string>
             </property>
            </widget>
           </item>
-          <item row="6" column="0">
-           <widget class="QLabel" name="dns_final_out_l">
+          <item row="7" column="3">
+           <layout class="QHBoxLayout" name="horizontalLayout_6">
+            <item>
+             <widget class="QLineEdit" name="cache_cap"/>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="disable_cache">
+              <property name="text">
+               <string>Disable Cache</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="disable_expire">
+              <property name="text">
+               <string>Disable Expire</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="reverse_mapping">
+              <property name="text">
+               <string>Reverse Mapping</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="7" column="0">
+           <widget class="QLabel" name="label_13">
             <property name="text">
-             <string>Default DNS server</string>
+             <string>Cache Capacity</string>
             </property>
            </widget>
           </item>

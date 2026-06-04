@@ -59,6 +59,9 @@ namespace Configs {
             {"system_proxy_enabled",          &remember_system_proxy},
             {"tun_mode_enabled",              &remember_tun},
             {"reset_proxy_on_disable_sp", &reset_proxy_on_disable_sp},
+            {"dns_disable_cache", &dns_disable_cache},
+            {"dns_disable_expire", &dns_disable_expire},
+            {"dns_reverse_mapping", &dns_reverse_mapping},
         };
 
         intMap = {
@@ -85,6 +88,7 @@ namespace Configs {
             {"sniffing_mode",          &sniffing_mode},
             {"ruleset_mirror",         &ruleset_mirror},
             {"core_dns_in_port",       &core_dns_in_port},
+            {"dns_cache_capacity", &dns_cache_capacity},
         };
 
         stringMap = {

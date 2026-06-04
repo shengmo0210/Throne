@@ -324,7 +324,7 @@ QTabBar {
 }
 
 QTabBar::tab {
-    border: 1px solid #444444;
+    border: 1px solid #555555;
 
     border-radius: 4px;
     padding: 2px 4px;
@@ -333,14 +333,6 @@ QTabBar::tab {
 
 QTabBar::tab:selected {
     border: 1px solid palette(highlight);
-}
-
-QTabBar::tab:!selected {
-    border: 1px solid #444444;
-}
-
-QTabBar::tab:hover:!selected {
-    border: 1px solid #444444;
 }</string>
        </property>
        <property name="currentIndex">
@@ -445,7 +437,7 @@ QTabBar {
 }
 
 QTabBar::tab {
-    border: 1px solid #444444;
+    border: 1px solid #555555;
 
     border-radius: 4px;
     padding: 2px 4px;
@@ -454,14 +446,6 @@ QTabBar::tab {
 
 QTabBar::tab:selected {
     border: 1px solid palette(highlight);
-}
-
-QTabBar::tab:!selected {
-    border: 1px solid #444444;
-}
-
-QTabBar::tab:hover:!selected {
-    border: 1px solid #444444;
 }</string>
              </property>
              <property name="tabPosition">

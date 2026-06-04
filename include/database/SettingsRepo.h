@@ -137,6 +137,10 @@ namespace Configs {
         QString remote_dns_strategy = "";
         QString direct_dns = "localhost";
         QString direct_dns_strategy = "";
+        int dns_cache_capacity = 65536;
+        bool dns_disable_cache = false;
+        bool dns_disable_expire = false;
+        bool dns_reverse_mapping = false;
         bool enable_dns_routing = true;
         bool use_dns_object = false;
         QString dns_object = "";
