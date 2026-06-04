@@ -86,9 +86,9 @@ DialogManageRoutes::DialogManageRoutes(QWidget *parent) : QDialog(parent), ui(ne
     ui->remote_dns_strategy->addItems(qsValue);
     ui->local_override->setText(Configs::dataManager->settingsRepo->core_box_underlying_dns);
     ui->cache_cap->setText(Int2String(Configs::dataManager->settingsRepo->dns_cache_capacity));
-    ui->disable_cache->setEnabled(Configs::dataManager->settingsRepo->dns_disable_cache);
-    ui->disable_expire->setEnabled(Configs::dataManager->settingsRepo->dns_disable_expire);
-    ui->reverse_mapping->setEnabled(Configs::dataManager->settingsRepo->dns_reverse_mapping);
+    ui->disable_cache->setChecked(Configs::dataManager->settingsRepo->dns_disable_cache);
+    ui->disable_expire->setChecked(Configs::dataManager->settingsRepo->dns_disable_expire);
+    ui->reverse_mapping->setChecked(Configs::dataManager->settingsRepo->dns_reverse_mapping);
     ui->enable_fakeip->setChecked(Configs::dataManager->settingsRepo->fake_dns);
     //
     connect(ui->use_dns_object, &QCheckBox::stateChanged, this, [=,this](int state) {
