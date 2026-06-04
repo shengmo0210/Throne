@@ -1627,7 +1627,8 @@ bool MainWindow::get_elevated_permissions(int reason) {
 }
 
 void MainWindow::set_system_proxy(bool mustDisable) {
-    if (!mustDisable && Configs::dataManager->settingsRepo->spmode_system_proxy) {
+    if (!Configs::dataManager->settingsRepo->spmode_system_proxy) return;
+    if (!mustDisable) {
         auto socks_port = Configs::dataManager->settingsRepo->inbound_socks_port;
         SetSystemProxy(socks_port, socks_port, Configs::dataManager->settingsRepo->proxy_scheme);
     } else {
