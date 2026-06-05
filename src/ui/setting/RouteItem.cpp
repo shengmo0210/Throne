@@ -91,8 +91,8 @@ RouteItem::RouteItem(QWidget *parent, const std::shared_ptr<Configs::RouteProfil
         }
     }
 
-    for (const auto& item : ruleSetMap) {
-        geo_items.append(QString::fromStdString(item.first));
+    for (const auto& item : ruleSetList) {
+        geo_items.append(QString::fromUtf8(item.first.data(), item.first.size()));
     }
 
     ui->route_name->setText(chain->name);
@@ -121,8 +121,8 @@ RouteItem::RouteItem(QWidget *parent, const std::shared_ptr<Configs::RouteProfil
     ui->def_out->setCurrentText(Configs::outboundIDToString(chain->defaultOutboundID));
 
     QStringList ruleItems = {"domain:", "suffix:", "regex:", "keyword:", "ip:", "processName:", "processPath:", "ruleset:"};
-    for (const auto& item : ruleSetMap) {
-        ruleItems.append("ruleset:" + QString::fromStdString(item.first));
+    for (const auto& item : ruleSetList) {
+        ruleItems.append("ruleset:" + QString::fromUtf8(item.first.data(), item.first.size()));
     }
     simpleDirect = new AutoCompleteTextEdit("", ruleItems, this);
     simpleBlock = new AutoCompleteTextEdit("", ruleItems, this);

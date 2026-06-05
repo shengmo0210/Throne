@@ -147,8 +147,8 @@ DialogManageRoutes::DialogManageRoutes(QWidget *parent) : QDialog(parent), ui(ne
     });
 
     QStringList ruleItems = {"domain:", "suffix:", "regex:"};
-    for (const auto& item : ruleSetMap) {
-        ruleItems.append("ruleset:" + QString::fromStdString(item.first));
+    for (const auto& item : ruleSetList) {
+        ruleItems.append("ruleset:" + QString::fromUtf8(item.first.data(), item.first.size()));
     }
     rule_editor = new AutoCompleteTextEdit("", ruleItems, this);
     ui->hijack_box->layout()->replaceWidget(ui->dnshijack_rules, rule_editor);

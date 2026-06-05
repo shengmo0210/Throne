@@ -14,6 +14,19 @@
 #include "include/database/entities/Profile.h"
 #include "include/sys/linux/systemChecks.h"
 
+#include <algorithm>
+#include <string_view>
+
+namespace {
+    // Single binary search over the sorted ruleSetList — replaces the
+    // ruleSetMap.contains + ruleSetMap.at lookups from the former std::map.
+    std::string_view ruleSetUrl(std::string_view key) {
+        auto it = std::lower_bound(ruleSetList.begin(), ruleSetList.end(), key,
+            [](const auto& e, std::string_view k) { return e.first < k; });
+        return (it != ruleSetList.end() && it->first == key) ? it->second : std::string_view{};
+    }
+}
+
 namespace Configs {
 
     QString genTunName() {
@@ -1244,12 +1257,12 @@ namespace Configs {
                         };
             }
             else
-                if(ruleSetMap.contains(item.toStdString())) {
+                if (auto url = ruleSetUrl(item.toStdString()); !url.empty()) {
                     ruleSetArray += QJsonObject{
                                 {"type", "remote"},
                                 {"tag", item},
                                 {"format", "binary"},
-                                {"url", get_jsdelivr_link(QString::fromStdString(ruleSetMap.at(item.toStdString())))},
+                                {"url", get_jsdelivr_link(QString::fromUtf8(url.data(), url.size()))},
                             };
                 }
         }
