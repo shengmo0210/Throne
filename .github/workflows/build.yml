@@ -8,6 +8,9 @@ on:
       publish:
         description: "r for normal release, p for prerelease, leave empty to not publish anything"
         required: false
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build-go:
     permissions:
@@ -76,8 +79,8 @@ jobs:
       - name: Installing protoc-gen-go
         if: steps.cache-common.outputs.cache-hit != 'true'
         run: |
-          go install github.com/golang/protobuf/protoc-gen-go@latest
-          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2
       - name: Clone cronet-go
         if: matrix.cross_os == 'linux'
         run: |
@@ -167,7 +170,6 @@ jobs:
       fail-fast: false
     runs-on: ${{ matrix.platform }}
     env:
-      ACTIONS_ALLOW_UNSECURE_COMMANDS: true
       INPUT_VERSION: ${{ github.event.inputs.tag }}
       DEST: ${{ github.workspace }}/deployment/${{ matrix.dest_suffix }}
       DEST_SUFFIX: ${{ matrix.dest_suffix }}
@@ -217,7 +219,7 @@ jobs:
         shell: bash
         if: contains( matrix.platform, 'ubuntu' ) && matrix.qt_version != '6.2.0'
         run: |
-          sudo apt update && sudo apt upgrade -y
+          sudo apt update
           mkdir build
           cd build
           curl -fLso srslist.h "https://raw.githubusercontent.com/throneproj/routeprofiles/rule-set/srslist.h"
@@ -229,8 +231,8 @@ jobs:
         shell: bash
         if: contains( matrix.platform, 'ubuntu' ) && matrix.qt_version == '6.2.0'
         run: |
-          sudo apt update && sudo apt upgrade -y
-          sudo apt install qt6-base-dev qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools libqt6svg6-dev qt6-translations-l10n libglx-dev libgl1-mesa-dev
+          sudo apt update
+          sudo apt install -y qt6-base-dev qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools libqt6svg6-dev qt6-translations-l10n libglx-dev libgl1-mesa-dev
           mkdir build
           cd build
           curl -fLso srslist.h "https://raw.githubusercontent.com/throneproj/routeprofiles/rule-set/srslist.h"
