@@ -1494,7 +1494,7 @@ void MainWindow::prepare_exit()
     }
     Configs::dataManager->settingsRepo->prepare_exit = true;
     //
-    set_system_proxy(true);
+    set_system_proxy(false);
     if (Configs::dataManager->settingsRepo->system_dns_set) set_system_dns(false, false);
     RegisterHiddenMenuShortcuts(true);
     RegisterHotkey(true);
@@ -1624,9 +1624,8 @@ bool MainWindow::get_elevated_permissions(int reason) {
     return false;
 }
 
-void MainWindow::set_system_proxy(bool mustDisable) {
-    if (!Configs::dataManager->settingsRepo->spmode_system_proxy) return;
-    if (!mustDisable) {
+void MainWindow::set_system_proxy(bool enable) {
+    if (enable) {
         auto socks_port = Configs::dataManager->settingsRepo->inbound_socks_port;
         SetSystemProxy(socks_port, socks_port, Configs::dataManager->settingsRepo->proxy_scheme);
     } else {
@@ -1644,7 +1643,7 @@ void MainWindow::set_spmode_system_proxy(bool enable, bool save) {
     }
     Configs::dataManager->settingsRepo->spmode_system_proxy = enable;
     if (running) {
-        set_system_proxy(false);
+        set_system_proxy(enable);
         if (!enable && Configs::dataManager->settingsRepo->reset_proxy_on_disable_sp) {
             profile_start(running->id);
         }

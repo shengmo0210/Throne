@@ -248,7 +248,7 @@ private:
 
     QList<int> get_selected_or_group();
 
-    void set_system_proxy(bool mustDisable);
+    void set_system_proxy(bool enable);
 
     void saveProfileFocusState();
 
