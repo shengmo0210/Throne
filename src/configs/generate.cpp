@@ -522,18 +522,20 @@ namespace Configs {
                 };
         }
 
-        if (!ctx->forTest)
+        // process_path matching forces sing-box's process finder, which is very
+        // heavy on Windows (large latency spikes). It's only needed to keep an
+        // extra core's egress out of the proxy/TUN loop — sing-box's own egress
+        // is handled by auto_detect_interface and xray by its loopback bridges —
+        // so only emit the direct-DNS carve-out when an extra core is present.
+        if (!ctx->forTest && !ctx->buildConfigResult->extraCoreData->path.isEmpty())
         {
             QJsonArray coreProcessPaths;
             coreProcessPaths.append(FindCoreRealPath());
-            if (!ctx->buildConfigResult->extraCoreData->path.isEmpty())
-            {
-                auto extraCorePath = ctx->buildConfigResult->extraCoreData->path;
+            auto extraCorePath = ctx->buildConfigResult->extraCoreData->path;
 #ifdef Q_OS_WIN
-                extraCorePath.replace("/", "\\");
+            extraCorePath.replace("/", "\\");
 #endif
-                coreProcessPaths.append(extraCorePath);
-            }
+            coreProcessPaths.append(extraCorePath);
             rules += QJsonObject{
                 {"process_path", coreProcessPaths},
                 {"action", "route"},
@@ -1224,21 +1226,25 @@ namespace Configs {
 
         // rules
         auto routeRules = routeChain->get_route_rules(false, routeDeps->outboundMap);
-        QJsonArray coreProcessPaths;
-        coreProcessPaths.append(FindCoreRealPath());
+        // See buildDNSSection: only carve the core's own egress out to `direct`
+        // via process_path when an extra core is in the chain. Otherwise we'd
+        // force the (Windows-heavy) process finder even though sing-box loopback
+        // is handled by auto_detect_interface and xray by its loopback bridges.
         if (!ctx->buildConfigResult->extraCoreData->path.isEmpty())
         {
+            QJsonArray coreProcessPaths;
+            coreProcessPaths.append(FindCoreRealPath());
             auto extraCorePath = ctx->buildConfigResult->extraCoreData->path;
 #ifdef Q_OS_WIN
             extraCorePath.replace("/", "\\");
 #endif
             coreProcessPaths.append(extraCorePath);
+            routeRules.prepend(QJsonObject{
+                {"action", "route"},
+                {"process_path", coreProcessPaths},
+                {"outbound", "direct"},
+            });
         }
-        routeRules.prepend(QJsonObject{
-            {"action", "route"},
-            {"process_path", coreProcessPaths},
-            {"outbound", "direct"},
-        });
         if (!ctx->forTest) {
             routeRules.prepend(QJsonObject{
                 {"inbound", "dns-in"},

@@ -90,7 +90,7 @@ namespace Configs {
         bool start_minimal = false;
         int max_log_line = 200;
         QString splitter_state = "";
-        bool enable_stats = true;
+        bool enable_stats = false;
         int stats_tab = 0; // either connection or log
         int speed_test_mode = TestConfig::FULL;
         int speed_test_timeout_ms = 5000;
