@@ -530,7 +530,6 @@ namespace Configs {
         if (!ctx->forTest && !ctx->buildConfigResult->extraCoreData->path.isEmpty())
         {
             QJsonArray coreProcessPaths;
-            coreProcessPaths.append(FindCoreRealPath());
             auto extraCorePath = ctx->buildConfigResult->extraCoreData->path;
 #ifdef Q_OS_WIN
             extraCorePath.replace("/", "\\");
@@ -1233,7 +1232,6 @@ namespace Configs {
         if (!ctx->buildConfigResult->extraCoreData->path.isEmpty())
         {
             QJsonArray coreProcessPaths;
-            coreProcessPaths.append(FindCoreRealPath());
             auto extraCorePath = ctx->buildConfigResult->extraCoreData->path;
 #ifdef Q_OS_WIN
             extraCorePath.replace("/", "\\");

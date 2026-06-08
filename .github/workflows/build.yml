@@ -8,9 +8,6 @@ on:
       publish:
         description: "r for normal release, p for prerelease, leave empty to not publish anything"
         required: false
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 jobs:
   build-go:
     permissions:
