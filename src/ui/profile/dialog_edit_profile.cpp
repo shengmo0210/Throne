@@ -515,9 +515,9 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         ui->xray_no_sse->setChecked(xrayStream->xhttp->noSSEHeader);
         ui->xray_scMaxEachPostBytes->setText(xrayStream->xhttp->scMaxEachPostBytes);
         ui->xray_scMinPostsIntervalMs->setText(xrayStream->xhttp->scMinPostsIntervalMs);
-        ui->xray_scMaxBufferedPosts->setText(xrayStream->xhttp->scMaxBufferedPosts);
+        ui->xray_scMaxBufferedPosts->setText(Int2String(xrayStream->xhttp->scMaxBufferedPosts));
         ui->xray_scStreamUpServerSecs->setText(xrayStream->xhttp->scStreamUpServerSecs);
-        ui->xray_serverMaxHeaderBytes->setText(xrayStream->xhttp->serverMaxHeaderBytes);
+        ui->xray_serverMaxHeaderBytes->setText(Int2String(xrayStream->xhttp->serverMaxHeaderBytes));
         ui->xray_max_concurrency->setText(xrayStream->xhttp->maxConcurrency);
         ui->xray_max_connections->setText(xrayStream->xhttp->maxConnections);
         ui->xray_hMaxRequestTimes->setText(xrayStream->xhttp->hMaxRequestTimes);
@@ -751,9 +751,9 @@ bool DialogEditProfile::onEnd() {
             xrayStream->xhttp->noSSEHeader = ui->xray_no_sse->isChecked();
             xrayStream->xhttp->scMaxEachPostBytes = ui->xray_scMaxEachPostBytes->text();
             xrayStream->xhttp->scMinPostsIntervalMs = ui->xray_scMinPostsIntervalMs->text();
-            xrayStream->xhttp->scMaxBufferedPosts = ui->xray_scMaxBufferedPosts->text();
+            xrayStream->xhttp->scMaxBufferedPosts = ui->xray_scMaxBufferedPosts->text().toLongLong();
             xrayStream->xhttp->scStreamUpServerSecs = ui->xray_scStreamUpServerSecs->text();
-            xrayStream->xhttp->serverMaxHeaderBytes = ui->xray_serverMaxHeaderBytes->text();
+            xrayStream->xhttp->serverMaxHeaderBytes = ui->xray_serverMaxHeaderBytes->text().toInt();
             xrayStream->xhttp->maxConcurrency = ui->xray_max_concurrency->text();
             xrayStream->xhttp->maxConnections = ui->xray_max_connections->text();
             xrayStream->xhttp->hMaxRequestTimes = ui->xray_hMaxRequestTimes->text();

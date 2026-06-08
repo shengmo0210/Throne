@@ -66,9 +66,9 @@ namespace Configs {
         bool noSSEHeader = false;
         QString scMaxEachPostBytes;
         QString scMinPostsIntervalMs;
-        QString scMaxBufferedPosts;
+        long long scMaxBufferedPosts;
         QString scStreamUpServerSecs;
-        QString serverMaxHeaderBytes;
+        int serverMaxHeaderBytes;
         // extra/xmux
         QJsonObject rawXmux;
         QString maxConcurrency;
