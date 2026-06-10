@@ -141,6 +141,9 @@ namespace Configs {
         preReqs->routingDeps->defaultOutboundID = routeChain->defaultOutboundID;
         preReqs->routingDeps->outboundMap[-1] = "proxy";
         preReqs->routingDeps->outboundMap[-2] = "direct";
+        // warp-bypass resolves to the real proxy outbound: when warp is on it's the
+        // outbound warp detours into (tagged "warp-bypass"); when off it's just "proxy".
+        preReqs->routingDeps->outboundMap[warpBypassID] = dataManager->settingsRepo->enable_warp ? "warp-bypass" : "proxy";
         int suffix = 0;
         auto isCustomFullConfig = [](const std::shared_ptr<Profile>& p) {
             return p->type == "custom" && p->Custom() != nullptr && p->Custom()->type == Custom::CustomFullConfig;
@@ -860,13 +863,17 @@ namespace Configs {
         return {entID};
     }
 
-    void buildSingboxChain(std::shared_ptr<BuildSingBoxConfigContext> &ctx, QList<std::shared_ptr<Profile>> &ents, const QString& prefix, bool includeProxy, bool link, int startSuffix = 0, bool markIngress = false) {
+    void buildSingboxChain(std::shared_ptr<BuildSingBoxConfigContext> &ctx, QList<std::shared_ptr<Profile>> &ents, const QString& prefix, bool includeProxy, bool link, int startSuffix = 0, bool markIngress = false, bool warpWrap = false) {
         for (int idx = 0; idx < ents.size(); idx++)
         {
             auto tag = prefix + "-" + Int2String(startSuffix + idx);
             QString nextTag;
             if (idx < ents.size() - 1) nextTag = prefix + "-" + Int2String(startSuffix + idx + 1);
             if (includeProxy && idx == 0) tag = "proxy";
+            // warp wrapping: idx 0 is warp (tag "proxy") and idx 1 is the outbound it
+            // detours into. Expose that outbound under the stable tag "warp-bypass" so
+            // rules / final can reach the real proxy without the warp layer.
+            if (warpWrap && idx == 1) tag = "warp-bypass";
             if (markIngress && idx == 0) ctx->singIngressTags << tag;
             const auto& ent = ents[idx];
             auto [object, error] = ent->outbound->Build();
@@ -877,6 +884,7 @@ namespace Configs {
             }
             object["tag"] = tag;
             if (!nextTag.isEmpty() && link) object["detour"] = nextTag;
+            if (warpWrap && idx == 0) object["detour"] = "warp-bypass";
             if (ent->outbound->IsEndpoint())
             {
                 ctx->endpoints.append(object);
@@ -947,7 +955,7 @@ namespace Configs {
         }
     }
 
-    void buildOutboundChain(std::shared_ptr<BuildSingBoxConfigContext> &ctx, const QList<int>& entIDs, const QString& prefix, bool includeProxy, bool link, int singToXrayPort = -1, int xrayToSingPort = -1, int startSuffix = 0)
+    void buildOutboundChain(std::shared_ptr<BuildSingBoxConfigContext> &ctx, const QList<int>& entIDs, const QString& prefix, bool includeProxy, bool link, int singToXrayPort = -1, int xrayToSingPort = -1, int startSuffix = 0, bool warpWrap = false)
     {
         // Core-transition flags are per-chain: entIDListtoEntList only ever
         // sets them true, so clear any value left by a previous chain in this
@@ -1043,7 +1051,7 @@ namespace Configs {
             ctx->xrayToSingBridges << xrayToSingBridgeConf;
         }
         if (!initialSingEnts.isEmpty()) {
-            buildSingboxChain(ctx, initialSingEnts, prefix, includeProxy, link, startSuffix);
+            buildSingboxChain(ctx, initialSingEnts, prefix, includeProxy, link, startSuffix, false, warpWrap);
         }
         if (!xrayEnts.isEmpty()) {
             buildXrayChain(ctx, xrayEnts, prefix, includeProxy, link, startSuffix, xrayToSingBridgeConf);
@@ -1098,10 +1106,11 @@ namespace Configs {
             entIDs.append(ctx->ent->id);
         }
         if (group->front_proxy_id >= 0) entIDs.append(group->front_proxy_id);
-        if (dataManager->settingsRepo->enable_warp) {
+        const bool warpWrap = dataManager->settingsRepo->enable_warp;
+        if (warpWrap) {
             entIDs.prepend(warpProfileID);
         }
-        buildOutboundChain(ctx, entIDs, "config", true, true);
+        buildOutboundChain(ctx, entIDs, "config", true, true, -1, -1, 0, warpWrap);
 
         // A chain-typed profile wrapper isn't in entIDs (only its hops are),
         // so the chainGroup just built doesn't include it. Add it so the
@@ -1322,10 +1331,25 @@ namespace Configs {
         }
 
         // apply
+        const int defOut = routeChain->defaultOutboundID;
+        // block-by-default: append a catch-all reject so any unmatched connection is
+        // dropped. (DNS is left resolving as usual; it's the connection that's blocked.)
+        if (defOut == blockID) {
+            routeRules.append(QJsonObject{{"action", "reject"}});
+        }
+
         QJsonObject route;
         route["rules"] = routeRules;
         route["rule_set"] = ruleSetArray;
-        route["final"] = outboundIDToString(routeChain->defaultOutboundID);
+        if (defOut == blockID) {
+            // Unreachable thanks to the catch-all reject above, but `final` must still
+            // name a real outbound; `direct` is always present.
+            route["final"] = "direct";
+        } else if (defOut == warpBypassID) {
+            route["final"] = dataManager->settingsRepo->enable_warp ? "warp-bypass" : "proxy";
+        } else {
+            route["final"] = outboundIDToString(defOut);
+        }
         if (Configs::dataManager->settingsRepo->enable_stats)  route["find_process"] = true;
         route["default_domain_resolver"] = QJsonObject{
                                 {"server", "dns-direct"},

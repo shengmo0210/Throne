@@ -92,6 +92,27 @@ namespace Configs {
         rule.name = ruleTypeToString(static_cast<ruleType>(rule.type));
         rules << std::make_shared<RouteRule>(rule);
 
+        rule = RouteRule();
+        rule.type = simpleAddressWarpBypass;
+        rule.action = "route";
+        rule.outboundID = warpBypassID;
+        rule.name = ruleTypeToString(static_cast<ruleType>(rule.type));
+        rules << std::make_shared<RouteRule>(rule);
+
+        rule = RouteRule();
+        rule.type = simpleProcessNameWarpBypass;
+        rule.action = "route";
+        rule.outboundID = warpBypassID;
+        rule.name = ruleTypeToString(static_cast<ruleType>(rule.type));
+        rules << std::make_shared<RouteRule>(rule);
+
+        rule = RouteRule();
+        rule.type = simpleProcessPathWarpBypass;
+        rule.action = "route";
+        rule.outboundID = warpBypassID;
+        rule.name = ruleTypeToString(static_cast<ruleType>(rule.type));
+        rules << std::make_shared<RouteRule>(rule);
+
         return rules;
     }
 
@@ -440,6 +461,10 @@ namespace Configs {
             types << simpleAddressBypass;
             types << simpleProcessNameBypass;
             types << simpleProcessPathBypass;
+        } else if (action == warpBypass) {
+            types << simpleAddressWarpBypass;
+            types << simpleProcessNameWarpBypass;
+            types << simpleProcessPathWarpBypass;
         } else {
             types << simpleAddressBlock;
             types << simpleProcessNameBlock;
@@ -477,6 +502,10 @@ namespace Configs {
             types << simpleAddressBypass;
             types << simpleProcessNameBypass;
             types << simpleProcessPathBypass;
+        } else if (action == warpBypass) {
+            types << simpleAddressWarpBypass;
+            types << simpleProcessNameWarpBypass;
+            types << simpleProcessPathWarpBypass;
         } else {
             types << simpleAddressBlock;
             types << simpleProcessNameBlock;
@@ -583,16 +612,19 @@ namespace Configs {
             content.startsWith("ip")) {
             if (action == proxy) return simpleAddressProxy;
             if (action == bypass) return simpleAddressBypass;
+            if (action == warpBypass) return simpleAddressWarpBypass;
             return simpleAddressBlock;
         }
         if (content.startsWith("processName")) {
             if (action == proxy) return simpleProcessNameProxy;
             if (action == bypass) return simpleProcessNameBypass;
+            if (action == warpBypass) return simpleProcessNameWarpBypass;
             return simpleProcessNameBlock;
         }
         if (content.startsWith("processPath")) {
             if (action == proxy) return simpleProcessPathProxy;
             if (action == bypass) return simpleProcessPathBypass;
+            if (action == warpBypass) return simpleProcessPathWarpBypass;
             return simpleProcessPathBlock;
         }
         return custom;

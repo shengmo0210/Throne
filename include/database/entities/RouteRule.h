@@ -6,12 +6,14 @@
 namespace Configs {
     enum inputType {trufalse, select, text};
 
-    enum outboundID {proxyID=-1, directID=-2, blockID=-3};
+    // -4 is reserved internally for dns hijack (see get_rule_json), so warp-bypass is -5.
+    enum outboundID {proxyID=-1, directID=-2, blockID=-3, warpBypassID=-5};
     inline QString outboundIDToString(int id)
     {
         if (id == proxyID) return {"proxy"};
         if (id == directID) return {"direct"};
         if (id == blockID) return {"block"};
+        if (id == warpBypassID) return {"warp-bypass"};
         return {"unknown"};
     }
     inline outboundID stringToOutboundID(const QString& out)
@@ -19,10 +21,12 @@ namespace Configs {
         if (out == "proxy") return proxyID;
         if (out == "direct") return directID;
         if (out == "block") return blockID;
+        if (out == "warp-bypass") return warpBypassID;
         return proxyID;
     }
 
-    enum ruleType {custom, simpleAddressProxy, simpleAddressBypass, simpleAddressBlock, simpleProcessNameProxy, simpleProcessNameBypass, simpleProcessNameBlock, simpleProcessPathProxy, simpleProcessPathBypass, simpleProcessPathBlock};
+    // New rule types MUST be appended: RouteRule::type is persisted as the raw int.
+    enum ruleType {custom, simpleAddressProxy, simpleAddressBypass, simpleAddressBlock, simpleProcessNameProxy, simpleProcessNameBypass, simpleProcessNameBlock, simpleProcessPathProxy, simpleProcessPathBypass, simpleProcessPathBlock, simpleAddressWarpBypass, simpleProcessNameWarpBypass, simpleProcessPathWarpBypass};
 
     inline QString ruleTypeToString(ruleType type)
     {
@@ -36,6 +40,9 @@ namespace Configs {
         if (type == simpleProcessPathProxy) return {"Simple Process Path Proxy"};
         if (type == simpleProcessPathBypass) return {"Simple Process Path Bypass"};
         if (type == simpleProcessPathBlock) return {"Simple Process Path Block"};
+        if (type == simpleAddressWarpBypass) return {"Simple Address Warp-bypass"};
+        if (type == simpleProcessNameWarpBypass) return {"Simple Process Name Warp-bypass"};
+        if (type == simpleProcessPathWarpBypass) return {"Simple Process Path Warp-bypass"};
         return {"invalid"};
     }
 
@@ -53,6 +60,9 @@ namespace Configs {
             case simpleProcessPathProxy: return {"simple_process_path_proxy"};
             case simpleProcessPathBypass: return {"simple_process_path_bypass"};
             case simpleProcessPathBlock: return {"simple_process_path_block"};
+            case simpleAddressWarpBypass: return {"simple_address_warp_bypass"};
+            case simpleProcessNameWarpBypass: return {"simple_process_name_warp_bypass"};
+            case simpleProcessPathWarpBypass: return {"simple_process_path_warp_bypass"};
             default: return {"custom"};
         }
     }
@@ -68,6 +78,9 @@ namespace Configs {
         if (token == "simple_process_path_proxy") return simpleProcessPathProxy;
         if (token == "simple_process_path_bypass") return simpleProcessPathBypass;
         if (token == "simple_process_path_block") return simpleProcessPathBlock;
+        if (token == "simple_address_warp_bypass") return simpleAddressWarpBypass;
+        if (token == "simple_process_name_warp_bypass") return simpleProcessNameWarpBypass;
+        if (token == "simple_process_path_warp_bypass") return simpleProcessPathWarpBypass;
         return custom;
     }
 
