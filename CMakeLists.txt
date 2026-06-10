@@ -219,6 +219,9 @@ set(PROJECT_SOURCES
         include/ui/setting/RouteItem.h
         include/ui/setting/RouteItem.ui
 
+        src/ui/setting/RawRouteItem.cpp
+        include/ui/setting/RawRouteItem.h
+
         res/Throne.qrc
         ${QV2RAY_RC}
         res/darkstyle.qrc

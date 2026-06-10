@@ -18,6 +18,7 @@
 
 #include "include/configs/sub/warp.h"
 #include "include/database/RoutesRepo.h"
+#include "include/ui/setting/RawRouteItem.h"
 
 void DialogManageRoutes::reloadProfileItems() {
     if (chainList.empty()) {
@@ -302,13 +303,29 @@ void DialogManageRoutes::accept() {
 }
 
 void DialogManageRoutes::on_new_route_clicked() {
-    routeChainWidget = new RouteItem(this, Configs::dataManager->routesRepo->NewRouteProfile());
-    routeChainWidget->setWindowModality(Qt::ApplicationModal);
-    routeChainWidget->show();
-    connect(routeChainWidget, &RouteItem::settingsChanged, this, [=,this](const std::shared_ptr<Configs::RouteProfile>& chain) {
+    QMenu menu(this);
+    menu.addAction(tr("Structured profile"));
+    auto* rawAct = menu.addAction(tr("Raw profile"));
+    auto* chosen = menu.exec(ui->new_route->mapToGlobal(QPoint(0, ui->new_route->height())));
+    if (chosen == nullptr) return;
+
+    auto newProfile = Configs::dataManager->routesRepo->NewRouteProfile();
+    auto onCreated = [=, this](const std::shared_ptr<Configs::RouteProfile>& chain) {
         chainList << chain;
         reloadProfileItems();
-    });
+    };
+    if (chosen == rawAct) {
+        newProfile->isRaw = true;
+        auto* rawWidget = new RawRouteItem(this, newProfile);
+        rawWidget->setWindowModality(Qt::ApplicationModal);
+        rawWidget->show();
+        connect(rawWidget, &RawRouteItem::settingsChanged, this, onCreated);
+    } else {
+        routeChainWidget = new RouteItem(this, newProfile);
+        routeChainWidget->setWindowModality(Qt::ApplicationModal);
+        routeChainWidget->show();
+        connect(routeChainWidget, &RouteItem::settingsChanged, this, onCreated);
+    }
 }
 
 void DialogManageRoutes::on_export_route_clicked()
@@ -416,15 +433,23 @@ void DialogManageRoutes::on_edit_route_clicked() {
     auto idx = ui->route_profiles->currentRow();
     if (idx < 0) return;
 
-    routeChainWidget = new RouteItem(this, chainList[idx]);
-    routeChainWidget->setWindowModality(Qt::ApplicationModal);
-    routeChainWidget->show();
-    connect(routeChainWidget, &RouteItem::settingsChanged, this, [=,this](const std::shared_ptr<Configs::RouteProfile>& chain) {
+    auto onEdited = [=, this](const std::shared_ptr<Configs::RouteProfile>& chain) {
         if (currentRoute == chainList[idx]) currentRoute = chain;
         chainList[idx] = chain;
         reloadProfileItems();
-    });
+    };
 
+    if (chainList[idx]->isRaw) {
+        auto* rawWidget = new RawRouteItem(this, chainList[idx]);
+        rawWidget->setWindowModality(Qt::ApplicationModal);
+        rawWidget->show();
+        connect(rawWidget, &RawRouteItem::settingsChanged, this, onEdited);
+    } else {
+        routeChainWidget = new RouteItem(this, chainList[idx]);
+        routeChainWidget->setWindowModality(Qt::ApplicationModal);
+        routeChainWidget->show();
+        connect(routeChainWidget, &RouteItem::settingsChanged, this, onEdited);
+    }
 }
 
 void DialogManageRoutes::on_delete_route_clicked() {

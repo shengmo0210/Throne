@@ -17,10 +17,19 @@ namespace Configs {
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL DEFAULT '',
                 default_outbound_id INTEGER NOT NULL DEFAULT -1,
+                is_raw INTEGER NOT NULL DEFAULT 0,
+                raw_route TEXT NOT NULL DEFAULT '',
+                prevent_modifications INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
                 updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
             )
         )");
+        if (!routeProfilesColumnExists("is_raw"))
+            db.exec("ALTER TABLE route_profiles ADD COLUMN is_raw INTEGER NOT NULL DEFAULT 0");
+        if (!routeProfilesColumnExists("raw_route"))
+            db.exec("ALTER TABLE route_profiles ADD COLUMN raw_route TEXT NOT NULL DEFAULT ''");
+        if (!routeProfilesColumnExists("prevent_modifications"))
+            db.exec("ALTER TABLE route_profiles ADD COLUMN prevent_modifications INTEGER NOT NULL DEFAULT 0");
         
         // Create route_rules table
         db.exec(R"(
@@ -73,6 +82,15 @@ namespace Configs {
 
     bool RoutesRepo::routeRulesColumnExists(const char* columnName) const {
         auto pragma = db.query("PRAGMA table_info(route_rules)");
+        if (!pragma) return false;
+        while (pragma->executeStep()) {
+            if (pragma->getColumn(1).getText() == std::string(columnName)) return true;
+        }
+        return false;
+    }
+
+    bool RoutesRepo::routeProfilesColumnExists(const char* columnName) const {
+        auto pragma = db.query("PRAGMA table_info(route_profiles)");
         if (!pragma) return false;
         while (pragma->executeStep()) {
             if (pragma->getColumn(1).getText() == std::string(columnName)) return true;
@@ -168,7 +186,10 @@ namespace Configs {
         json["id"] = routeProfile->id;
         json["name"] = routeProfile->name;
         json["defaultOutboundID"] = routeProfile->defaultOutboundID;
-        
+        json["isRaw"] = routeProfile->isRaw;
+        json["rawRoute"] = routeProfile->rawRoute;
+        json["preventModifications"] = routeProfile->preventModifications;
+
         QJsonArray rulesArray;
         for (const auto& rule : routeProfile->Rules) {
             rulesArray.append(routeRuleToJson(rule.get()));
@@ -184,7 +205,10 @@ namespace Configs {
         routeProfile->id = json["id"].toInt();
         routeProfile->name = json["name"].toString();
         routeProfile->defaultOutboundID = json["defaultOutboundID"].toInt();
-        
+        routeProfile->isRaw = json["isRaw"].toBool();
+        routeProfile->rawRoute = json["rawRoute"].toString();
+        routeProfile->preventModifications = json["preventModifications"].toBool();
+
         // Load rules
         if (json.contains("rules") && json["rules"].isArray()) {
             QJsonArray rulesArray = json["rules"].toArray();
@@ -207,12 +231,15 @@ namespace Configs {
         if (exists) {
             // Update route profile
             db.exec(R"(
-                UPDATE route_profiles 
-                SET name = ?, default_outbound_id = ?, updated_at = strftime('%s', 'now')
+                UPDATE route_profiles
+                SET name = ?, default_outbound_id = ?, is_raw = ?, raw_route = ?, prevent_modifications = ?, updated_at = strftime('%s', 'now')
                 WHERE id = ?
             )",
                 routeProfile->name.toStdString(),
                 routeProfile->defaultOutboundID,
+                routeProfile->isRaw ? 1 : 0,
+                routeProfile->rawRoute.toStdString(),
+                routeProfile->preventModifications ? 1 : 0,
                 id
             );
             
@@ -221,12 +248,15 @@ namespace Configs {
         } else {
             // Insert route profile
             db.exec(R"(
-                INSERT INTO route_profiles (id, name, default_outbound_id)
-                VALUES (?, ?, ?)
+                INSERT INTO route_profiles (id, name, default_outbound_id, is_raw, raw_route, prevent_modifications)
+                VALUES (?, ?, ?, ?, ?, ?)
             )",
                 id,
                 routeProfile->name.toStdString(),
-                routeProfile->defaultOutboundID
+                routeProfile->defaultOutboundID,
+                routeProfile->isRaw ? 1 : 0,
+                routeProfile->rawRoute.toStdString(),
+                routeProfile->preventModifications ? 1 : 0
             );
         }
         
@@ -373,6 +403,9 @@ namespace Configs {
         json["id"] = stmt.getColumn(0).getInt();
         json["name"] = QString::fromStdString(stmt.getColumn(1).getText());
         json["defaultOutboundID"] = stmt.getColumn(2).getInt();
+        json["isRaw"] = stmt.getColumn(3).getInt() != 0;
+        json["rawRoute"] = QString::fromStdString(stmt.getColumn(4).getText());
+        json["preventModifications"] = stmt.getColumn(5).getInt() != 0;
         json["rules"] = QJsonArray();
         return routeProfileFromJson(json);
     }
@@ -407,7 +440,7 @@ namespace Configs {
 
     std::shared_ptr<RouteProfile> RoutesRepo::loadFromDatabase(int id) const {
         auto profileQuery = db.query(R"(
-            SELECT id, name, default_outbound_id
+            SELECT id, name, default_outbound_id, is_raw, raw_route, prevent_modifications
             FROM route_profiles WHERE id = ?
         )", id);
         if (!profileQuery || !profileQuery->executeStep()) {
@@ -518,7 +551,7 @@ namespace Configs {
         QList<int> idsInOrder;
         QSet<int> cachedProfiles;
 
-        auto profileQuery = db.query("SELECT id, name, default_outbound_id FROM route_profiles ORDER BY id");
+        auto profileQuery = db.query("SELECT id, name, default_outbound_id, is_raw, raw_route, prevent_modifications FROM route_profiles ORDER BY id");
         if (!profileQuery) return routeProfiles;
 
         QMutexLocker locker(&mutex);

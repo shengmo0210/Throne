@@ -24,6 +24,13 @@ namespace Configs {
         QList<std::shared_ptr<RouteRule>> Rules;
         int defaultOutboundID = proxyID;
 
+        // Raw profiles carry a full sing-box `route` JSON object (as text) instead of
+        // structured Rules. When preventModifications is set we use it verbatim (after
+        // outbound-id translation); otherwise Throne still injects its internal plumbing.
+        bool isRaw = false;
+        QString rawRoute = "";
+        bool preventModifications = false;
+
         RouteProfile() = default;
 
         RouteProfile(const RouteProfile& other);
@@ -42,6 +49,11 @@ namespace Configs {
         // non-fatal notes (e.g. outbound fallbacks) go to *warnings. *wasOldArray is set
         // true when the input was a legacy array (no name / default outbound to import).
         static std::shared_ptr<RouteProfile> FromShareInput(const QString& input, QString* fatalError, QString* warnings, bool* wasOldArray);
+
+        // Raw-profile helpers: recursively collect referenced outbound ids (from `outbound`
+        // and top-level `final` fields) and translate those numeric ids to sing-box tags.
+        static QList<int> CollectRawOutboundIds(const QJsonObject& route);
+        static QJsonObject TranslateRawOutbounds(const QJsonObject& route, const std::map<int, QString>& outboundMap);
 
         static std::shared_ptr<RouteProfile> GetDefaultChain();
 

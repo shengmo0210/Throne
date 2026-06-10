@@ -1192,6 +1192,23 @@ namespace Configs {
         routeChain = std::make_shared<RouteProfile>(*routeChain);
         auto routeDeps = ctx->buildPrerequisities->routingDeps;
 
+        // Raw routing profile: translate the user's outbound ids -> sing-box tags up front
+        // (always, both modes). In "prevent modifications" mode we emit it verbatim and stop;
+        // otherwise we fall through so the shared plumbing below wraps the user's rules.
+        QJsonObject rawRouteObj;
+        if (routeChain->isRaw) {
+            rawRouteObj = QString2QJsonObject(routeChain->rawRoute);
+            if (rawRouteObj.isEmpty()) {
+                ctx->error = "Raw routing profile is not a valid JSON object";
+                return;
+            }
+            rawRouteObj = RouteProfile::TranslateRawOutbounds(rawRouteObj, routeDeps->outboundMap);
+            if (routeChain->preventModifications) {
+                ctx->buildConfigResult->coreConfig["route"] = rawRouteObj;
+                return;
+            }
+        }
+
         // hijack
         if (Configs::dataManager->settingsRepo->enable_dns_server && !ctx->forTest)
         {
@@ -1231,8 +1248,10 @@ namespace Configs {
             routeChain->Rules.prepend(sniffRule);
         }
 
-        // rules
-        auto routeRules = routeChain->get_route_rules(false, routeDeps->outboundMap);
+        // rules: structured profiles serialize their RouteRules; raw profiles supply their
+        // own (id-translated) rules and get only the structural plumbing prepended below.
+        auto routeRules = routeChain->isRaw ? rawRouteObj.value("rules").toArray()
+                                            : routeChain->get_route_rules(false, routeDeps->outboundMap);
         // See buildDNSSection: only carve the core's own egress out to `direct`
         // via process_path when an extra core is in the chain. Otherwise we'd
         // force the (Windows-heavy) process finder even though sing-box loopback
@@ -1329,18 +1348,28 @@ namespace Configs {
             routeRules.prepend(rule);
         }
 
+        // raw profiles bring their own rule_set definitions; merge them after ours.
+        if (routeChain->isRaw) {
+            for (const auto& rs : rawRouteObj.value("rule_set").toArray()) ruleSetArray.append(rs);
+        }
+
         // apply
         const int defOut = routeChain->defaultOutboundID;
         // block-by-default: append a catch-all reject so any unmatched connection is
         // dropped. (DNS is left resolving as usual; it's the connection that's blocked.)
-        if (defOut == blockID) {
+        if (!routeChain->isRaw && defOut == blockID) {
             routeRules.append(QJsonObject{{"action", "reject"}});
         }
 
-        QJsonObject route;
+        // For a raw profile start from the user's (translated) route object so any extra
+        // keys they set survive; rules/rule_set we assembled and the mandatory route keys
+        // below override or fill in.
+        QJsonObject route = routeChain->isRaw ? rawRouteObj : QJsonObject{};
         route["rules"] = routeRules;
         route["rule_set"] = ruleSetArray;
-        if (defOut == blockID) {
+        if (routeChain->isRaw) {
+            if (!route.contains("final")) route["final"] = "proxy"; // user's final, else a safe default
+        } else if (defOut == blockID) {
             // Unreachable thanks to the catch-all reject above, but `final` must still
             // name a real outbound; `direct` is always present.
             route["final"] = "direct";
@@ -1349,11 +1378,12 @@ namespace Configs {
         } else {
             route["final"] = outboundIDToString(defOut);
         }
-        if (Configs::dataManager->settingsRepo->enable_stats)  route["find_process"] = true;
-        route["default_domain_resolver"] = QJsonObject{
-                                {"server", "dns-direct"},
-                                {"strategy", Configs::dataManager->settingsRepo->default_domain_strategy}};
-        if (Configs::dataManager->settingsRepo->spmode_vpn) route["auto_detect_interface"] = true;
+        if (Configs::dataManager->settingsRepo->enable_stats && !route.contains("find_process"))  route["find_process"] = true;
+        if (!route.contains("default_domain_resolver"))
+            route["default_domain_resolver"] = QJsonObject{
+                                    {"server", "dns-direct"},
+                                    {"strategy", Configs::dataManager->settingsRepo->default_domain_strategy}};
+        if (Configs::dataManager->settingsRepo->spmode_vpn && !route.contains("auto_detect_interface")) route["auto_detect_interface"] = true;
 
         ctx->buildConfigResult->coreConfig["route"] = route;
     }
