@@ -1,5 +1,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QJsonDocument>
+#include <QUrlQuery>
 #include "include/database/entities/RouteProfile.h"
 #include <iostream>
 
@@ -112,7 +114,49 @@ namespace Configs {
         defaultOutboundID = other.defaultOutboundID;
     }
 
-    QList<std::shared_ptr<RouteRule>> RouteProfile::parseJsonArray(const QJsonArray& arr, QString* parseError) {
+    static void appendWarning(QString* warnings, const QString& msg) {
+        if (warnings) warnings->append(msg + "\n");
+    }
+
+    // Parse one rule JSON object into a RouteRule. Tolerant by design (for sharing): an
+    // outbound that can't be resolved on this machine falls back to proxy with a warning
+    // rather than failing the whole import. The schema-only keys (name/type) are skipped
+    // here and applied by the caller.
+    static std::shared_ptr<RouteRule> parse_rule_object(const QJsonObject& obj, QString* warnings) {
+        auto rule = std::make_shared<RouteRule>();
+        for (const auto& key: obj.keys()) {
+            if (key == "name" || key == "type") continue;
+            auto val = obj.value(key);
+            if (key == "outbound") {
+                if (val.isDouble()) {
+                    const int id = val.toInt();
+                    if (isOutboundIDValid(id)) {
+                        rule->outboundID = id;
+                    } else {
+                        appendWarning(warnings, QString("outbound id %1 not found, using proxy").arg(id));
+                        rule->outboundID = proxyID;
+                    }
+                } else if (val.isString()) {
+                    const int id = getOutboundID(val.toString());
+                    if (id != INVALID_ID) {
+                        rule->outboundID = id;
+                    } else {
+                        appendWarning(warnings, QString("outbound \"%1\" not found, using proxy").arg(val.toString()));
+                        rule->outboundID = proxyID;
+                    }
+                }
+            } else if (val.isArray()) {
+                rule->set_field_value(key, QJsonArray2QListString(val.toArray()));
+            } else if (val.isString()) {
+                rule->set_field_value(key, {val.toString()});
+            } else if (val.isBool()) {
+                rule->set_field_value(key, {val.toBool() ? "true":"false"});
+            }
+        }
+        return rule;
+    }
+
+    QList<std::shared_ptr<RouteRule>> RouteProfile::parseJsonArray(const QJsonArray& arr, QString* parseError, QString* warnings) {
         if (arr.empty()) {
             parseError->append("Input is not a valid json array");
             return {};
@@ -125,39 +169,112 @@ namespace Configs {
                 parseError->append(QString("expected array of json objects but have member of type '%1'").arg(item.type()));
                 return {};
             }
-
-            auto obj = item.toObject();
-            auto rule = std::make_shared<RouteRule>();
-            for (const auto& key: obj.keys()) {
-                auto val = obj.value(key);
-                if (key == "outbound") {
-                    if (val.isDouble()) {
-                        if (!isOutboundIDValid(val.toInt())) {
-                            parseError->append(QString("outbound id %1 is not valid").arg(val.toInt()));
-                            return {};
-                        }
-                        rule->outboundID = val.toInt();
-                    } else if (val.isString()) {
-                        auto id = getOutboundID(val.toString());
-                        if (id == INVALID_ID) {
-                            parseError->append(QString("outbound with name %1 does not exist").arg(val.toString()));
-                            return {};
-                        }
-                        rule->outboundID = id;
-                    }
-                } else if (val.isArray()) {
-                    rule->set_field_value(key, QJsonArray2QListString(val.toArray()));
-                } else if (val.isString()) {
-                    rule->set_field_value(key, {val.toString()});
-                } else if (val.isBool()) {
-                    rule->set_field_value(key, {val.toBool() ? "true":"false"});
-                }
-            }
+            auto rule = parse_rule_object(item.toObject(), warnings);
             rule->name = "imported rule #" + Int2String(ruleID++);
             rules << rule;
         }
 
         return rules;
+    }
+
+    QJsonObject RouteProfile::ToShareObject() {
+        QJsonObject root;
+        root["kind"] = "throne-route-profile";
+        root["v"] = 1;
+        root["name"] = name;
+        root["default_outbound"] = outboundIDToString(defaultOutboundID);
+        QJsonArray rulesArr;
+        for (const auto& rule: Rules) {
+            if (rule->type != custom && rule->isEmpty()) continue; // drop unused simple-rule stubs
+            auto obj = rule->to_share_json();
+            if (obj.isEmpty()) continue; // outbound profile missing on this machine
+            rulesArr.append(obj);
+        }
+        root["rules"] = rulesArr;
+        return root;
+    }
+
+    QString RouteProfile::ToShareLink() {
+        const auto json = QJsonDocument(ToShareObject()).toJson(QJsonDocument::Compact);
+        const auto b64 = json.toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals);
+        return QStringLiteral("throne://route?data=") + QString::fromLatin1(b64);
+    }
+
+    std::shared_ptr<RouteProfile> RouteProfile::FromShareInput(const QString& input, QString* fatalError, QString* warnings, bool* wasOldArray) {
+        if (wasOldArray) *wasOldArray = false;
+        QString text = input.trimmed();
+        if (text.isEmpty()) {
+            fatalError->append("Empty input");
+            return nullptr;
+        }
+
+        // throne://route?data=<base64> deep link
+        if (text.startsWith("throne://", Qt::CaseInsensitive)) {
+            const QUrl u(text);
+            if (u.host().compare("route", Qt::CaseInsensitive) != 0) {
+                fatalError->append("Unsupported deep link command");
+                return nullptr;
+            }
+            text = QUrlQuery(u).queryItemValue("data", QUrl::FullyDecoded).trimmed();
+            if (text.isEmpty()) {
+                fatalError->append("Deep link has no data");
+                return nullptr;
+            }
+        }
+
+        // Resolve to JSON: try raw first, then base64 (url-safe, then standard).
+        QJsonDocument doc = QJsonDocument::fromJson(text.toUtf8());
+        if (doc.isNull()) {
+            doc = QJsonDocument::fromJson(QByteArray::fromBase64(text.toUtf8(), QByteArray::Base64UrlEncoding));
+            if (doc.isNull())
+                doc = QJsonDocument::fromJson(QByteArray::fromBase64(text.toUtf8()));
+        }
+        if (doc.isNull()) {
+            fatalError->append("Input is not valid JSON, base64, or a Throne route link");
+            return nullptr;
+        }
+
+        // New schema: a tagged object carrying the whole profile.
+        if (doc.isObject()) {
+            const QJsonObject root = doc.object();
+            if (root.value("kind").toString() != QStringLiteral("throne-route-profile")) {
+                fatalError->append("Unrecognized route object");
+                return nullptr;
+            }
+            auto profile = std::make_shared<RouteProfile>();
+            profile->id = -1;
+            profile->name = root.value("name").toString();
+            profile->defaultOutboundID = stringToOutboundID(root.value("default_outbound").toString());
+            int fallbackNum = 1;
+            for (const auto& v: root.value("rules").toArray()) {
+                if (!v.isObject()) continue;
+                const QJsonObject ro = v.toObject();
+                auto rule = parse_rule_object(ro, warnings);
+                rule->type = tokenToRuleType(ro.value("type").toString());
+                rule->name = ro.value("name").toString();
+                if (rule->name.isEmpty()) rule->name = "rule_" + Int2String(fallbackNum++);
+                profile->Rules << rule;
+            }
+            return profile;
+        }
+
+        // Legacy schema: a bare array of rules (no name / default outbound).
+        if (doc.isArray()) {
+            QString fe;
+            auto rules = parseJsonArray(doc.array(), &fe, warnings);
+            if (!fe.isEmpty()) {
+                fatalError->append(fe);
+                return nullptr;
+            }
+            auto profile = std::make_shared<RouteProfile>();
+            profile->id = -1;
+            profile->Rules = rules;
+            if (wasOldArray) *wasOldArray = true;
+            return profile;
+        }
+
+        fatalError->append("Unsupported input");
+        return nullptr;
     }
 
     QJsonArray RouteProfile::get_route_rules(bool forView, std::map<int, QString> outboundMap) {

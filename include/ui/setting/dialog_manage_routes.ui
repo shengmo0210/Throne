@@ -687,6 +687,13 @@ For more information, see the document &quot;Configuration/DNS&quot;.</string>
               </widget>
              </item>
              <item>
+              <widget class="QPushButton" name="import_route">
+               <property name="text">
+                <string>Import</string>
+               </property>
+              </widget>
+             </item>
+             <item>
               <widget class="QPushButton" name="edit_route">
                <property name="text">
                 <string>Edit</string>

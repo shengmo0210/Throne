@@ -172,56 +172,6 @@ RouteItem::RouteItem(QWidget *parent, const std::shared_ptr<Configs::RouteProfil
         });
     });
 
-    connect(ui->route_import_json, &QPushButton::clicked, this, [=, this] {
-        auto w = new QDialog(this);
-        w->setWindowTitle("Import JSON Array");
-        w->setWindowModality(Qt::ApplicationModal);
-
-        auto line = 0;
-        auto layout = new QGridLayout(w);
-        w->setLayout(layout);
-
-        auto *tEdit = new QTextEdit(w);
-        tEdit->setPlaceholderText("[\n"
-            "      {\n"
-            "        \"action\": \"hijack-dns\",\n"
-            "        \"protocol\": \"dns\"\n"
-            "      },\n"
-            "      {\n"
-            "        \"action\": \"reject\",\n"
-            "        \"protocol\": \"udp\"\n"
-            "      }\n"
-            "    ]");
-        layout->addWidget(tEdit, line++, 0);
-
-        auto *buttons = new QDialogButtonBox(w);
-        buttons->setOrientation(Qt::Horizontal);
-        buttons->setStandardButtons(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-        layout->addWidget(buttons, line, 0);
-
-        connect(buttons, &QDialogButtonBox::accepted, w, [=, this] {
-           auto err = new QString;
-           auto parsed = Configs::RouteProfile::parseJsonArray(QString2QJsonArray(tEdit->toPlainText()), err);
-           if (!err->isEmpty()) {
-               MessageBoxInfo(tr("Invalid JSON Array"), tr("The provided input cannot be parsed to a valid route rule array:\n") + *err);
-               return;
-           }
-           if (currentIndex >= 0)
-               persistCurrentRuleAttrTabLabel();
-           chain->ResetRules();
-           chain->Rules << parsed;
-           currentIndex = -1;
-           updateRouteItemsView();
-           updateRuleSection();
-
-           w->accept();
-        });
-        connect(buttons, &QDialogButtonBox::rejected, w, &QDialog::reject);
-
-        w->exec();
-        w->deleteLater();
-    });
-
     connect(ui->rule_name, &QLineEdit::textChanged, this, [=, this](const QString& text) {
         if (currentIndex == -1) return;
         chain->Rules[currentIndex]->name = QString(text);

@@ -10,6 +10,10 @@
 #include <QShortcut>
 #include <QTimer>
 #include <QToolTip>
+#include <QDialog>
+#include <QTextEdit>
+#include <QGridLayout>
+#include <QDialogButtonBox>
 #include <include/api/RPC.h>
 
 #include "include/configs/sub/warp.h"
@@ -132,6 +136,20 @@ DialogManageRoutes::DialogManageRoutes(QWidget *parent) : QDialog(parent), ui(ne
 
     connect(deleteShortcut, &QShortcut::activated, this, [=,this]{
         on_delete_route_clicked();
+    });
+
+    // Ctrl+C / Ctrl+V on the profile list act as Export / Import. Scoped to the list so
+    // they don't hijack normal copy/paste in the dialog's many text fields.
+    auto exportShortcut = new QShortcut(QKeySequence::Copy, ui->route_profiles);
+    exportShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(exportShortcut, &QShortcut::activated, this, [=,this]{
+        on_export_route_clicked();
+    });
+
+    auto importShortcut = new QShortcut(QKeySequence::Paste, ui->route_profiles);
+    importShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(importShortcut, &QShortcut::activated, this, [=,this]{
+        on_import_route_clicked();
     });
 
     // hijack
@@ -298,13 +316,7 @@ void DialogManageRoutes::on_export_route_clicked()
     auto idx = ui->route_profiles->currentRow();
     if (idx < 0) return;
 
-    QJsonArray arr = chainList[idx]->get_route_rules(true, {});
-    QStringList res;
-    for (int i = 0; i < arr.count(); i++)
-    {
-        res.append(QJsonObject2QString(arr[i].toObject(), false));
-    }
-    QApplication::clipboard()->setText("[" + res.join(",") + "]");
+    QApplication::clipboard()->setText(chainList[idx]->ToShareLink());
 
     QToolTip::showText(QCursor::pos(), "Copied!", this);
     int r = ++tooltipID;
@@ -312,6 +324,81 @@ void DialogManageRoutes::on_export_route_clicked()
         if (tooltipID != r) return;
         QToolTip::hideText();
     });
+}
+
+void DialogManageRoutes::applyImportedProfile(const std::shared_ptr<Configs::RouteProfile>& profile, bool wasOldArray)
+{
+    if (wasOldArray) {
+        // A legacy rule array carries no name / default outbound: open the editor
+        // pre-filled with the rules so the user can complete it before saving.
+        auto shell = Configs::dataManager->routesRepo->NewRouteProfile();
+        shell->Rules = profile->Rules;
+        routeChainWidget = new RouteItem(this, shell);
+        routeChainWidget->setWindowModality(Qt::ApplicationModal);
+        routeChainWidget->show();
+        connect(routeChainWidget, &RouteItem::settingsChanged, this, [=, this](const std::shared_ptr<Configs::RouteProfile>& chain) {
+            chainList << chain;
+            reloadProfileItems();
+        });
+    } else {
+        // A complete profile: add it directly, no editor.
+        chainList << profile;
+        currentRoute = profile;
+        reloadProfileItems();
+    }
+}
+
+void DialogManageRoutes::on_import_route_clicked()
+{
+    // Fast path: if the clipboard already holds a usable candidate, just confirm and
+    // import it — no need to make the user paste back what they already copied.
+    const QString clip = QApplication::clipboard()->text().trimmed();
+    if (!clip.isEmpty()) {
+        QString fatal, warnings;
+        bool wasOldArray = false;
+        if (auto profile = Configs::RouteProfile::FromShareInput(clip, &fatal, &warnings, &wasOldArray)) {
+            const QString what = wasOldArray ? tr("a routing rule list")
+                                             : tr("routing profile \"%1\"").arg(profile->name);
+            if (QMessageBox::question(this, tr("Import from clipboard"),
+                                      tr("Import %1 from the clipboard?").arg(what))
+                == QMessageBox::StandardButton::Yes) {
+                if (!warnings.isEmpty()) MessageBoxInfo(tr("Imported with warnings"), warnings);
+                applyImportedProfile(profile, wasOldArray);
+                return;
+            }
+            // Declined: fall through to the manual paste dialog below.
+        }
+    }
+
+    // Manual path: let the user paste; the placeholder explains the accepted formats.
+    auto w = new QDialog(this);
+    w->setWindowTitle(tr("Import routing profile"));
+    w->setWindowModality(Qt::ApplicationModal);
+
+    auto layout = new QGridLayout(w);
+    auto tEdit = new QTextEdit(w);
+    tEdit->setPlaceholderText(tr("Paste a Throne route link, a base64 blob, or a JSON rule array"));
+    layout->addWidget(tEdit, 0, 0);
+
+    auto buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, Qt::Horizontal, w);
+    layout->addWidget(buttons, 1, 0);
+
+    connect(buttons, &QDialogButtonBox::accepted, w, [=, this] {
+        QString fatal, warnings;
+        bool wasOldArray = false;
+        auto profile = Configs::RouteProfile::FromShareInput(tEdit->toPlainText(), &fatal, &warnings, &wasOldArray);
+        if (!profile) {
+            MessageBoxWarning(tr("Invalid input"), tr("Could not import this routing profile:\n") + fatal);
+            return;
+        }
+        if (!warnings.isEmpty()) MessageBoxInfo(tr("Imported with warnings"), warnings);
+        applyImportedProfile(profile, wasOldArray);
+        w->accept();
+    });
+    connect(buttons, &QDialogButtonBox::rejected, w, &QDialog::reject);
+
+    w->exec();
+    w->deleteLater();
 }
 
 void DialogManageRoutes::on_clone_route_clicked() {

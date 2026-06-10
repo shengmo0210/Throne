@@ -39,6 +39,38 @@ namespace Configs {
         return {"invalid"};
     }
 
+    // Stable, machine-readable token for a rule's type, used in the share schema so
+    // that simple-vs-advanced rules round-trip independently of enum order or UI labels.
+    inline QString ruleTypeToToken(int type)
+    {
+        switch (type) {
+            case simpleAddressProxy: return {"simple_address_proxy"};
+            case simpleAddressBypass: return {"simple_address_bypass"};
+            case simpleAddressBlock: return {"simple_address_block"};
+            case simpleProcessNameProxy: return {"simple_process_name_proxy"};
+            case simpleProcessNameBypass: return {"simple_process_name_bypass"};
+            case simpleProcessNameBlock: return {"simple_process_name_block"};
+            case simpleProcessPathProxy: return {"simple_process_path_proxy"};
+            case simpleProcessPathBypass: return {"simple_process_path_bypass"};
+            case simpleProcessPathBlock: return {"simple_process_path_block"};
+            default: return {"custom"};
+        }
+    }
+
+    inline ruleType tokenToRuleType(const QString& token)
+    {
+        if (token == "simple_address_proxy") return simpleAddressProxy;
+        if (token == "simple_address_bypass") return simpleAddressBypass;
+        if (token == "simple_address_block") return simpleAddressBlock;
+        if (token == "simple_process_name_proxy") return simpleProcessNameProxy;
+        if (token == "simple_process_name_bypass") return simpleProcessNameBypass;
+        if (token == "simple_process_name_block") return simpleProcessNameBlock;
+        if (token == "simple_process_path_proxy") return simpleProcessPathProxy;
+        if (token == "simple_process_path_bypass") return simpleProcessPathBypass;
+        if (token == "simple_process_path_block") return simpleProcessPathBlock;
+        return custom;
+    }
+
     inline QString get_rule_set_name(QString ruleSet)
     {
         if (auto url = QUrl(ruleSet); url.isValid() && url.fileName().contains(".srs"))
@@ -104,6 +136,7 @@ namespace Configs {
         QString uiActiveAttributeTabLabel;
 
         [[nodiscard]] QJsonObject get_rule_json(bool forView = false, const QString& outboundTag = "");
+        [[nodiscard]] QJsonObject to_share_json();
         static QStringList get_attributes();
         static QStringList tab_attributes();
         [[nodiscard]] static bool is_attribute_at_default(RouteRule& rule, const QString& attr);

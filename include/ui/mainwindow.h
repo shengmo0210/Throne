@@ -262,6 +262,8 @@ private:
 
     void handle_addsub(const QString &url, const QString &name, bool autoUpdate);
 
+    void handle_import_route(const QString &url);
+
     // Routes user-supplied text: throne:// links go to the deeplink handler, the
     // rest to the subscription/profile importer.
     void import_or_handle_deeplink(const QString &text);

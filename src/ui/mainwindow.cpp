@@ -1261,7 +1261,33 @@ void MainWindow::handle_deeplink_impl(const QString &url) {
         return;
     }
 
+    if (cmd.compare("route", Qt::CaseInsensitive) == 0) {
+        handle_import_route(url);
+        return;
+    }
+
     MW_show_log(tr("Ignored deeplink with unknown command: %1").arg(cmd));
+}
+
+void MainWindow::handle_import_route(const QString &url) {
+    QString fatal, warnings;
+    bool wasOldArray = false;
+    auto profile = Configs::RouteProfile::FromShareInput(url, &fatal, &warnings, &wasOldArray);
+    if (!profile) {
+        MessageBoxWarning(tr("Import routing profile"), tr("The link could not be parsed:\n") + fatal);
+        return;
+    }
+    if (profile->name.trimmed().isEmpty()) profile->name = tr("Imported profile");
+
+    ActivateWindow(this);
+
+    auto prompt = tr("Add this routing profile?\n\nName: %1").arg(profile->name);
+    if (!warnings.isEmpty()) prompt += "\n\n" + tr("Note:") + "\n" + warnings.trimmed();
+    if (QMessageBox::question(GetMessageBoxParent(), tr("Import routing profile"), prompt) != QMessageBox::StandardButton::Yes) {
+        return;
+    }
+
+    Configs::dataManager->routesRepo->AddRouteProfile(profile);
 }
 
 void MainWindow::handle_addsub(const QString &url, const QString &name, bool autoUpdate) {

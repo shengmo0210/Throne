@@ -27,9 +27,20 @@ namespace Configs {
 
         RouteProfile(const RouteProfile& other);
 
-        static QList<std::shared_ptr<RouteRule>> parseJsonArray(const QJsonArray& arr, QString* parseError);
+        static QList<std::shared_ptr<RouteRule>> parseJsonArray(const QJsonArray& arr, QString* parseError, QString* warnings = nullptr);
 
         QJsonArray get_route_rules(bool forView = false, std::map<int, QString> outboundMap = {});
+
+        // Lossless share schema: a tagged JSON object carrying the profile name, default
+        // outbound and every rule (with its simple/advanced type).
+        QJsonObject ToShareObject();
+        // ToShareObject() compacted, base64url-encoded, wrapped as throne://route?data=<...>
+        QString ToShareLink();
+        // Parse any shared form: a throne://route link, a base64 blob, a raw share object,
+        // or a legacy bare rule array. Returns nullptr and fills *fatalError on failure;
+        // non-fatal notes (e.g. outbound fallbacks) go to *warnings. *wasOldArray is set
+        // true when the input was a legacy array (no name / default outbound to import).
+        static std::shared_ptr<RouteProfile> FromShareInput(const QString& input, QString* fatalError, QString* warnings, bool* wasOldArray);
 
         static std::shared_ptr<RouteProfile> GetDefaultChain();
 
