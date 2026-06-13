@@ -11,7 +11,8 @@ namespace Configs {
     class xrayTLS : public baseConfig {
         public:
         QString serverName;
-        bool allowInsecure = false;
+        QString pinnedPeerCertSha256;
+        QString verifyPeerCertByName;
         QStringList alpn;
         QString fingerprint;
 
@@ -65,9 +66,9 @@ namespace Configs {
         bool noSSEHeader = false;
         QString scMaxEachPostBytes;
         QString scMinPostsIntervalMs;
-        QString scMaxBufferedPosts;
+        long long scMaxBufferedPosts;
         QString scStreamUpServerSecs;
-        QString serverMaxHeaderBytes;
+        int serverMaxHeaderBytes;
         // extra/xmux
         QJsonObject rawXmux;
         QString maxConcurrency;

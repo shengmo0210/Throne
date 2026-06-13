@@ -43,6 +43,8 @@ private:
 
     AutoCompleteTextEdit* simpleProxy;
 
+    AutoCompleteTextEdit* simpleWarpBypass;
+
     QListWidget* ruleAttrPlusList = nullptr;
 
     void ensurePlusTabBuiltOnce();

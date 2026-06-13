@@ -59,7 +59,6 @@ namespace Configs {
                 object["security"] = "tls";
                 QJsonObject tls;
                 if (hasText(settings.servername)) tls["serverName"] = qs(settings.servername);
-                tls["allowInsecure"] = false;
                 if (!settings.alpn.empty()) {
                     QJsonArray alpn;
                     for (const auto& item : settings.alpn) alpn.append(qs(item));
@@ -142,6 +141,11 @@ namespace Configs {
             else object.remove(key);
         }
 
+        void exportInt(QJsonObject& object, const QString& key, int value) {
+            if (value != 0) object[key] = value;
+            else object.remove(key);
+        }
+
         void parseString(const QJsonObject& object, const QString& key, QString& target) {
             if (object.contains(key)) target = object[key].toString();
         }
@@ -156,6 +160,10 @@ namespace Configs {
 
         void parseLongLong(const QJsonObject& object, const QString& key, long long& target) {
             if (object.contains(key)) target = object[key].toVariant().toLongLong();
+        }
+
+        void parseInt(const QJsonObject& object, const QString& key, int& target) {
+            if (object.contains(key)) target = object[key].toVariant().toInt();
         }
 
         void parseXHTTPXmuxObject(xrayXHTTP* config, const QJsonObject& obj) {
@@ -204,9 +212,9 @@ namespace Configs {
             parseBool(obj, "noSSEHeader", config->noSSEHeader);
             parseVariantString(obj, "scMaxEachPostBytes", config->scMaxEachPostBytes);
             parseVariantString(obj, "scMinPostsIntervalMs", config->scMinPostsIntervalMs);
-            parseVariantString(obj, "scMaxBufferedPosts", config->scMaxBufferedPosts);
+            parseLongLong(obj, "scMaxBufferedPosts", config->scMaxBufferedPosts);
             parseVariantString(obj, "scStreamUpServerSecs", config->scStreamUpServerSecs);
-            parseVariantString(obj, "serverMaxHeaderBytes", config->serverMaxHeaderBytes);
+            parseInt(obj, "serverMaxHeaderBytes", config->serverMaxHeaderBytes);
             if (obj.contains("downloadSettings")) {
                 if (obj["downloadSettings"].isObject()) {
                     config->downloadSettings = QJsonObject2QString(obj["downloadSettings"].toObject(), true);
@@ -228,9 +236,8 @@ namespace Configs {
         if (query.hasQueryItem("sni")) serverName = query.queryItemValue("sni");
         if (query.hasQueryItem("peer")) serverName = query.queryItemValue("peer");
         if (query.hasQueryItem("server_name")) serverName = query.queryItemValue("server_name");
-        if (query.hasQueryItem("allowInsecure")) allowInsecure = query.queryItemValue("allowInsecure").replace("1", "true") == "true";
-        if (query.hasQueryItem("allow_insecure")) allowInsecure = query.queryItemValue("allow_insecure").replace("1", "true") == "true";
-        if (query.hasQueryItem("insecure")) allowInsecure = query.queryItemValue("insecure").replace("1", "true") == "true";
+        if (query.hasQueryItem("pcs")) pinnedPeerCertSha256 = query.queryItemValue("pcs", QUrl::FullyDecoded);
+        if (query.hasQueryItem("vcn")) verifyPeerCertByName = query.queryItemValue("vcn", QUrl::FullyDecoded);
         if (query.hasQueryItem("alpn")) alpn = query.queryItemValue("alpn", QUrl::FullyDecoded).split(",");
         if (query.hasQueryItem("fp")) fingerprint = query.queryItemValue("fp");
         return true;
@@ -239,7 +246,8 @@ namespace Configs {
     bool xrayTLS::ParseFromJson(const QJsonObject &object) {
         if (object.isEmpty()) return false;
         if (object.contains("serverName")) serverName = object["serverName"].toString();
-        if (object.contains("allowInsecure")) allowInsecure = object["allowInsecure"].toBool();
+        if (object.contains("pinnedPeerCertSha256")) pinnedPeerCertSha256 = object["pinnedPeerCertSha256"].toString();
+        if (object.contains("verifyPeerCertByName")) verifyPeerCertByName = object["verifyPeerCertByName"].toString();
         if (object.contains("alpn")) alpn = QJsonArray2QListString(object["alpn"].toArray());
         if (object.contains("fingerprint")) fingerprint = object["fingerprint"].toString();
         return true;
@@ -253,7 +261,6 @@ namespace Configs {
         } else {
             serverName = QString::fromStdString(object.server);
         }
-        allowInsecure = object.skip_cert_verify;
         for (const auto& s : object.alpn) {
             alpn.append(QString::fromStdString(s));
         }
@@ -264,7 +271,8 @@ namespace Configs {
     QString xrayTLS::ExportToLink() {
         QUrlQuery query;
         query.addQueryItem("sni", serverName);
-        if (allowInsecure) query.addQueryItem("allowInsecure", "1");
+        if (!pinnedPeerCertSha256.isEmpty()) query.addQueryItem("pcs", pinnedPeerCertSha256);
+        if (!verifyPeerCertByName.isEmpty()) query.addQueryItem("vcn", verifyPeerCertByName);
         if (!alpn.isEmpty()) query.addQueryItem("alpn", alpn.join(","));
         if (!fingerprint.isEmpty()) query.addQueryItem("fp", fingerprint);
         return query.toString(QUrl::FullyEncoded);
@@ -273,7 +281,8 @@ namespace Configs {
     QJsonObject xrayTLS::ExportToJson() {
         QJsonObject object;
         object["serverName"] = serverName;
-        if (allowInsecure) object["allowInsecure"] = allowInsecure;
+        if (!pinnedPeerCertSha256.isEmpty()) object["pinnedPeerCertSha256"] = pinnedPeerCertSha256;
+        if (!verifyPeerCertByName.isEmpty()) object["verifyPeerCertByName"] = verifyPeerCertByName;
         if (!alpn.isEmpty()) {
             object["alpn"] = QListStr2QJsonArray(alpn);
         }
@@ -488,9 +497,9 @@ namespace Configs {
         exportBool(extraObj, "noSSEHeader", noSSEHeader);
         exportString(extraObj, "scMaxEachPostBytes", scMaxEachPostBytes);
         exportString(extraObj, "scMinPostsIntervalMs", scMinPostsIntervalMs);
-        exportString(extraObj, "scMaxBufferedPosts", scMaxBufferedPosts);
+        exportLongLong(extraObj, "scMaxBufferedPosts", scMaxBufferedPosts);
         exportString(extraObj, "scStreamUpServerSecs", scStreamUpServerSecs);
-        exportString(extraObj, "serverMaxHeaderBytes", serverMaxHeaderBytes);
+        exportInt(extraObj, "serverMaxHeaderBytes", serverMaxHeaderBytes);
         if (mode == "stream-one") {
             extraObj.remove("downloadSettings");
         } else if (!downloadSettings.isEmpty()) {

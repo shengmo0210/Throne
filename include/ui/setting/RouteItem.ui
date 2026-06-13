@@ -42,6 +42,16 @@
           <string notr="true">direct</string>
          </property>
         </item>
+        <item>
+         <property name="text">
+          <string notr="true">block</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string notr="true">warp-bypass</string>
+         </property>
+        </item>
        </widget>
       </item>
       <item row="2" column="0">
@@ -59,7 +69,7 @@
      <property name="styleSheet">
       <string notr="true">QTabWidget::pane {
     margin-top: 1px;
-    border: 1px solid #555555;
+    border: 1px solid #777777;
     border-radius: 4px;
 }
 
@@ -69,7 +79,7 @@ QTabBar {
 }
 
 QTabBar::tab {
-    border: 1px solid #555555;
+    border: 1px solid #777777;
     border-radius: 4px;
 
     padding: 2px 4px;
@@ -81,11 +91,11 @@ QTabBar::tab:selected {
 }
 
 QTabBar::tab:!selected {
-    border: 1px solid #555555;
+    border: 1px solid #777777;
 }
 
 QTabBar::tab:hover:!selected {
-    border: 1px solid #555555;
+    border: 1px solid #777777;
 }</string>
      </property>
      <property name="currentIndex">
@@ -104,52 +114,72 @@ QTabBar::tab:hover:!selected {
         </widget>
        </item>
        <item>
-        <widget class="QGroupBox" name="simple_direct_box">
-         <layout class="QVBoxLayout" name="verticalLayout_6">
-          <item>
-           <widget class="QLabel" name="label">
-            <property name="text">
-             <string>Direct</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QTextEdit" name="simple_direct"/>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="simple_proxy_box">
-         <layout class="QVBoxLayout" name="verticalLayout_7">
-          <item>
-           <widget class="QLabel" name="label_2">
-            <property name="text">
-             <string>Proxy</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QTextEdit" name="simple_proxy"/>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="simple_block_box">
-         <layout class="QVBoxLayout" name="verticalLayout_8">
-          <item>
-           <widget class="QLabel" name="label_3">
-            <property name="text">
-             <string>Block</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QTextEdit" name="simple_block"/>
-          </item>
-         </layout>
-        </widget>
+        <layout class="QGridLayout" name="simpleGrid">
+         <item row="0" column="0">
+          <widget class="QGroupBox" name="simple_direct_box">
+           <layout class="QVBoxLayout" name="verticalLayout_6">
+            <item>
+             <widget class="QLabel" name="label">
+              <property name="text">
+               <string>Direct</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QTextEdit" name="simple_direct"/>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QGroupBox" name="simple_proxy_box">
+           <layout class="QVBoxLayout" name="verticalLayout_7">
+            <item>
+             <widget class="QLabel" name="label_2">
+              <property name="text">
+               <string>Proxy</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QTextEdit" name="simple_proxy"/>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QGroupBox" name="simple_block_box">
+           <layout class="QVBoxLayout" name="verticalLayout_8">
+            <item>
+             <widget class="QLabel" name="label_3">
+              <property name="text">
+               <string>Block</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QTextEdit" name="simple_block"/>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item row="1" column="1">
+          <widget class="QGroupBox" name="simple_warpbypass_box">
+           <layout class="QVBoxLayout" name="verticalLayout_10">
+            <item>
+             <widget class="QLabel" name="label_4">
+              <property name="text">
+               <string>Warp-bypass</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QTextEdit" name="simple_warpbypass"/>
+            </item>
+           </layout>
+          </widget>
+         </item>
+        </layout>
        </item>
       </layout>
      </widget>
@@ -158,19 +188,6 @@ QTabBar::tab:hover:!selected {
        <string>Advanced</string>
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_4">
-       <item>
-        <widget class="QWidget" name="widget" native="true">
-         <layout class="QHBoxLayout" name="horizontalLayout">
-          <item>
-           <widget class="QPushButton" name="route_import_json">
-            <property name="text">
-             <string>Import JSON</string>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </widget>
-       </item>
        <item>
         <widget class="QGroupBox" name="groupBox">
          <property name="title">
@@ -369,7 +386,7 @@ QTabBar::tab:hover:!selected {
             <property name="styleSheet">
              <string notr="true">QTabWidget::pane {
     margin-top: 1px;
-    border: 1px solid #555555;
+    border: 1px solid #777777;
     border-radius: 4px;
 }
 
@@ -379,7 +396,7 @@ QTabBar {
 }
 
 QTabBar::tab {
-    border: 1px solid #555555;
+    border: 1px solid #777777;
     border-radius: 4px;
 
     padding: 2px 4px;
@@ -391,11 +408,11 @@ QTabBar::tab:selected {
 }
 
 QTabBar::tab:!selected {
-    border: 1px solid #555555;
+    border: 1px solid #777777;
 }
 
 QTabBar::tab:hover:!selected {
-    border: 1px solid #555555;
+    border: 1px solid #777777;
 }</string>
             </property>
             <property name="currentIndex">

@@ -32,6 +32,7 @@ void adjustComboBoxWidth(const QComboBox *comboBox) {
 QString get_outbound_name(int id) {
     if (id == -1) return "proxy";
     if (id == -2) return "direct";
+    if (id == Configs::warpBypassID) return "warp-bypass";
     if (auto profile = Configs::dataManager->profilesRepo->GetProfile(id)) return profile->name;
     return "INVALID OUTBOUND";
 }
@@ -74,9 +75,10 @@ RouteItem::RouteItem(QWidget *parent, const std::shared_ptr<Configs::RouteProfil
         ui->route_items->addItem(item->name);
     }
 
-    outbounds = {"proxy", "direct"};
+    outbounds = {"proxy", "direct", "warp-bypass"};
     outboundMap[0] = -1;
     outboundMap[1] = -2;
+    outboundMap[2] = Configs::warpBypassID;
     auto proxyListRaw = Configs::dataManager->profilesRepo->GetAllProfileIDNameMapped();
     QMap<int, QString> idToName;
     for (const auto& [id, name] : proxyListRaw) idToName.insert(id, name);
@@ -91,8 +93,8 @@ RouteItem::RouteItem(QWidget *parent, const std::shared_ptr<Configs::RouteProfil
         }
     }
 
-    for (const auto& item : ruleSetMap) {
-        geo_items.append(QString::fromStdString(item.first));
+    for (const auto& item : ruleSetList) {
+        geo_items.append(QString::fromUtf8(item.first.data(), item.first.size()));
     }
 
     ui->route_name->setText(chain->name);
@@ -121,23 +123,27 @@ RouteItem::RouteItem(QWidget *parent, const std::shared_ptr<Configs::RouteProfil
     ui->def_out->setCurrentText(Configs::outboundIDToString(chain->defaultOutboundID));
 
     QStringList ruleItems = {"domain:", "suffix:", "regex:", "keyword:", "ip:", "processName:", "processPath:", "ruleset:"};
-    for (const auto& item : ruleSetMap) {
-        ruleItems.append("ruleset:" + QString::fromStdString(item.first));
+    for (const auto& item : ruleSetList) {
+        ruleItems.append("ruleset:" + QString::fromUtf8(item.first.data(), item.first.size()));
     }
     simpleDirect = new AutoCompleteTextEdit("", ruleItems, this);
     simpleBlock = new AutoCompleteTextEdit("", ruleItems, this);
     simpleProxy = new AutoCompleteTextEdit("", ruleItems, this);
+    simpleWarpBypass = new AutoCompleteTextEdit("", ruleItems, this);
 
     ui->simple_direct_box->layout()->replaceWidget(ui->simple_direct, simpleDirect);
     ui->simple_block_box->layout()->replaceWidget(ui->simple_block, simpleBlock);
     ui->simple_proxy_box->layout()->replaceWidget(ui->simple_proxy, simpleProxy);
+    ui->simple_warpbypass_box->layout()->replaceWidget(ui->simple_warpbypass, simpleWarpBypass);
     ui->simple_direct->hide();
     ui->simple_block->hide();
     ui->simple_proxy->hide();
+    ui->simple_warpbypass->hide();
 
     simpleDirect->setPlainText(chain->GetSimpleRules(Configs::bypass));
     simpleBlock->setPlainText(chain->GetSimpleRules(Configs::block));
     simpleProxy->setPlainText(chain->GetSimpleRules(Configs::proxy));
+    simpleWarpBypass->setPlainText(chain->GetSimpleRules(Configs::warpBypass));
 
     connect(ui->tabWidget->tabBar(), &QTabBar::currentChanged, this, [=, this]() {
         if (ui->tabWidget->tabBar()->currentIndex() == 1) {
@@ -145,6 +151,7 @@ RouteItem::RouteItem(QWidget *parent, const std::shared_ptr<Configs::RouteProfil
             res += chain->UpdateSimpleRules(simpleDirect->toPlainText(), Configs::bypass);
             res += chain->UpdateSimpleRules(simpleBlock->toPlainText(), Configs::block);
             res += chain->UpdateSimpleRules(simpleProxy->toPlainText(), Configs::proxy);
+            res += chain->UpdateSimpleRules(simpleWarpBypass->toPlainText(), Configs::warpBypass);
             if (!res.isEmpty()) {
                 runOnUiThread([=] {
                     MessageBoxWarning(tr("Invalid rules"), tr("Some rules could not be added:\n") + res);
@@ -163,6 +170,7 @@ RouteItem::RouteItem(QWidget *parent, const std::shared_ptr<Configs::RouteProfil
             simpleDirect->setPlainText(chain->GetSimpleRules(Configs::bypass));
             simpleBlock->setPlainText(chain->GetSimpleRules(Configs::block));
             simpleProxy->setPlainText(chain->GetSimpleRules(Configs::proxy));
+            simpleWarpBypass->setPlainText(chain->GetSimpleRules(Configs::warpBypass));
         }
     });
 
@@ -170,56 +178,6 @@ RouteItem::RouteItem(QWidget *parent, const std::shared_ptr<Configs::RouteProfil
         runOnUiThread([=] {
             MessageBoxInfo(tr("Simple rule manual"), Configs::Information::SimpleRuleInfo);
         });
-    });
-
-    connect(ui->route_import_json, &QPushButton::clicked, this, [=, this] {
-        auto w = new QDialog(this);
-        w->setWindowTitle("Import JSON Array");
-        w->setWindowModality(Qt::ApplicationModal);
-
-        auto line = 0;
-        auto layout = new QGridLayout(w);
-        w->setLayout(layout);
-
-        auto *tEdit = new QTextEdit(w);
-        tEdit->setPlaceholderText("[\n"
-            "      {\n"
-            "        \"action\": \"hijack-dns\",\n"
-            "        \"protocol\": \"dns\"\n"
-            "      },\n"
-            "      {\n"
-            "        \"action\": \"reject\",\n"
-            "        \"protocol\": \"udp\"\n"
-            "      }\n"
-            "    ]");
-        layout->addWidget(tEdit, line++, 0);
-
-        auto *buttons = new QDialogButtonBox(w);
-        buttons->setOrientation(Qt::Horizontal);
-        buttons->setStandardButtons(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-        layout->addWidget(buttons, line, 0);
-
-        connect(buttons, &QDialogButtonBox::accepted, w, [=, this] {
-           auto err = new QString;
-           auto parsed = Configs::RouteProfile::parseJsonArray(QString2QJsonArray(tEdit->toPlainText()), err);
-           if (!err->isEmpty()) {
-               MessageBoxInfo(tr("Invalid JSON Array"), tr("The provided input cannot be parsed to a valid route rule array:\n") + *err);
-               return;
-           }
-           if (currentIndex >= 0)
-               persistCurrentRuleAttrTabLabel();
-           chain->ResetRules();
-           chain->Rules << parsed;
-           currentIndex = -1;
-           updateRouteItemsView();
-           updateRuleSection();
-
-           w->accept();
-        });
-        connect(buttons, &QDialogButtonBox::rejected, w, &QDialog::reject);
-
-        w->exec();
-        w->deleteLater();
     });
 
     connect(ui->rule_name, &QLineEdit::textChanged, this, [=, this](const QString& text) {
@@ -283,6 +241,7 @@ void RouteItem::accept() {
     res += chain->UpdateSimpleRules(simpleDirect->toPlainText(), Configs::bypass);
     res += chain->UpdateSimpleRules(simpleBlock->toPlainText(), Configs::block);
     res += chain->UpdateSimpleRules(simpleProxy->toPlainText(), Configs::proxy);
+    res += chain->UpdateSimpleRules(simpleWarpBypass->toPlainText(), Configs::warpBypass);
     if (!res.isEmpty()) {
         runOnUiThread([=] {
             MessageBoxWarning(tr("Invalid rules"), tr("Some rules could not be added, fix them before saving:\n") + res);

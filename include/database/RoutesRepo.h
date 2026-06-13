@@ -52,6 +52,8 @@ namespace Configs {
 
         [[nodiscard]] bool routeRulesColumnExists(const char* columnName) const;
 
+        [[nodiscard]] bool routeProfilesColumnExists(const char* columnName) const;
+
         // Get next available route profile ID
         int NewRouteProfileID() const;
 

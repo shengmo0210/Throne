@@ -764,7 +764,7 @@ void MainWindow::profile_start(int _id) {
 
         Configs::dataManager->settingsRepo->UpdateStartedId(ent->id);
         running = ent;
-        set_system_proxy(false);
+        if (Configs::dataManager->settingsRepo->spmode_system_proxy) set_system_proxy(true);
 
         runOnUiThread([=, this] {
             refresh_status();
@@ -861,7 +861,7 @@ void MainWindow::profile_stop(bool crash, bool block, bool manual) {
                 return false;
             }
         }
-        set_system_proxy(true);
+        if (Configs::dataManager->settingsRepo->spmode_system_proxy) set_system_proxy(false);
         return true;
     };
 

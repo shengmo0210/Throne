@@ -14,6 +14,19 @@
 #include "include/database/entities/Profile.h"
 #include "include/sys/linux/systemChecks.h"
 
+#include <algorithm>
+#include <string_view>
+
+namespace {
+    // Single binary search over the sorted ruleSetList — replaces the
+    // ruleSetMap.contains + ruleSetMap.at lookups from the former std::map.
+    std::string_view ruleSetUrl(std::string_view key) {
+        auto it = std::lower_bound(ruleSetList.begin(), ruleSetList.end(), key,
+            [](const auto& e, std::string_view k) { return e.first < k; });
+        return (it != ruleSetList.end() && it->first == key) ? it->second : std::string_view{};
+    }
+}
+
 namespace Configs {
 
     QString genTunName() {
@@ -128,6 +141,9 @@ namespace Configs {
         preReqs->routingDeps->defaultOutboundID = routeChain->defaultOutboundID;
         preReqs->routingDeps->outboundMap[-1] = "proxy";
         preReqs->routingDeps->outboundMap[-2] = "direct";
+        // warp-bypass resolves to the real proxy outbound: when warp is on it's the
+        // outbound warp detours into (tagged "warp-bypass"); when off it's just "proxy".
+        preReqs->routingDeps->outboundMap[warpBypassID] = dataManager->settingsRepo->enable_warp ? "warp-bypass" : "proxy";
         int suffix = 0;
         auto isCustomFullConfig = [](const std::shared_ptr<Profile>& p) {
             return p->type == "custom" && p->Custom() != nullptr && p->Custom()->type == Custom::CustomFullConfig;
@@ -509,18 +525,19 @@ namespace Configs {
                 };
         }
 
-        if (!ctx->forTest)
+        // process_path matching forces sing-box's process finder, which is very
+        // heavy on Windows (large latency spikes). It's only needed to keep an
+        // extra core's egress out of the proxy/TUN loop — sing-box's own egress
+        // is handled by auto_detect_interface and xray by its loopback bridges —
+        // so only emit the direct-DNS carve-out when an extra core is present.
+        if (!ctx->forTest && !ctx->buildConfigResult->extraCoreData->path.isEmpty())
         {
             QJsonArray coreProcessPaths;
-            coreProcessPaths.append(FindCoreRealPath());
-            if (!ctx->buildConfigResult->extraCoreData->path.isEmpty())
-            {
-                auto extraCorePath = ctx->buildConfigResult->extraCoreData->path;
+            auto extraCorePath = ctx->buildConfigResult->extraCoreData->path;
 #ifdef Q_OS_WIN
-                extraCorePath.replace("/", "\\");
+            extraCorePath.replace("/", "\\");
 #endif
-                coreProcessPaths.append(extraCorePath);
-            }
+            coreProcessPaths.append(extraCorePath);
             rules += QJsonObject{
                 {"process_path", coreProcessPaths},
                 {"action", "route"},
@@ -670,7 +687,6 @@ namespace Configs {
             inboundObj["mtu"] = Configs::dataManager->settingsRepo->vpn_mtu;
             inboundObj["stack"] = Configs::dataManager->settingsRepo->vpn_implementation;
             inboundObj["strict_route"] = Configs::dataManager->settingsRepo->vpn_strict_route;
-            if (ctx->os == Linux) inboundObj["auto_redirect"] = true;
             const auto tunIPv4CIDR = Configs::dataManager->settingsRepo->vpn_tun_ipv4_cidr;
             const auto tunIPv6CIDR = Configs::dataManager->settingsRepo->vpn_tun_ipv6_cidr;
             ctx->buildConfigResult->tunIPv4CIDR = tunIPv4CIDR;
@@ -678,7 +694,7 @@ namespace Configs {
             if (Configs::dataManager->settingsRepo->vpn_ipv6) tunAddress += tunIPv6CIDR;
             inboundObj["address"] = tunAddress;
 
-            QJsonArray routeExcludeAddrs = {"127.0.0.0/8"};
+            QJsonArray routeExcludeAddrs = {"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "224.0.0.0/4", "255.255.255.255/32"};
             QJsonArray routeExcludeSets;
             if (Configs::dataManager->settingsRepo->enable_tun_routing)
             {
@@ -846,13 +862,17 @@ namespace Configs {
         return {entID};
     }
 
-    void buildSingboxChain(std::shared_ptr<BuildSingBoxConfigContext> &ctx, QList<std::shared_ptr<Profile>> &ents, const QString& prefix, bool includeProxy, bool link, int startSuffix = 0, bool markIngress = false) {
+    void buildSingboxChain(std::shared_ptr<BuildSingBoxConfigContext> &ctx, QList<std::shared_ptr<Profile>> &ents, const QString& prefix, bool includeProxy, bool link, int startSuffix = 0, bool markIngress = false, bool warpWrap = false) {
         for (int idx = 0; idx < ents.size(); idx++)
         {
             auto tag = prefix + "-" + Int2String(startSuffix + idx);
             QString nextTag;
             if (idx < ents.size() - 1) nextTag = prefix + "-" + Int2String(startSuffix + idx + 1);
             if (includeProxy && idx == 0) tag = "proxy";
+            // warp wrapping: idx 0 is warp (tag "proxy") and idx 1 is the outbound it
+            // detours into. Expose that outbound under the stable tag "warp-bypass" so
+            // rules / final can reach the real proxy without the warp layer.
+            if (warpWrap && idx == 1) tag = "warp-bypass";
             if (markIngress && idx == 0) ctx->singIngressTags << tag;
             const auto& ent = ents[idx];
             auto [object, error] = ent->outbound->Build();
@@ -863,6 +883,7 @@ namespace Configs {
             }
             object["tag"] = tag;
             if (!nextTag.isEmpty() && link) object["detour"] = nextTag;
+            if (warpWrap && idx == 0) object["detour"] = "warp-bypass";
             if (ent->outbound->IsEndpoint())
             {
                 ctx->endpoints.append(object);
@@ -933,7 +954,7 @@ namespace Configs {
         }
     }
 
-    void buildOutboundChain(std::shared_ptr<BuildSingBoxConfigContext> &ctx, const QList<int>& entIDs, const QString& prefix, bool includeProxy, bool link, int singToXrayPort = -1, int xrayToSingPort = -1, int startSuffix = 0)
+    void buildOutboundChain(std::shared_ptr<BuildSingBoxConfigContext> &ctx, const QList<int>& entIDs, const QString& prefix, bool includeProxy, bool link, int singToXrayPort = -1, int xrayToSingPort = -1, int startSuffix = 0, bool warpWrap = false)
     {
         // Core-transition flags are per-chain: entIDListtoEntList only ever
         // sets them true, so clear any value left by a previous chain in this
@@ -1029,7 +1050,7 @@ namespace Configs {
             ctx->xrayToSingBridges << xrayToSingBridgeConf;
         }
         if (!initialSingEnts.isEmpty()) {
-            buildSingboxChain(ctx, initialSingEnts, prefix, includeProxy, link, startSuffix);
+            buildSingboxChain(ctx, initialSingEnts, prefix, includeProxy, link, startSuffix, false, warpWrap);
         }
         if (!xrayEnts.isEmpty()) {
             buildXrayChain(ctx, xrayEnts, prefix, includeProxy, link, startSuffix, xrayToSingBridgeConf);
@@ -1084,10 +1105,11 @@ namespace Configs {
             entIDs.append(ctx->ent->id);
         }
         if (group->front_proxy_id >= 0) entIDs.append(group->front_proxy_id);
-        if (dataManager->settingsRepo->enable_warp) {
+        const bool warpWrap = dataManager->settingsRepo->enable_warp;
+        if (warpWrap) {
             entIDs.prepend(warpProfileID);
         }
-        buildOutboundChain(ctx, entIDs, "config", true, true);
+        buildOutboundChain(ctx, entIDs, "config", true, true, -1, -1, 0, warpWrap);
 
         // A chain-typed profile wrapper isn't in entIDs (only its hops are),
         // so the chainGroup just built doesn't include it. Add it so the
@@ -1170,6 +1192,23 @@ namespace Configs {
         routeChain = std::make_shared<RouteProfile>(*routeChain);
         auto routeDeps = ctx->buildPrerequisities->routingDeps;
 
+        // Raw routing profile: translate the user's outbound ids -> sing-box tags up front
+        // (always, both modes). In "prevent modifications" mode we emit it verbatim and stop;
+        // otherwise we fall through so the shared plumbing below wraps the user's rules.
+        QJsonObject rawRouteObj;
+        if (routeChain->isRaw) {
+            rawRouteObj = QString2QJsonObject(routeChain->rawRoute);
+            if (rawRouteObj.isEmpty()) {
+                ctx->error = "Raw routing profile is not a valid JSON object";
+                return;
+            }
+            rawRouteObj = RouteProfile::TranslateRawOutbounds(rawRouteObj, routeDeps->outboundMap);
+            if (routeChain->preventModifications) {
+                ctx->buildConfigResult->coreConfig["route"] = rawRouteObj;
+                return;
+            }
+        }
+
         // hijack
         if (Configs::dataManager->settingsRepo->enable_dns_server && !ctx->forTest)
         {
@@ -1209,13 +1248,28 @@ namespace Configs {
             routeChain->Rules.prepend(sniffRule);
         }
 
-        // rules
-        auto routeRules = routeChain->get_route_rules(false, routeDeps->outboundMap);
-        routeRules.prepend(QJsonObject{
-            {"action", "route"},
-            {"process_path", FindCoreRealPath()},
-            {"outbound", "direct"},
-        });
+        // rules: structured profiles serialize their RouteRules; raw profiles supply their
+        // own (id-translated) rules and get only the structural plumbing prepended below.
+        auto routeRules = routeChain->isRaw ? rawRouteObj.value("rules").toArray()
+                                            : routeChain->get_route_rules(false, routeDeps->outboundMap);
+        // See buildDNSSection: only carve the core's own egress out to `direct`
+        // via process_path when an extra core is in the chain. Otherwise we'd
+        // force the (Windows-heavy) process finder even though sing-box loopback
+        // is handled by auto_detect_interface and xray by its loopback bridges.
+        if (!ctx->buildConfigResult->extraCoreData->path.isEmpty())
+        {
+            QJsonArray coreProcessPaths;
+            auto extraCorePath = ctx->buildConfigResult->extraCoreData->path;
+#ifdef Q_OS_WIN
+            extraCorePath.replace("/", "\\");
+#endif
+            coreProcessPaths.append(extraCorePath);
+            routeRules.prepend(QJsonObject{
+                {"action", "route"},
+                {"process_path", coreProcessPaths},
+                {"outbound", "direct"},
+            });
+        }
         if (!ctx->forTest) {
             routeRules.prepend(QJsonObject{
                 {"inbound", "dns-in"},
@@ -1244,12 +1298,12 @@ namespace Configs {
                         };
             }
             else
-                if(ruleSetMap.contains(item.toStdString())) {
+                if (auto url = ruleSetUrl(item.toStdString()); !url.empty()) {
                     ruleSetArray += QJsonObject{
                                 {"type", "remote"},
                                 {"tag", item},
                                 {"format", "binary"},
-                                {"url", get_jsdelivr_link(QString::fromStdString(ruleSetMap.at(item.toStdString())))},
+                                {"url", get_jsdelivr_link(QString::fromUtf8(url.data(), url.size()))},
                             };
                 }
         }
@@ -1294,16 +1348,42 @@ namespace Configs {
             routeRules.prepend(rule);
         }
 
+        // raw profiles bring their own rule_set definitions; merge them after ours.
+        if (routeChain->isRaw) {
+            for (const auto& rs : rawRouteObj.value("rule_set").toArray()) ruleSetArray.append(rs);
+        }
+
         // apply
-        QJsonObject route;
+        const int defOut = routeChain->defaultOutboundID;
+        // block-by-default: append a catch-all reject so any unmatched connection is
+        // dropped. (DNS is left resolving as usual; it's the connection that's blocked.)
+        if (!routeChain->isRaw && defOut == blockID) {
+            routeRules.append(QJsonObject{{"action", "reject"}});
+        }
+
+        // For a raw profile start from the user's (translated) route object so any extra
+        // keys they set survive; rules/rule_set we assembled and the mandatory route keys
+        // below override or fill in.
+        QJsonObject route = routeChain->isRaw ? rawRouteObj : QJsonObject{};
         route["rules"] = routeRules;
         route["rule_set"] = ruleSetArray;
-        route["final"] = outboundIDToString(routeChain->defaultOutboundID);
-        if (Configs::dataManager->settingsRepo->enable_stats)  route["find_process"] = true;
-        route["default_domain_resolver"] = QJsonObject{
-                                {"server", "dns-direct"},
-                                {"strategy", Configs::dataManager->settingsRepo->default_domain_strategy}};
-        if (Configs::dataManager->settingsRepo->spmode_vpn) route["auto_detect_interface"] = true;
+        if (routeChain->isRaw) {
+            if (!route.contains("final")) route["final"] = "proxy"; // user's final, else a safe default
+        } else if (defOut == blockID) {
+            // Unreachable thanks to the catch-all reject above, but `final` must still
+            // name a real outbound; `direct` is always present.
+            route["final"] = "direct";
+        } else if (defOut == warpBypassID) {
+            route["final"] = dataManager->settingsRepo->enable_warp ? "warp-bypass" : "proxy";
+        } else {
+            route["final"] = outboundIDToString(defOut);
+        }
+        if (Configs::dataManager->settingsRepo->enable_stats && !route.contains("find_process"))  route["find_process"] = true;
+        if (!route.contains("default_domain_resolver"))
+            route["default_domain_resolver"] = QJsonObject{
+                                    {"server", "dns-direct"},
+                                    {"strategy", Configs::dataManager->settingsRepo->default_domain_strategy}};
+        if (Configs::dataManager->settingsRepo->spmode_vpn && !route.contains("auto_detect_interface")) route["auto_detect_interface"] = true;
 
         ctx->buildConfigResult->coreConfig["route"] = route;
     }

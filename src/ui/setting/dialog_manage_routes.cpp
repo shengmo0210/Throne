@@ -10,10 +10,15 @@
 #include <QShortcut>
 #include <QTimer>
 #include <QToolTip>
+#include <QDialog>
+#include <QTextEdit>
+#include <QGridLayout>
+#include <QDialogButtonBox>
 #include <include/api/RPC.h>
 
 #include "include/configs/sub/warp.h"
 #include "include/database/RoutesRepo.h"
+#include "include/ui/setting/RawRouteItem.h"
 
 void DialogManageRoutes::reloadProfileItems() {
     if (chainList.empty()) {
@@ -86,9 +91,9 @@ DialogManageRoutes::DialogManageRoutes(QWidget *parent) : QDialog(parent), ui(ne
     ui->remote_dns_strategy->addItems(qsValue);
     ui->local_override->setText(Configs::dataManager->settingsRepo->core_box_underlying_dns);
     ui->cache_cap->setText(Int2String(Configs::dataManager->settingsRepo->dns_cache_capacity));
-    ui->disable_cache->setEnabled(Configs::dataManager->settingsRepo->dns_disable_cache);
-    ui->disable_expire->setEnabled(Configs::dataManager->settingsRepo->dns_disable_expire);
-    ui->reverse_mapping->setEnabled(Configs::dataManager->settingsRepo->dns_reverse_mapping);
+    ui->disable_cache->setChecked(Configs::dataManager->settingsRepo->dns_disable_cache);
+    ui->disable_expire->setChecked(Configs::dataManager->settingsRepo->dns_disable_expire);
+    ui->reverse_mapping->setChecked(Configs::dataManager->settingsRepo->dns_reverse_mapping);
     ui->enable_fakeip->setChecked(Configs::dataManager->settingsRepo->fake_dns);
     //
     connect(ui->use_dns_object, &QCheckBox::stateChanged, this, [=,this](int state) {
@@ -134,6 +139,20 @@ DialogManageRoutes::DialogManageRoutes(QWidget *parent) : QDialog(parent), ui(ne
         on_delete_route_clicked();
     });
 
+    // Ctrl+C / Ctrl+V on the profile list act as Export / Import. Scoped to the list so
+    // they don't hijack normal copy/paste in the dialog's many text fields.
+    auto exportShortcut = new QShortcut(QKeySequence::Copy, ui->route_profiles);
+    exportShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(exportShortcut, &QShortcut::activated, this, [=,this]{
+        on_export_route_clicked();
+    });
+
+    auto importShortcut = new QShortcut(QKeySequence::Paste, ui->route_profiles);
+    importShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(importShortcut, &QShortcut::activated, this, [=,this]{
+        on_import_route_clicked();
+    });
+
     // hijack
     ui->dnshijack_enable->setChecked(Configs::dataManager->settingsRepo->enable_dns_server);
     set_dns_hijack_enability(Configs::dataManager->settingsRepo->enable_dns_server);
@@ -147,8 +166,8 @@ DialogManageRoutes::DialogManageRoutes(QWidget *parent) : QDialog(parent), ui(ne
     });
 
     QStringList ruleItems = {"domain:", "suffix:", "regex:"};
-    for (const auto& item : ruleSetMap) {
-        ruleItems.append("ruleset:" + QString::fromStdString(item.first));
+    for (const auto& item : ruleSetList) {
+        ruleItems.append("ruleset:" + QString::fromUtf8(item.first.data(), item.first.size()));
     }
     rule_editor = new AutoCompleteTextEdit("", ruleItems, this);
     ui->hijack_box->layout()->replaceWidget(ui->dnshijack_rules, rule_editor);
@@ -284,13 +303,29 @@ void DialogManageRoutes::accept() {
 }
 
 void DialogManageRoutes::on_new_route_clicked() {
-    routeChainWidget = new RouteItem(this, Configs::dataManager->routesRepo->NewRouteProfile());
-    routeChainWidget->setWindowModality(Qt::ApplicationModal);
-    routeChainWidget->show();
-    connect(routeChainWidget, &RouteItem::settingsChanged, this, [=,this](const std::shared_ptr<Configs::RouteProfile>& chain) {
+    QMenu menu(this);
+    menu.addAction(tr("Structured profile"));
+    auto* rawAct = menu.addAction(tr("Raw profile"));
+    auto* chosen = menu.exec(ui->new_route->mapToGlobal(QPoint(0, ui->new_route->height())));
+    if (chosen == nullptr) return;
+
+    auto newProfile = Configs::dataManager->routesRepo->NewRouteProfile();
+    auto onCreated = [=, this](const std::shared_ptr<Configs::RouteProfile>& chain) {
         chainList << chain;
         reloadProfileItems();
-    });
+    };
+    if (chosen == rawAct) {
+        newProfile->isRaw = true;
+        auto* rawWidget = new RawRouteItem(this, newProfile);
+        rawWidget->setWindowModality(Qt::ApplicationModal);
+        rawWidget->show();
+        connect(rawWidget, &RawRouteItem::settingsChanged, this, onCreated);
+    } else {
+        routeChainWidget = new RouteItem(this, newProfile);
+        routeChainWidget->setWindowModality(Qt::ApplicationModal);
+        routeChainWidget->show();
+        connect(routeChainWidget, &RouteItem::settingsChanged, this, onCreated);
+    }
 }
 
 void DialogManageRoutes::on_export_route_clicked()
@@ -298,13 +333,7 @@ void DialogManageRoutes::on_export_route_clicked()
     auto idx = ui->route_profiles->currentRow();
     if (idx < 0) return;
 
-    QJsonArray arr = chainList[idx]->get_route_rules(true, {});
-    QStringList res;
-    for (int i = 0; i < arr.count(); i++)
-    {
-        res.append(QJsonObject2QString(arr[i].toObject(), false));
-    }
-    QApplication::clipboard()->setText("[" + res.join(",") + "]");
+    QApplication::clipboard()->setText(chainList[idx]->ToShareLink());
 
     QToolTip::showText(QCursor::pos(), "Copied!", this);
     int r = ++tooltipID;
@@ -312,6 +341,81 @@ void DialogManageRoutes::on_export_route_clicked()
         if (tooltipID != r) return;
         QToolTip::hideText();
     });
+}
+
+void DialogManageRoutes::applyImportedProfile(const std::shared_ptr<Configs::RouteProfile>& profile, bool wasOldArray)
+{
+    if (wasOldArray) {
+        // A legacy rule array carries no name / default outbound: open the editor
+        // pre-filled with the rules so the user can complete it before saving.
+        auto shell = Configs::dataManager->routesRepo->NewRouteProfile();
+        shell->Rules = profile->Rules;
+        routeChainWidget = new RouteItem(this, shell);
+        routeChainWidget->setWindowModality(Qt::ApplicationModal);
+        routeChainWidget->show();
+        connect(routeChainWidget, &RouteItem::settingsChanged, this, [=, this](const std::shared_ptr<Configs::RouteProfile>& chain) {
+            chainList << chain;
+            reloadProfileItems();
+        });
+    } else {
+        // A complete profile: add it directly, no editor.
+        chainList << profile;
+        currentRoute = profile;
+        reloadProfileItems();
+    }
+}
+
+void DialogManageRoutes::on_import_route_clicked()
+{
+    // Fast path: if the clipboard already holds a usable candidate, just confirm and
+    // import it — no need to make the user paste back what they already copied.
+    const QString clip = QApplication::clipboard()->text().trimmed();
+    if (!clip.isEmpty()) {
+        QString fatal, warnings;
+        bool wasOldArray = false;
+        if (auto profile = Configs::RouteProfile::FromShareInput(clip, &fatal, &warnings, &wasOldArray)) {
+            const QString what = wasOldArray ? tr("a routing rule list")
+                                             : tr("routing profile \"%1\"").arg(profile->name);
+            if (QMessageBox::question(this, tr("Import from clipboard"),
+                                      tr("Import %1 from the clipboard?").arg(what))
+                == QMessageBox::StandardButton::Yes) {
+                if (!warnings.isEmpty()) MessageBoxInfo(tr("Imported with warnings"), warnings);
+                applyImportedProfile(profile, wasOldArray);
+                return;
+            }
+            // Declined: fall through to the manual paste dialog below.
+        }
+    }
+
+    // Manual path: let the user paste; the placeholder explains the accepted formats.
+    auto w = new QDialog(this);
+    w->setWindowTitle(tr("Import routing profile"));
+    w->setWindowModality(Qt::ApplicationModal);
+
+    auto layout = new QGridLayout(w);
+    auto tEdit = new QTextEdit(w);
+    tEdit->setPlaceholderText(tr("Paste a Throne route link, a base64 blob, or a JSON rule array"));
+    layout->addWidget(tEdit, 0, 0);
+
+    auto buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, Qt::Horizontal, w);
+    layout->addWidget(buttons, 1, 0);
+
+    connect(buttons, &QDialogButtonBox::accepted, w, [=, this] {
+        QString fatal, warnings;
+        bool wasOldArray = false;
+        auto profile = Configs::RouteProfile::FromShareInput(tEdit->toPlainText(), &fatal, &warnings, &wasOldArray);
+        if (!profile) {
+            MessageBoxWarning(tr("Invalid input"), tr("Could not import this routing profile:\n") + fatal);
+            return;
+        }
+        if (!warnings.isEmpty()) MessageBoxInfo(tr("Imported with warnings"), warnings);
+        applyImportedProfile(profile, wasOldArray);
+        w->accept();
+    });
+    connect(buttons, &QDialogButtonBox::rejected, w, &QDialog::reject);
+
+    w->exec();
+    w->deleteLater();
 }
 
 void DialogManageRoutes::on_clone_route_clicked() {
@@ -329,15 +433,23 @@ void DialogManageRoutes::on_edit_route_clicked() {
     auto idx = ui->route_profiles->currentRow();
     if (idx < 0) return;
 
-    routeChainWidget = new RouteItem(this, chainList[idx]);
-    routeChainWidget->setWindowModality(Qt::ApplicationModal);
-    routeChainWidget->show();
-    connect(routeChainWidget, &RouteItem::settingsChanged, this, [=,this](const std::shared_ptr<Configs::RouteProfile>& chain) {
+    auto onEdited = [=, this](const std::shared_ptr<Configs::RouteProfile>& chain) {
         if (currentRoute == chainList[idx]) currentRoute = chain;
         chainList[idx] = chain;
         reloadProfileItems();
-    });
+    };
 
+    if (chainList[idx]->isRaw) {
+        auto* rawWidget = new RawRouteItem(this, chainList[idx]);
+        rawWidget->setWindowModality(Qt::ApplicationModal);
+        rawWidget->show();
+        connect(rawWidget, &RawRouteItem::settingsChanged, this, onEdited);
+    } else {
+        routeChainWidget = new RouteItem(this, chainList[idx]);
+        routeChainWidget->setWindowModality(Qt::ApplicationModal);
+        routeChainWidget->show();
+        connect(routeChainWidget, &RouteItem::settingsChanged, this, onEdited);
+    }
 }
 
 void DialogManageRoutes::on_delete_route_clicked() {

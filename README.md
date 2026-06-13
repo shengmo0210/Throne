@@ -4,7 +4,7 @@ Qt based Desktop cross-platform GUI proxy utility, empowered by [Sing-box](https
 
 Supports Windows 11/10/8/7 / Linux / MacOS out of the box.
 
-<img width="1123" height="799" alt="image" src="https://github.com/user-attachments/assets/a0beedf1-f003-46fa-80a3-bb63002b543f" />
+<img width="1002" height="789" alt="image" src="https://github.com/user-attachments/assets/3c9bf428-e3bd-426b-8ca1-cc57ecbedd7e" />
 
 ### Note on MacOS releases
 Apple platforms have a very strict security policy and since Throne does not have a signed certificate, you will have to remove the quarantine using `xattr -d com.apple.quarantine /path/to/throne.app`. Also to get the built-in privilege escalation to work, `Terminal` should have the `Full Disk` access.
@@ -33,9 +33,11 @@ Apple platforms have a very strict security policy and since Throne does not hav
 - TrustTunnel
 - ShadowTLS
 - Wireguard
+- AmneziaWG
 - SSH
-- Custom Outbound
-- Custom Config
+- Xray VLESS
+- Custom Outbound (Both Sing-box and Xray)
+- Custom Config (Both Sing-box and Xray)
 - Chaining outbounds
 - Extra Core
 

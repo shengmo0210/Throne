@@ -1015,12 +1015,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
         }
         auto file = QFile(path);
         if (!file.exists()) return;
-        if (file.size() > 50 * 1024 * 1024)
-        {
+        if (file.size() > 50 * 1024 * 1024) {
             MW_show_log("File too large, will not process it");
             return;
         }
-        file.open(QIODevice::ReadOnly);
+        if (!file.open(QIODevice::ReadOnly)) return;
         auto contents = file.readAll();
         file.close();
         Subscription::groupUpdater->AsyncUpdate(contents);
@@ -1147,9 +1146,8 @@ void MainWindow::dropEvent(QDropEvent* event)
                 if (auto qpx = QPixmap(url.toLocalFile()); !qpx.isNull())
                 {
                     parseQrImage(&qpx);
-                } else if (auto file = QFile(url.toLocalFile()); file.exists())
+                } else if (auto file = QFile(url.toLocalFile()); file.exists() && file.open(QFile::ReadOnly))
                 {
-                    file.open(QFile::ReadOnly);
                     if (file.size() > 50 * 1024 * 1024)
                     {
                         file.close();
@@ -1263,7 +1261,33 @@ void MainWindow::handle_deeplink_impl(const QString &url) {
         return;
     }
 
+    if (cmd.compare("route", Qt::CaseInsensitive) == 0) {
+        handle_import_route(url);
+        return;
+    }
+
     MW_show_log(tr("Ignored deeplink with unknown command: %1").arg(cmd));
+}
+
+void MainWindow::handle_import_route(const QString &url) {
+    QString fatal, warnings;
+    bool wasOldArray = false;
+    auto profile = Configs::RouteProfile::FromShareInput(url, &fatal, &warnings, &wasOldArray);
+    if (!profile) {
+        MessageBoxWarning(tr("Import routing profile"), tr("The link could not be parsed:\n") + fatal);
+        return;
+    }
+    if (profile->name.trimmed().isEmpty()) profile->name = tr("Imported profile");
+
+    ActivateWindow(this);
+
+    auto prompt = tr("Add this routing profile?\n\nName: %1").arg(profile->name);
+    if (!warnings.isEmpty()) prompt += "\n\n" + tr("Note:") + "\n" + warnings.trimmed();
+    if (QMessageBox::question(GetMessageBoxParent(), tr("Import routing profile"), prompt) != QMessageBox::StandardButton::Yes) {
+        return;
+    }
+
+    Configs::dataManager->routesRepo->AddRouteProfile(profile);
 }
 
 void MainWindow::handle_addsub(const QString &url, const QString &name, bool autoUpdate) {
@@ -1496,7 +1520,7 @@ void MainWindow::prepare_exit()
     }
     Configs::dataManager->settingsRepo->prepare_exit = true;
     //
-    set_system_proxy(true);
+    set_system_proxy(false);
     if (Configs::dataManager->settingsRepo->system_dns_set) set_system_dns(false, false);
     RegisterHiddenMenuShortcuts(true);
     RegisterHotkey(true);
@@ -1626,8 +1650,8 @@ bool MainWindow::get_elevated_permissions(int reason) {
     return false;
 }
 
-void MainWindow::set_system_proxy(bool mustDisable) {
-    if (!mustDisable && Configs::dataManager->settingsRepo->spmode_system_proxy) {
+void MainWindow::set_system_proxy(bool enable) {
+    if (enable) {
         auto socks_port = Configs::dataManager->settingsRepo->inbound_socks_port;
         SetSystemProxy(socks_port, socks_port, Configs::dataManager->settingsRepo->proxy_scheme);
     } else {
@@ -1645,7 +1669,7 @@ void MainWindow::set_spmode_system_proxy(bool enable, bool save) {
     }
     Configs::dataManager->settingsRepo->spmode_system_proxy = enable;
     if (running) {
-        set_system_proxy(false);
+        set_system_proxy(enable);
         if (!enable && Configs::dataManager->settingsRepo->reset_proxy_on_disable_sp) {
             profile_start(running->id);
         }

@@ -248,7 +248,7 @@ private:
 
     QList<int> get_selected_or_group();
 
-    void set_system_proxy(bool mustDisable);
+    void set_system_proxy(bool enable);
 
     void saveProfileFocusState();
 
@@ -261,6 +261,8 @@ private:
     void handle_deeplink_impl(const QString &url);
 
     void handle_addsub(const QString &url, const QString &name, bool autoUpdate);
+
+    void handle_import_route(const QString &url);
 
     // Routes user-supplied text: throne:// links go to the deeplink handler, the
     // rest to the subscription/profile importer.

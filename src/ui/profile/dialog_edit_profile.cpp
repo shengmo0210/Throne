@@ -515,9 +515,9 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         ui->xray_no_sse->setChecked(xrayStream->xhttp->noSSEHeader);
         ui->xray_scMaxEachPostBytes->setText(xrayStream->xhttp->scMaxEachPostBytes);
         ui->xray_scMinPostsIntervalMs->setText(xrayStream->xhttp->scMinPostsIntervalMs);
-        ui->xray_scMaxBufferedPosts->setText(xrayStream->xhttp->scMaxBufferedPosts);
+        ui->xray_scMaxBufferedPosts->setText(Int2String(xrayStream->xhttp->scMaxBufferedPosts));
         ui->xray_scStreamUpServerSecs->setText(xrayStream->xhttp->scStreamUpServerSecs);
-        ui->xray_serverMaxHeaderBytes->setText(xrayStream->xhttp->serverMaxHeaderBytes);
+        ui->xray_serverMaxHeaderBytes->setText(Int2String(xrayStream->xhttp->serverMaxHeaderBytes));
         ui->xray_max_concurrency->setText(xrayStream->xhttp->maxConcurrency);
         ui->xray_max_connections->setText(xrayStream->xhttp->maxConnections);
         ui->xray_hMaxRequestTimes->setText(xrayStream->xhttp->hMaxRequestTimes);
@@ -534,7 +534,8 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         ui->xray_sni->setText(xrayStream->security == "tls" ? xrayStream->TLS->serverName : xrayStream->reality->serverName);
         ui->xray_fp->setCurrentText(xrayStream->security == "tls" ? xrayStream->TLS->fingerprint : xrayStream->reality->fingerprint);
         ui->xray_alpn->setText(xrayStream->TLS->alpn.join(","));
-        ui->xray_insecure->setChecked(xrayStream->TLS->allowInsecure);
+        ui->xray_pinned_peer_cert_sha256->setText(xrayStream->TLS->pinnedPeerCertSha256);
+        ui->xray_verify_peer_cert_by_name->setText(xrayStream->TLS->verifyPeerCertByName);
         ui->xray_reality_pbk->setText(xrayStream->reality->password);
         ui->xray_reality_sid->setText(xrayStream->reality->shortId);
         ui->xray_reality_spiderx->setText(xrayStream->reality->spiderX);
@@ -567,6 +568,8 @@ void DialogEditProfile::typeSelected(const QString &newType) {
     innerEditor->get_edit_text_name = [&]() { return ui->name->text(); };
     innerEditor->get_edit_text_serverAddress = [&]() { return ui->address->text(); };
     innerEditor->get_edit_text_serverPort = [&]() { return ui->port->text(); };
+    innerEditor->set_edit_text_serverAddress = [&](const QString &v) { ui->address->setText(v); };
+    innerEditor->set_edit_text_serverPort = [&](const QString &v) { ui->port->setText(v); };
     innerEditor->editor_cache_updated = [=,this] { editor_cache_updated_impl(); };
     innerEditor->onStart(ent);
 
@@ -680,7 +683,7 @@ bool DialogEditProfile::onEnd() {
         transport->path = ui->path->text();
         transport->host = ui->host->text();
         tls->server_name = ui->sni->text();
-        tls->alpn = SplitAndTrim(ui->alpn->text(), ",");
+        tls->alpn = SplitAndTrim(ui->alpn->text(), ",", false);
         tls->utls->fingerPrint = ui->utlsFingerprint->currentText();
         tls->utls->enabled = !tls->utls->fingerPrint.isEmpty();
         tls->fragment = ui->tls_frag->isChecked();
@@ -720,8 +723,9 @@ bool DialogEditProfile::onEnd() {
         if (xrayStream->security == "tls") xrayStream->TLS->fingerprint = fp;
         else if (xrayStream->security == "reality") xrayStream->reality->fingerprint = fp;
 
-        xrayStream->TLS->alpn = ui->xray_alpn->text().split(",");
-        xrayStream->TLS->allowInsecure = ui->xray_insecure->isChecked();
+        xrayStream->TLS->alpn = SplitAndTrim(ui->xray_alpn->text(), ",", false);;
+        xrayStream->TLS->pinnedPeerCertSha256 = ui->xray_pinned_peer_cert_sha256->text();
+        xrayStream->TLS->verifyPeerCertByName = ui->xray_verify_peer_cert_by_name->text();
         xrayStream->reality->password = ui->xray_reality_pbk->text();
         xrayStream->reality->shortId = ui->xray_reality_sid->text();
         xrayStream->reality->spiderX = ui->xray_reality_spiderx->text();
@@ -749,9 +753,9 @@ bool DialogEditProfile::onEnd() {
             xrayStream->xhttp->noSSEHeader = ui->xray_no_sse->isChecked();
             xrayStream->xhttp->scMaxEachPostBytes = ui->xray_scMaxEachPostBytes->text();
             xrayStream->xhttp->scMinPostsIntervalMs = ui->xray_scMinPostsIntervalMs->text();
-            xrayStream->xhttp->scMaxBufferedPosts = ui->xray_scMaxBufferedPosts->text();
+            xrayStream->xhttp->scMaxBufferedPosts = ui->xray_scMaxBufferedPosts->text().toLongLong();
             xrayStream->xhttp->scStreamUpServerSecs = ui->xray_scStreamUpServerSecs->text();
-            xrayStream->xhttp->serverMaxHeaderBytes = ui->xray_serverMaxHeaderBytes->text();
+            xrayStream->xhttp->serverMaxHeaderBytes = ui->xray_serverMaxHeaderBytes->text().toInt();
             xrayStream->xhttp->maxConcurrency = ui->xray_max_concurrency->text();
             xrayStream->xhttp->maxConnections = ui->xray_max_connections->text();
             xrayStream->xhttp->hMaxRequestTimes = ui->xray_hMaxRequestTimes->text();

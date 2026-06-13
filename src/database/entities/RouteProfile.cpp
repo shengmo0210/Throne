@@ -1,5 +1,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QJsonDocument>
+#include <QUrlQuery>
 #include "include/database/entities/RouteProfile.h"
 #include <iostream>
 
@@ -25,6 +27,96 @@ namespace Configs {
         if (auto profile = Configs::dataManager->profilesRepo->GetProfileByName(name)) return profile->id;
 
         return INVALID_ID;
+    }
+
+    // --- Raw routing profile outbound helpers ---
+    // In a raw profile the user references outbounds by numeric id in `outbound` (anywhere,
+    // including nested logical rules) and the top-level `final`. These walk the JSON to
+    // collect / translate those ids.
+    static void collectRawOutboundIdsRec(const QJsonValue& node, QList<int>& out) {
+        if (node.isObject()) {
+            const QJsonObject o = node.toObject();
+            for (auto it = o.begin(); it != o.end(); ++it) {
+                if ((it.key() == "outbound" || it.key() == "final") && it.value().isDouble()) {
+                    const int id = it.value().toInt();
+                    if (!out.contains(id)) out.append(id);
+                } else {
+                    collectRawOutboundIdsRec(it.value(), out);
+                }
+            }
+        } else if (node.isArray()) {
+            for (const auto& e : node.toArray()) collectRawOutboundIdsRec(e, out);
+        }
+    }
+
+    QList<int> RouteProfile::CollectRawOutboundIds(const QJsonObject& route) {
+        QList<int> out;
+        collectRawOutboundIdsRec(route, out);
+        return out;
+    }
+
+    static QJsonValue translateRawOutboundsRec(const QJsonValue& node, const std::map<int, QString>& outboundMap) {
+        if (node.isObject()) {
+            const QJsonObject o = node.toObject();
+            QJsonObject res;
+            for (auto it = o.begin(); it != o.end(); ++it) {
+                if ((it.key() == "outbound" || it.key() == "final") && it.value().isDouble()) {
+                    const int id = it.value().toInt();
+                    auto found = outboundMap.find(id);
+                    res[it.key()] = found != outboundMap.end() ? QJsonValue(found->second) : QJsonValue("proxy");
+                } else {
+                    res[it.key()] = translateRawOutboundsRec(it.value(), outboundMap);
+                }
+            }
+            return res;
+        }
+        if (node.isArray()) {
+            QJsonArray res;
+            for (const auto& e : node.toArray()) res.append(translateRawOutboundsRec(e, outboundMap));
+            return res;
+        }
+        return node;
+    }
+
+    QJsonObject RouteProfile::TranslateRawOutbounds(const QJsonObject& route, const std::map<int, QString>& outboundMap) {
+        return translateRawOutboundsRec(route, outboundMap).toObject();
+    }
+
+    // Import-side remap: source ids -> local ids by matching the exported name, predefined
+    // negatives kept, unresolved -> proxy.
+    static QJsonValue remapRawOutboundsByNameRec(const QJsonValue& node, const QJsonObject& names, QString* warnings) {
+        if (node.isObject()) {
+            const QJsonObject o = node.toObject();
+            QJsonObject res;
+            for (auto it = o.begin(); it != o.end(); ++it) {
+                if ((it.key() == "outbound" || it.key() == "final") && it.value().isDouble()) {
+                    const int id = it.value().toInt();
+                    if (id < 0) { res[it.key()] = id; continue; }
+                    const QString nm = names.value(QString::number(id)).toString();
+                    std::shared_ptr<Profile> local;
+                    if (!nm.isEmpty()) local = Configs::dataManager->profilesRepo->GetProfileByName(nm);
+                    if (local) {
+                        res[it.key()] = local->id;
+                    } else {
+                        res[it.key()] = static_cast<int>(proxyID);
+                        if (warnings) warnings->append(QString("outbound \"%1\" not found, using proxy\n").arg(nm.isEmpty() ? QString::number(id) : nm));
+                    }
+                } else {
+                    res[it.key()] = remapRawOutboundsByNameRec(it.value(), names, warnings);
+                }
+            }
+            return res;
+        }
+        if (node.isArray()) {
+            QJsonArray res;
+            for (const auto& e : node.toArray()) res.append(remapRawOutboundsByNameRec(e, names, warnings));
+            return res;
+        }
+        return node;
+    }
+
+    static QJsonObject remapRawOutboundsByName(const QJsonObject& route, const QJsonObject& names, QString* warnings) {
+        return remapRawOutboundsByNameRec(route, names, warnings).toObject();
     }
 
     QList<std::shared_ptr<RouteRule>> RouteProfile::get_simple_rules() {
@@ -90,6 +182,27 @@ namespace Configs {
         rule.name = ruleTypeToString(static_cast<ruleType>(rule.type));
         rules << std::make_shared<RouteRule>(rule);
 
+        rule = RouteRule();
+        rule.type = simpleAddressWarpBypass;
+        rule.action = "route";
+        rule.outboundID = warpBypassID;
+        rule.name = ruleTypeToString(static_cast<ruleType>(rule.type));
+        rules << std::make_shared<RouteRule>(rule);
+
+        rule = RouteRule();
+        rule.type = simpleProcessNameWarpBypass;
+        rule.action = "route";
+        rule.outboundID = warpBypassID;
+        rule.name = ruleTypeToString(static_cast<ruleType>(rule.type));
+        rules << std::make_shared<RouteRule>(rule);
+
+        rule = RouteRule();
+        rule.type = simpleProcessPathWarpBypass;
+        rule.action = "route";
+        rule.outboundID = warpBypassID;
+        rule.name = ruleTypeToString(static_cast<ruleType>(rule.type));
+        rules << std::make_shared<RouteRule>(rule);
+
         return rules;
     }
 
@@ -110,9 +223,54 @@ namespace Configs {
             Rules.push_back(std::make_shared<RouteRule>(*item));
         }
         defaultOutboundID = other.defaultOutboundID;
+        isRaw = other.isRaw;
+        rawRoute = other.rawRoute;
+        preventModifications = other.preventModifications;
     }
 
-    QList<std::shared_ptr<RouteRule>> RouteProfile::parseJsonArray(const QJsonArray& arr, QString* parseError) {
+    static void appendWarning(QString* warnings, const QString& msg) {
+        if (warnings) warnings->append(msg + "\n");
+    }
+
+    // Parse one rule JSON object into a RouteRule. Tolerant by design (for sharing): an
+    // outbound that can't be resolved on this machine falls back to proxy with a warning
+    // rather than failing the whole import. The schema-only keys (name/type) are skipped
+    // here and applied by the caller.
+    static std::shared_ptr<RouteRule> parse_rule_object(const QJsonObject& obj, QString* warnings) {
+        auto rule = std::make_shared<RouteRule>();
+        for (const auto& key: obj.keys()) {
+            if (key == "name" || key == "type") continue;
+            auto val = obj.value(key);
+            if (key == "outbound") {
+                if (val.isDouble()) {
+                    const int id = val.toInt();
+                    if (isOutboundIDValid(id)) {
+                        rule->outboundID = id;
+                    } else {
+                        appendWarning(warnings, QString("outbound id %1 not found, using proxy").arg(id));
+                        rule->outboundID = proxyID;
+                    }
+                } else if (val.isString()) {
+                    const int id = getOutboundID(val.toString());
+                    if (id != INVALID_ID) {
+                        rule->outboundID = id;
+                    } else {
+                        appendWarning(warnings, QString("outbound \"%1\" not found, using proxy").arg(val.toString()));
+                        rule->outboundID = proxyID;
+                    }
+                }
+            } else if (val.isArray()) {
+                rule->set_field_value(key, QJsonArray2QListString(val.toArray()));
+            } else if (val.isString()) {
+                rule->set_field_value(key, {val.toString()});
+            } else if (val.isBool()) {
+                rule->set_field_value(key, {val.toBool() ? "true":"false"});
+            }
+        }
+        return rule;
+    }
+
+    QList<std::shared_ptr<RouteRule>> RouteProfile::parseJsonArray(const QJsonArray& arr, QString* parseError, QString* warnings) {
         if (arr.empty()) {
             parseError->append("Input is not a valid json array");
             return {};
@@ -125,39 +283,139 @@ namespace Configs {
                 parseError->append(QString("expected array of json objects but have member of type '%1'").arg(item.type()));
                 return {};
             }
-
-            auto obj = item.toObject();
-            auto rule = std::make_shared<RouteRule>();
-            for (const auto& key: obj.keys()) {
-                auto val = obj.value(key);
-                if (key == "outbound") {
-                    if (val.isDouble()) {
-                        if (!isOutboundIDValid(val.toInt())) {
-                            parseError->append(QString("outbound id %1 is not valid").arg(val.toInt()));
-                            return {};
-                        }
-                        rule->outboundID = val.toInt();
-                    } else if (val.isString()) {
-                        auto id = getOutboundID(val.toString());
-                        if (id == INVALID_ID) {
-                            parseError->append(QString("outbound with name %1 does not exist").arg(val.toString()));
-                            return {};
-                        }
-                        rule->outboundID = id;
-                    }
-                } else if (val.isArray()) {
-                    rule->set_field_value(key, QJsonArray2QListString(val.toArray()));
-                } else if (val.isString()) {
-                    rule->set_field_value(key, {val.toString()});
-                } else if (val.isBool()) {
-                    rule->set_field_value(key, {val.toBool() ? "true":"false"});
-                }
-            }
+            auto rule = parse_rule_object(item.toObject(), warnings);
             rule->name = "imported rule #" + Int2String(ruleID++);
             rules << rule;
         }
 
         return rules;
+    }
+
+    QJsonObject RouteProfile::ToShareObject() {
+        QJsonObject root;
+        root["kind"] = "throne-route-profile";
+        root["v"] = 1;
+        root["name"] = name;
+        if (isRaw) {
+            root["raw"] = true;
+            root["prevent_modifications"] = preventModifications;
+            const auto routeObj = QString2QJsonObject(rawRoute);
+            root["route"] = routeObj;
+            // carry an id->name map of the referenced server profiles so the importer can
+            // re-resolve them by name on another machine.
+            QJsonObject names;
+            for (const int oid : CollectRawOutboundIds(routeObj)) {
+                if (oid < 0) continue; // predefined outbounds (proxy/direct/warp-bypass) are stable
+                if (auto p = Configs::dataManager->profilesRepo->GetProfile(oid))
+                    names[QString::number(oid)] = p->name;
+            }
+            root["outbound_names"] = names;
+            return root;
+        }
+        root["default_outbound"] = outboundIDToString(defaultOutboundID);
+        QJsonArray rulesArr;
+        for (const auto& rule: Rules) {
+            if (rule->type != custom && rule->isEmpty()) continue; // drop unused simple-rule stubs
+            auto obj = rule->to_share_json();
+            if (obj.isEmpty()) continue; // outbound profile missing on this machine
+            rulesArr.append(obj);
+        }
+        root["rules"] = rulesArr;
+        return root;
+    }
+
+    QString RouteProfile::ToShareLink() {
+        const auto json = QJsonDocument(ToShareObject()).toJson(QJsonDocument::Compact);
+        const auto b64 = json.toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals);
+        return QStringLiteral("throne://route?data=") + QString::fromLatin1(b64);
+    }
+
+    std::shared_ptr<RouteProfile> RouteProfile::FromShareInput(const QString& input, QString* fatalError, QString* warnings, bool* wasOldArray) {
+        if (wasOldArray) *wasOldArray = false;
+        QString text = input.trimmed();
+        if (text.isEmpty()) {
+            fatalError->append("Empty input");
+            return nullptr;
+        }
+
+        // throne://route?data=<base64> deep link
+        if (text.startsWith("throne://", Qt::CaseInsensitive)) {
+            const QUrl u(text);
+            if (u.host().compare("route", Qt::CaseInsensitive) != 0) {
+                fatalError->append("Unsupported deep link command");
+                return nullptr;
+            }
+            text = QUrlQuery(u).queryItemValue("data", QUrl::FullyDecoded).trimmed();
+            if (text.isEmpty()) {
+                fatalError->append("Deep link has no data");
+                return nullptr;
+            }
+        }
+
+        // Resolve to JSON: try raw first, then base64 (url-safe, then standard).
+        QJsonDocument doc = QJsonDocument::fromJson(text.toUtf8());
+        if (doc.isNull()) {
+            doc = QJsonDocument::fromJson(QByteArray::fromBase64(text.toUtf8(), QByteArray::Base64UrlEncoding));
+            if (doc.isNull())
+                doc = QJsonDocument::fromJson(QByteArray::fromBase64(text.toUtf8()));
+        }
+        if (doc.isNull()) {
+            fatalError->append("Input is not valid JSON, base64, or a Throne route link");
+            return nullptr;
+        }
+
+        // New schema: a tagged object carrying the whole profile.
+        if (doc.isObject()) {
+            const QJsonObject root = doc.object();
+            if (root.value("kind").toString() != QStringLiteral("throne-route-profile")) {
+                fatalError->append("Unrecognized route object");
+                return nullptr;
+            }
+            if (root.value("raw").toBool()) {
+                auto profile = std::make_shared<RouteProfile>();
+                profile->id = -1;
+                profile->isRaw = true;
+                profile->name = root.value("name").toString();
+                profile->preventModifications = root.value("prevent_modifications").toBool();
+                QJsonObject routeObj = root.value("route").toObject();
+                routeObj = remapRawOutboundsByName(routeObj, root.value("outbound_names").toObject(), warnings);
+                profile->rawRoute = QJsonObject2QString(routeObj, false);
+                return profile;
+            }
+            auto profile = std::make_shared<RouteProfile>();
+            profile->id = -1;
+            profile->name = root.value("name").toString();
+            profile->defaultOutboundID = stringToOutboundID(root.value("default_outbound").toString());
+            int fallbackNum = 1;
+            for (const auto& v: root.value("rules").toArray()) {
+                if (!v.isObject()) continue;
+                const QJsonObject ro = v.toObject();
+                auto rule = parse_rule_object(ro, warnings);
+                rule->type = tokenToRuleType(ro.value("type").toString());
+                rule->name = ro.value("name").toString();
+                if (rule->name.isEmpty()) rule->name = "rule_" + Int2String(fallbackNum++);
+                profile->Rules << rule;
+            }
+            return profile;
+        }
+
+        // Legacy schema: a bare array of rules (no name / default outbound).
+        if (doc.isArray()) {
+            QString fe;
+            auto rules = parseJsonArray(doc.array(), &fe, warnings);
+            if (!fe.isEmpty()) {
+                fatalError->append(fe);
+                return nullptr;
+            }
+            auto profile = std::make_shared<RouteProfile>();
+            profile->id = -1;
+            profile->Rules = rules;
+            if (wasOldArray) *wasOldArray = true;
+            return profile;
+        }
+
+        fatalError->append("Unsupported input");
+        return nullptr;
     }
 
     QJsonArray RouteProfile::get_route_rules(bool forView, std::map<int, QString> outboundMap) {
@@ -205,6 +463,12 @@ namespace Configs {
 
     std::shared_ptr<QList<int>> RouteProfile::get_used_outbounds() {
         auto res = std::make_shared<QList<int>>();
+        if (isRaw) {
+            // referenced outbounds come from the raw route JSON (so they get built and
+            // their server domains added to direct DNS, exactly like structured rules).
+            *res = CollectRawOutboundIds(QString2QJsonObject(rawRoute));
+            return res;
+        }
         for (const auto& item: Rules) {
             res->push_back(item->outboundID);
         }
@@ -286,6 +550,7 @@ namespace Configs {
     }
 
     bool RouteProfile::IsEmpty() {
+        if (isRaw) return rawRoute.trimmed().isEmpty();
         for (const auto& item: Rules) {
             if (!item->isEmpty()) return false;
         }
@@ -323,6 +588,10 @@ namespace Configs {
             types << simpleAddressBypass;
             types << simpleProcessNameBypass;
             types << simpleProcessPathBypass;
+        } else if (action == warpBypass) {
+            types << simpleAddressWarpBypass;
+            types << simpleProcessNameWarpBypass;
+            types << simpleProcessPathWarpBypass;
         } else {
             types << simpleAddressBlock;
             types << simpleProcessNameBlock;
@@ -360,6 +629,10 @@ namespace Configs {
             types << simpleAddressBypass;
             types << simpleProcessNameBypass;
             types << simpleProcessPathBypass;
+        } else if (action == warpBypass) {
+            types << simpleAddressWarpBypass;
+            types << simpleProcessNameWarpBypass;
+            types << simpleProcessPathWarpBypass;
         } else {
             types << simpleAddressBlock;
             types << simpleProcessNameBlock;
@@ -466,16 +739,19 @@ namespace Configs {
             content.startsWith("ip")) {
             if (action == proxy) return simpleAddressProxy;
             if (action == bypass) return simpleAddressBypass;
+            if (action == warpBypass) return simpleAddressWarpBypass;
             return simpleAddressBlock;
         }
         if (content.startsWith("processName")) {
             if (action == proxy) return simpleProcessNameProxy;
             if (action == bypass) return simpleProcessNameBypass;
+            if (action == warpBypass) return simpleProcessNameWarpBypass;
             return simpleProcessNameBlock;
         }
         if (content.startsWith("processPath")) {
             if (action == proxy) return simpleProcessPathProxy;
             if (action == bypass) return simpleProcessPathBypass;
+            if (action == warpBypass) return simpleProcessPathWarpBypass;
             return simpleProcessPathBlock;
         }
         return custom;

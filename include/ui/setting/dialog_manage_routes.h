@@ -30,6 +30,8 @@ private:
 
     void reloadProfileItems();
 
+    void applyImportedProfile(const std::shared_ptr<Configs::RouteProfile>& profile, bool wasOldArray);
+
     QList<std::shared_ptr<Configs::RouteProfile>> chainList;
 
     std::shared_ptr<Configs::RouteProfile> currentRoute;
@@ -51,6 +53,8 @@ public slots:
     void on_new_route_clicked();
 
     void on_export_route_clicked();
+
+    void on_import_route_clicked();
 
     void on_clone_route_clicked();
 
