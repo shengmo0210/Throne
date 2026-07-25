@@ -1492,7 +1492,7 @@ Throne will restart to complete the restore.</source>
     <name>DialogManageGroups</name>
     <message>
         <source>Groups</source>
-        <translation>分组设置</translation>
+        <translation>分组</translation>
     </message>
     <message>
         <source>New group</source>
@@ -1504,7 +1504,7 @@ Throne will restart to complete the restore.</source>
     </message>
     <message>
         <source>Confirmation</source>
-        <translation>确定</translation>
+        <translation>确认</translation>
     </message>
     <message>
         <source>Update all subscriptions?</source>
@@ -3105,7 +3105,7 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
     </message>
     <message>
         <source>Confirmation</source>
-        <translation>确定</translation>
+        <translation>确认</translation>
     </message>
     <message>
         <source>Remove %1?</source>
@@ -3211,7 +3211,7 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
     </message>
     <message>
         <source>Groups</source>
-        <translation>分组设置</translation>
+        <translation>分组</translation>
     </message>
     <message>
         <source>Start</source>

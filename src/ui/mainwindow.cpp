@@ -1171,7 +1171,7 @@ void MainWindow::closeEvent(QCloseEvent *event) {
 }
 
 void MainWindow::applyLogBrowserFont() {
-    QFont logFont = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
+    QFont logFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
     int pt = qApp->font().pointSize();
     if (pt <= 0) pt = Configs::dataManager->settingsRepo->font_size;
     if (pt > 0) logFont.setPointSize(pt);
