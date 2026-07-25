@@ -279,7 +279,7 @@ QToolButton::menu-indicator {
        </widget>
       </item>
       <item>
-       <layout class="QHBoxLayout" name="verticalLayout_4">
+       <layout class="QVBoxLayout" name="verticalLayout_4">
         <item>
          <spacer name="verticalSpacer_modes_top">
           <property name="orientation">
