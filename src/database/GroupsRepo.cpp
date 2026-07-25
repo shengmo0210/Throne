@@ -35,10 +35,14 @@ namespace Configs {
                 test_sort_by INTEGER NOT NULL DEFAULT 0,
                 traffic_sort_by INTEGER NOT NULL DEFAULT 0,
                 test_items_to_show INTEGER NOT NULL DEFAULT 0,
+                type_sort_by INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
                 updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
             )
         )");
+        // Migrate existing databases created before type_sort_by was added.
+        if (!groupsColumnExists("type_sort_by"))
+            db.exec("ALTER TABLE groups ADD COLUMN type_sort_by INTEGER NOT NULL DEFAULT 0");
 
         // Create groups_order table to store UI tab order
         db.exec(R"(
@@ -47,6 +51,15 @@ namespace Configs {
                 display_order INTEGER NOT NULL
             )
         )");
+    }
+
+    bool GroupsRepo::groupsColumnExists(const char* columnName) const {
+        auto pragma = db.query("PRAGMA table_info(groups)");
+        if (!pragma) return false;
+        while (pragma->executeStep()) {
+            if (pragma->getColumn(1).getText() == std::string(columnName)) return true;
+        }
+        return false;
     }
 
     QJsonObject GroupsRepo::groupToJson(const Group* group) const {
@@ -67,8 +80,9 @@ namespace Configs {
         json["scroll_last_profile"] = group->scroll_last_profile;
         json["test_sort_by"] = static_cast<int>(group->test_sort_by);
         json["traffic_sort_by"] = static_cast<int>(group->traffic_sort_by);
+        json["type_sort_by"] = static_cast<int>(group->type_sort_by);
         json["test_items_to_show"] = static_cast<int>(group->test_items_to_show);
-        
+
         return json;
     }
 
@@ -90,6 +104,7 @@ namespace Configs {
         group->scroll_last_profile = json["scroll_last_profile"].toInt(-1);
         group->test_sort_by = static_cast<testBy>(json["test_sort_by"].toInt(0));
         group->traffic_sort_by = static_cast<trafficBy>(json["traffic_sort_by"].toInt(0));
+        group->type_sort_by = static_cast<typeBy>(json["type_sort_by"].toInt(0));
         group->test_items_to_show = static_cast<testShowItems>(json["test_items_to_show"].toInt(0));
         
         return group;
@@ -117,6 +132,7 @@ namespace Configs {
                 SET archive = ?, skip_auto_update = ?, auto_clear_unavailable = ?, name = ?, url = ?, info = ?,
                     sub_last_update = ?, front_proxy_id = ?, landing_proxy_id = ?,
                     column_width_json = ?, profiles_json = ?, scroll_last_profile = ?, test_sort_by = ?, traffic_sort_by = ?, test_items_to_show = ?,
+                    type_sort_by = ?,
                     updated_at = strftime('%s', 'now')
                 WHERE id = ?
             )",
@@ -135,6 +151,7 @@ namespace Configs {
                 static_cast<int>(group->test_sort_by),
                 static_cast<int>(group->traffic_sort_by),
                 static_cast<int>(group->test_items_to_show),
+                static_cast<int>(group->type_sort_by),
                 id
             );
         } else {
@@ -143,8 +160,9 @@ namespace Configs {
                 INSERT INTO groups 
                 (id, archive, skip_auto_update, auto_clear_unavailable, name, url, info, sub_last_update,
                  front_proxy_id, landing_proxy_id,
-                 column_width_json, profiles_json, scroll_last_profile, test_sort_by, traffic_sort_by, test_items_to_show)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 column_width_json, profiles_json, scroll_last_profile, test_sort_by, traffic_sort_by, test_items_to_show,
+                 type_sort_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             )",
                 id,
                 group->archive ? 1 : 0,
@@ -161,7 +179,8 @@ namespace Configs {
                 group->scroll_last_profile,
                 static_cast<int>(group->test_sort_by),
                 static_cast<int>(group->traffic_sort_by),
-                static_cast<int>(group->test_items_to_show)
+                static_cast<int>(group->test_items_to_show),
+                static_cast<int>(group->type_sort_by)
             );
         }
     }
@@ -170,7 +189,8 @@ namespace Configs {
         auto query = db.query(R"(
             SELECT id, archive, skip_auto_update, auto_clear_unavailable, name, url, info, sub_last_update,
                    front_proxy_id, landing_proxy_id,
-                   column_width_json, profiles_json, scroll_last_profile, test_sort_by, traffic_sort_by, test_items_to_show
+                   column_width_json, profiles_json, scroll_last_profile, test_sort_by, traffic_sort_by, test_items_to_show,
+                   type_sort_by
             FROM groups WHERE id = ?
         )", id);
         if (!query || !query->executeStep()) {
@@ -210,7 +230,8 @@ namespace Configs {
         json["test_sort_by"] = query->getColumn(13).getInt();
         json["traffic_sort_by"] = query->getColumn(14).getInt();
         json["test_items_to_show"] = query->getColumn(15).getInt();
-        
+        json["type_sort_by"] = query->getColumn(16).getInt();
+
         return groupFromJson(json);
     }
 

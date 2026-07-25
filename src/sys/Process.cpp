@@ -82,6 +82,12 @@ namespace Configs_sys {
         auto env = QProcessEnvironment::systemEnvironment();
         env.insert("THRONE_CORE_SOCKET", m_socketName);
         if (m_debugMode) env.insert("THRONE_CORE_DEBUG", "1");
+        // Point Xray-core's asset loader at our writable config dir so full Xray
+        // configs whose routing uses geoip:/geosite: tags can find geoip.dat /
+        // geosite.dat there. Setting it here (rather than in the Go core) means a
+        // later on-demand download lands in this same dir and is picked up on the
+        // next profile start with no core restart.
+        env.insert("XRAY_LOCATION_ASSET", Configs::GetBasePath());
         setProcessEnvironment(env);
         start(program, {});
     }

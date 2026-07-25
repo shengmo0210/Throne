@@ -57,6 +57,10 @@ inline QString getOSString() {
 inline QString software_name;
 inline QString software_core_name;
 
+// Epoch-seconds when the app started; set once in main(). Read by the Runtime
+// Stats panel to display Throne's uptime.
+inline qint64 appStartEpoch = 0;
+
 // MainWindow functions
 class QWidget;
 inline QWidget *mainwindow;
@@ -91,6 +95,9 @@ namespace MwArg {
     inline const QString TrayIcon     = QStringLiteral("trayIcon");
     inline const QString MaxLogLines  = QStringLiteral("maxLogLines");
     inline const QString DisableAdmin = QStringLiteral("disableAdmin");
+    // A proxy-table display option changed (e.g. show-config-security), so the
+    // list must be re-rendered and its auto-sized columns recomputed.
+    inline const QString ProfileListDisplay = QStringLiteral("profileListDisplay");
     // ProfileChanged: the saved profile is the running one, so offer a proxy restart.
     inline const QString RestartProxy = QStringLiteral("restartProxy");
     // SubscriptionFinished: a detailed diff was already logged, so skip the import-count line.
@@ -112,12 +119,6 @@ void Deeplink_FlushPending();
 class QThread;
 inline QThread *DS_cores;
 inline QThread *LogThread;
-
-// Timers
-
-class QTimer;
-inline QTimer *TM_auto_update_subsctiption;
-inline std::function<void(int)> TM_auto_update_subsctiption_Reset_Minute;
 
 // String
 
@@ -184,6 +185,8 @@ QList<int> QJsonArray2QListInt(const QJsonArray &arr);
 QJsonObject QMapString2QJsonObject(const QMap<QString,QString> &mp);
 
 QList<QString> QListInt2QListString(const QList<int> &list);
+
+QList<int> QStringList2QListInt(const QList<QString> &list);
 
 #define QJSONARRAY_ADD(arr, add) \
     for (const auto &a: (add)) { \
@@ -259,6 +262,10 @@ QWidget *GetMessageBoxParent();
 int MessageBoxWarning(const QString &title, const QString &text);
 
 int MessageBoxInfo(const QString &title, const QString &text);
+
+void MessageBoxScrollable(const QString &title, const QString &text);
+
+int MessageBoxCheck(const QString &title, const QString &text, const QString &checkBoxText, bool &isChecked);
 
 void ActivateWindow(QWidget *w);
 

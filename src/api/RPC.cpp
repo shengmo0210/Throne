@@ -67,6 +67,8 @@ namespace API {
         std::mutex    pending_mu;
         QMap<quint32, std::shared_ptr<PendingCall>> pending;
 
+        std::atomic<bool> connected_{false};
+
         static constexpr int kIOTimeoutMs = 30000;
 
         // Called on io_thread via readyRead
@@ -77,6 +79,7 @@ namespace API {
         }
 
         void wakeAllWithError() {
+            connected_.store(false, std::memory_order_release);
             std::lock_guard<std::mutex> lock(pending_mu);
             for (auto &call : pending) {
                 std::lock_guard<std::mutex> cg(call->mu);
@@ -176,12 +179,14 @@ namespace API {
                     [this]() { wakeAllWithError(); });
                 if (sock->bytesAvailable() > 0) onReadyRead();
             }, Qt::QueuedConnection);
+
+            connected_.store(true, std::memory_order_release);
         }
 
         // Returns 0 on success, non-zero on failure.
         int Call(const QString &methodName, const std::string &req,
                  std::vector<uint8_t> &rsp, int timeout_ms = 0) {
-            if (!Configs::dataManager->settingsRepo->core_running) return -1919;
+            if (!connected_.load(std::memory_order_acquire)) return -1919;
 
             const int ms = (timeout_ms > 0) ? timeout_ms : kIOTimeoutMs;
 
@@ -241,8 +246,14 @@ namespace API {
 
             std::lock_guard<std::mutex> g(call->mu);
             if (!ok || call->status != 0) {
-                if (ok && call->status != 0)
+                if (ok && call->status != 0) {
                     MW_show_log("[Core error] " + QString::fromUtf8(call->data));
+                    // Surface the core's error payload to the caller too, so it can be
+                    // inspected instead of just logged (e.g. detecting missing Xray geo
+                    // assets when a Test/IPTest/SpeedTest RPC fails). Callers only read
+                    // `rsp` when the call succeeds, so this is inert for the rest.
+                    rsp.assign(call->data.begin(), call->data.end());
+                }
                 return 1;
             }
             rsp.assign(call->data.begin(), call->data.end());
@@ -330,7 +341,7 @@ namespace API {
         return {};
     }
 
-    libcore::TestResp Client::Test(bool *rpcOK, const libcore::TestReq &request) {
+    libcore::TestResp Client::Test(bool *rpcOK, const libcore::TestReq &request, QString *coreError) {
         libcore::TestResp reply;
         std::vector<uint8_t> resp;
         auto status = channel->Call("Test", spb::pb::serialize<std::string>(request), resp);
@@ -339,6 +350,8 @@ namespace API {
             *rpcOK = true;
             return reply;
         } else {
+            if (coreError && !resp.empty())
+                *coreError = QString::fromUtf8(reinterpret_cast<const char *>(resp.data()), static_cast<int>(resp.size()));
             NOT_OK
             return {};
         }
@@ -372,7 +385,7 @@ namespace API {
         }
     }
 
-    libcore::IPTestResp Client::IPTest(bool *rpcOK, const libcore::IPTestRequest &request) {
+    libcore::IPTestResp Client::IPTest(bool *rpcOK, const libcore::IPTestRequest &request, QString *coreError) {
         libcore::IPTestResp reply;
         std::vector<uint8_t> resp;
         auto status = channel->Call("IPTest", spb::pb::serialize<std::string>(request), resp);
@@ -381,6 +394,8 @@ namespace API {
             *rpcOK = true;
             return reply;
         } else {
+            if (coreError && !resp.empty())
+                *coreError = QString::fromUtf8(reinterpret_cast<const char *>(resp.data()), static_cast<int>(resp.size()));
             NOT_OK
             return {};
         }
@@ -415,23 +430,31 @@ namespace API {
         }
     }
 
-    libcore::ListConnectionsResp Client::ListConnections() const
+    libcore::QueryConnectionsResp Client::QueryConnections() const
     {
         libcore::EmptyReq request;
-        libcore::ListConnectionsResp reply;
+        libcore::QueryConnectionsResp reply;
         std::vector<uint8_t> resp;
-        auto status = channel->Call("ListConnections", spb::pb::serialize<std::string>(request), resp);
+        auto status = channel->Call("QueryConnections", spb::pb::serialize<std::string>(request), resp);
 
         if (status == CALL_OK && tryDeserialize(resp, reply)) {
             return reply;
         }
-        if (status != CALL_OK) MW_show_log("Failed to list connections: IPC error");
+        if (status != CALL_OK) MW_show_log("Failed to query connections: IPC error");
         return {};
     }
 
-    QString Client::CheckConfig(bool* rpcOK, const QString& config) const
+    QString Client::CheckConfig(bool* rpcOK, const QString& config, bool isXray) const
     {
-        libcore::LoadConfigReq request{.core_config = config.toStdString()};
+        libcore::LoadConfigReq request;
+        if (isXray)
+        {
+            request.need_xray = true;
+            request.xray_config = config.toStdString();
+        } else
+        {
+            request.core_config = config.toStdString();
+        }
         libcore::ErrorResp reply;
         std::vector<uint8_t> resp;
         auto status = channel->Call("CheckConfig", spb::pb::serialize<std::string>(request), resp);
@@ -465,7 +488,7 @@ namespace API {
         }
     }
 
-    libcore::SpeedTestResponse Client::SpeedTest(bool *rpcOK, const libcore::SpeedTestRequest &request)
+    libcore::SpeedTestResponse Client::SpeedTest(bool *rpcOK, const libcore::SpeedTestRequest &request, QString *coreError)
     {
         libcore::SpeedTestResponse reply;
         std::vector<uint8_t> resp;
@@ -475,6 +498,8 @@ namespace API {
             *rpcOK = true;
             return reply;
         } else {
+            if (coreError && !resp.empty())
+                *coreError = QString::fromUtf8(reinterpret_cast<const char *>(resp.data()), static_cast<int>(resp.size()));
             NOT_OK
             return {};
         }

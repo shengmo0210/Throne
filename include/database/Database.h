@@ -46,6 +46,15 @@ namespace Configs {
     // Run WAL checkpoint after this many write operations (exec or batch chunk).
     constexpr int WAL_CHECKPOINT_AFTER_WRITES = 10000;
 
+    // Reclaim free-list pages with a one-time VACUUM at startup when the file has
+    // accumulated significant dead space (SQLite never returns freed pages to the
+    // OS on its own without auto_vacuum). Both thresholds must be met, so we never
+    // VACUUM away trivial fragmentation on every launch:
+    //   - at least VACUUM_MIN_FREE_BYTES of free-list pages (absolute floor), and
+    //   - free pages make up at least VACUUM_MIN_FREE_RATIO of the whole file.
+    constexpr long long VACUUM_MIN_FREE_BYTES = 4LL * 1024 * 1024; // 4 MiB
+    constexpr double VACUUM_MIN_FREE_RATIO = 0.50;                 // 50%
+
     inline void NotifyError(const std::string& query, std::exception& e) {
         runOnUiThread([=] {
             std::string shortQ;
@@ -59,6 +68,7 @@ namespace Configs {
         SQLite::Database db;
         std::atomic<int> writeCount{0};
         void maybeCheckpoint(int count);
+        void maybeVacuum();
 
         void execDeleteByIdInChunk(const std::string& table, const std::string& idColumn, const std::vector<int>& ids);
         void execBatchSettingsReplaceChunk(const std::vector<std::pair<std::string, std::string>>& keyValues);
@@ -74,6 +84,7 @@ namespace Configs {
             db.exec("PRAGMA synchronous = NORMAL");
             db.exec("PRAGMA mmap_size = 67108864"); // 64MB
             checkpointWal();
+            maybeVacuum();
         }
 
     private:
@@ -193,6 +204,14 @@ namespace Configs {
             } catch (std::exception& e) {
                 NotifyError(sql, e);
             }
+        }
+
+        // Throwing variant of exec(): lets callers compose an explicit
+        // transaction (BEGIN/COMMIT/ROLLBACK) in which a failed statement must
+        // abort the whole unit instead of being swallowed per-statement.
+        template<typename... Args>
+        void execThrow(const std::string& sql, Args&&... args) {
+            exec0(sql, std::forward<Args>(args)...);
         }
 
         template<typename... Args>

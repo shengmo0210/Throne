@@ -9,12 +9,15 @@
 #include <QLocalSocket>
 #include <QLocalServer>
 #include <QThread>
+#include <QDateTime>
 #include <3rdparty/WinCommander.hpp>
 
 
 #include "include/global/Configs.hpp"
 
 #include "include/ui/mainwindow_interface.h"
+#include "include/stats/traffic/TrafficStatsManager.hpp"
+#include "include/api/RPC.h"
 
 #ifdef Q_OS_WIN
 #include "include/sys/windows/MiniDump.h"
@@ -155,8 +158,14 @@ int main(int argc, char* argv[]) {
     QDir::setCurrent(wd.absoluteFilePath("config"));
     QDir("temp").removeRecursively();
 
+    // Record app start for the Runtime Stats uptime readout.
+    appStartEpoch = QDateTime::currentSecsSinceEpoch();
+
     // Load database
     Configs::initDB(QString(QDir::currentPath() + QDir::separator() + "throne.db").toStdString());
+
+    // Start traffic-statistics maintenance (startup downsample + background rollup).
+    Stats::trafficStatsManager->Init();
 
     // Store Flags
     Configs::dataManager->settingsRepo->argv = arguments;
@@ -290,6 +299,8 @@ int main(int argc, char* argv[]) {
         signal_handler(0);
     });
 #endif
+
+    API::defaultClient = new API::Client();
 
     UI_InitMainWindow();
 

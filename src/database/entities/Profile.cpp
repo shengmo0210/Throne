@@ -1,5 +1,8 @@
 #include <include/database/entities/Profile.h>
 
+#include <QJsonDocument>
+#include <QSet>
+
 #include "include/database/GroupsRepo.h"
 #include "include/global/Configs.hpp"
 
@@ -74,6 +77,11 @@ namespace Configs
         return key;
     }
 
+    QString ProfileFilter_ent_identity_key(const std::shared_ptr<Configs::Profile> &ent) {
+        auto obj = ent->outbound->ExportIdentity();
+        return ent->type + "|" + QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+    }
+
     void ProfileFilter::Uniq(const QList<std::shared_ptr<Profile>> &in,
                              QList<std::shared_ptr<Profile>> &out,
                              bool keep_last, bool ignoreMetadata) {
@@ -136,5 +144,36 @@ namespace Configs
         for (const auto &ent: src) {
             if (!dst.contains(ent)) out += ent;
         }
+    }
+
+    void ProfileFilter::ChangedByIdentity(QList<std::shared_ptr<Profile>> &src,
+                                          QList<std::shared_ptr<Profile>> &dst,
+                                          QList<std::shared_ptr<Profile>> &changedSrc,
+                                          QList<std::shared_ptr<Profile>> &changedDst) {
+        QMap<QString, QList<std::shared_ptr<Profile>>> srcByKey;
+        for (const auto &ent: src) {
+            srcByKey[ProfileFilter_ent_identity_key(ent)].append(ent);
+        }
+
+        QSet<Profile *> matchedSrc;
+        QList<std::shared_ptr<Profile>> remainingDst;
+        for (const auto &ent: dst) {
+            auto &bucket = srcByKey[ProfileFilter_ent_identity_key(ent)];
+            if (bucket.isEmpty()) {
+                remainingDst += ent;
+                continue;
+            }
+            auto srcEnt = bucket.takeFirst();
+            changedSrc += srcEnt;
+            changedDst += ent;
+            matchedSrc.insert(srcEnt.get());
+        }
+
+        QList<std::shared_ptr<Profile>> remainingSrc;
+        for (const auto &ent: src) {
+            if (!matchedSrc.contains(ent.get())) remainingSrc += ent;
+        }
+        src = remainingSrc;
+        dst = remainingDst;
     }
 }

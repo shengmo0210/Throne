@@ -196,12 +196,12 @@ func dispatch(methodName string, payload []byte) ([]byte, error) {
 		}
 		return proto.Marshal(resp)
 
-	case "ListConnections":
+	case "QueryConnections":
 		req := &gen.EmptyReq{}
 		if err := proto.Unmarshal(payload, req); err != nil {
 			return nil, err
 		}
-		resp, err := s.ListConnections(ctx, req)
+		resp, err := s.QueryConnections(ctx, req)
 		if err != nil {
 			return nil, err
 		}
@@ -224,6 +224,17 @@ func dispatch(methodName string, payload []byte) ([]byte, error) {
 			return nil, err
 		}
 		resp, err := s.SetSystemDNS(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		return proto.Marshal(resp)
+
+	case "GetDefaultInterface":
+		req := &gen.EmptyReq{}
+		if err := proto.Unmarshal(payload, req); err != nil {
+			return nil, err
+		}
+		resp, err := s.GetDefaultInterface(ctx, req)
 		if err != nil {
 			return nil, err
 		}

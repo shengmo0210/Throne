@@ -7,6 +7,7 @@
 #include <QInputDialog>
 #include <QUrlQuery>
 #include <QJsonDocument>
+#include <QHash>
 
 #include "include/configs/common/utils.h"
 #include "include/database/GroupsRepo.h"
@@ -91,8 +92,21 @@ namespace Subscription {
         }
         if (doc.isArray() && !doc.array().empty()) {
             auto first = doc.array().first();
-            if (first.isObject() && first.toObject().contains("protocol")) {
-                return XraySubType::outboundJsonArray;
+            if (first.isObject()) {
+                auto obj = first.toObject();
+                // Array of bare outbounds (each tagged with "protocol").
+                if (obj.contains("protocol")) return XraySubType::outboundJsonArray;
+                // Array of complete Xray configs (the "Xray JSON subscription"
+                // format): each element carries an "outbounds" array of its own.
+                // Require a "protocol"-tagged outbound so this only matches Xray
+                // configs, not sing-box ones (whose outbounds use "type").
+                if (obj.contains("outbounds")) {
+                    for (const auto &item : obj["outbounds"].toArray()) {
+                        if (item.isObject() && item.toObject().contains("protocol")) {
+                            return XraySubType::configJsonArray;
+                        }
+                    }
+                }
             }
         }
         return XraySubType::invalid;
@@ -170,7 +184,8 @@ namespace Subscription {
                 }
                 return;
             }
-            if (xrayType == XraySubType::outboundInJson || xrayType == XraySubType::outboundJsonArray) {
+            if (xrayType == XraySubType::outboundInJson || xrayType == XraySubType::outboundJsonArray ||
+                xrayType == XraySubType::configJsonArray) {
                 updateXray(doc, xrayType);
                 return;
             }
@@ -234,6 +249,23 @@ namespace Subscription {
             auto link = QUrl(str);
             if (!link.isValid()) return;
             auto dataBytes = DecodeB64IfValid(link.fragment().toUtf8(), QByteArray::Base64UrlEncoding);
+            if (dataBytes.isEmpty()) return;
+            auto data = QJsonDocument::fromJson(dataBytes).object();
+            if (data.isEmpty()) return;
+            if (data.contains("protocol")) {
+                ent = Configs::ProfilesRepo::NewProfile("xray" + data["protocol"].toString());
+            } else {
+                ent = data["type"].toString() == "hysteria2" ? Configs::ProfilesRepo::NewProfile("hysteria") : Configs::ProfilesRepo::NewProfile(data["type"].toString());
+            }
+            if (ent->outbound->invalid) return;
+            ent->outbound->ParseFromJson(data);
+        }
+
+        // throne://add/ deep link
+        if (str.startsWith("throne://add/", Qt::CaseInsensitive)) {
+            auto link = QUrl(str);
+            if (!link.isValid()) return;
+            auto dataBytes = DecodeB64IfValid(link.path().mid(1));
             if (dataBytes.isEmpty()) return;
             auto data = QJsonDocument::fromJson(dataBytes).object();
             if (data.isEmpty()) return;
@@ -315,6 +347,14 @@ namespace Subscription {
         if (str.startsWith("anytls://")) {
             ent = Configs::ProfilesRepo::NewProfile("anytls");
             auto ok = ent->AnyTLS()->ParseFromLink(str);
+            if (!ok) return;
+        }
+
+        // Mieru (mierus:// is the "simple" sharing link; the base64 "standard"
+        // mieru:// link is rejected inside ParseFromLink rather than mis-parsed)
+        if (str.startsWith("mierus://") || str.startsWith("mieru://")) {
+            ent = Configs::ProfilesRepo::NewProfile("mieru");
+            auto ok = ent->Mieru()->ParseFromLink(str);
             if (!ok) return;
         }
 
@@ -464,6 +504,13 @@ namespace Subscription {
                 if (!ok) continue;
             }
 
+            // Mieru
+            if (out["type"] == "mieru") {
+                ent = Configs::ProfilesRepo::NewProfile("mieru");
+                auto ok = ent->Mieru()->ParseFromJson(out);
+                if (!ok) continue;
+            }
+
             // Hysteria
             if (out["type"] == "hysteria" || out["type"] == "hysteria2") {
                 ent = Configs::ProfilesRepo::NewProfile("hysteria");
@@ -528,6 +575,33 @@ namespace Subscription {
 
     void RawUpdater::updateXray(const QJsonDocument &doc, XraySubType type)
     {
+        // "Xray JSON subscription": an array of complete, self-contained Xray
+        // configs. Each element carries its own inbounds/outbounds/routing and
+        // often relies on balancers and dialerProxy chains between its
+        // outbounds, so it can't be flattened into individual proxies without
+        // losing that logic. Import each as a CustomXrayFullConfig — the whole
+        // config runs verbatim as Throne's Xray instance behind a socks bridge.
+        if (type == XraySubType::configJsonArray) {
+            for (const auto &c : doc.array()) {
+                if (!c.isObject()) continue;
+                auto cfg = c.toObject();
+                if (!cfg.contains("outbounds")) continue;
+                // Drop the subscription's own client inbounds (typically socks
+                // 10808 / http 10809). Throne injects its own bridge inbound at
+                // build time and routes everything through it; the bundled
+                // inbounds are never in the traffic path and would only risk
+                // port-bind conflicts. Safe here because none of these configs'
+                // routing rules match on inboundTag.
+                cfg.remove("inbounds");
+                auto ent = Configs::ProfilesRepo::NewProfile("custom");
+                ent->Custom()->type = Configs::Custom::CustomXrayFullConfig;
+                ent->Custom()->config = QJsonObject2QString(cfg, false);
+                if (auto remarks = cfg["remarks"].toString(); !remarks.isEmpty()) ent->Custom()->name = remarks;
+                updated_order += ent;
+            }
+            return;
+        }
+
         QJsonArray outbounds;
         if (type == XraySubType::outboundInJson) {
             outbounds = doc.object()["outbounds"].toArray();
@@ -670,7 +744,7 @@ namespace Subscription {
     }
 
     // 在新的 thread 运行
-    void GroupUpdater::AsyncUpdate(const QString &str, int _sub_gid, const std::function<void()> &finish) {
+    void GroupUpdater::AsyncUpdate(const QString &str, int _sub_gid, const std::function<void()> &finish, bool showDiff) {
         auto content = str.trimmed();
         bool asURL = false;
         bool createNewGroup = false;
@@ -703,13 +777,13 @@ namespace Subscription {
                 gid = group->id;
                 MW_dialog_message(MwMessage::SubscriptionNewGroup, {});
             }
-            Update(str, gid, asURL);
+            Update(str, gid, asURL, showDiff);
             emit asyncUpdateCallback(gid);
             if (finish != nullptr) finish();
         });
     }
 
-    void GroupUpdater::Update(const QString &_str, int _sub_gid, bool _not_sub_as_url) {
+    void GroupUpdater::Update(const QString &_str, int _sub_gid, bool _not_sub_as_url, bool showDiff) {
         // 创建 rawUpdater
         Configs::dataManager->settingsRepo->imported_count = 0;
         auto rawUpdater = std::make_unique<RawUpdater>();
@@ -791,8 +865,14 @@ namespace Subscription {
                 Configs::ProfileFilter::OnlyInSrc(in, out, only_in, false);
                 Configs::ProfileFilter::OnlyInSrc(out, in, only_out, false);
                 Configs::ProfileFilter::Common(in, out, update_keep, update_del, false);
+
+                QList<std::shared_ptr<Configs::Profile>> changed_old;
+                QList<std::shared_ptr<Configs::Profile>> changed_new;
+                Configs::ProfileFilter::ChangedByIdentity(only_in, only_out, changed_old, changed_new);
+
                 QString notice_added;
                 QString notice_deleted;
+                QString notice_updated;
                 if (only_out.size() < 1000)
                 {
                     for (const auto &ent: only_out) {
@@ -801,6 +881,15 @@ namespace Subscription {
                 } else
                 {
                     notice_added += QString("[+] ") + "added " + Int2String(only_out.size()) + "\n";
+                }
+                if (changed_new.size() < 1000)
+                {
+                    for (const auto &ent: changed_new) {
+                        notice_updated += "[~] " + ent->outbound->DisplayTypeAndName() + "\n";
+                    }
+                } else
+                {
+                    notice_updated += QString("[~] ") + "updated " + Int2String(changed_new.size()) + "\n";
                 }
                 if (only_in.size() < 1000)
                 {
@@ -813,14 +902,24 @@ namespace Subscription {
                 }
 
 
+                QHash<Configs::Profile *, int> supersededBy;
+                for (int i = 0; i < update_del.size() && i < update_keep.size(); ++i) {
+                    supersededBy[update_del[i].get()] = update_keep[i]->id;
+                }
+                for (int i = 0; i < changed_new.size(); ++i) {
+                    const auto &oldEnt = changed_old[i];
+                    oldEnt->outbound = changed_new[i]->outbound;
+                    oldEnt->name = oldEnt->outbound->name;
+                    Configs::dataManager->profilesRepo->Save(oldEnt);
+                    supersededBy[changed_new[i].get()] = oldEnt->id;
+                }
+
                 // sort according to order in remote
                 group->profiles.clear();
                 for (const auto &ent: rawUpdater->updated_order) {
-                    auto deleted_index = update_del.indexOf(ent);
-                    if (deleted_index >= 0) {
-                        if (deleted_index >= update_keep.count()) continue; // should not happen
-                        const auto& ent2 = update_keep[deleted_index];
-                        group->profiles.append(ent2->id);
+                    auto it = supersededBy.find(ent.get());
+                    if (it != supersededBy.end()) {
+                        group->profiles.append(it.value());
                     } else {
                         group->profiles.append(ent->id);
                     }
@@ -840,15 +939,24 @@ namespace Subscription {
                     });
                 }
 
-                change_text = "\n" + QObject::tr("Added %1 profiles:\n%2\nDeleted %3 Profiles:\n%4")
+                change_text = "\n" + QObject::tr("Added %1 profiles:\n%2\nUpdated %3 profiles:\n%4\nDeleted %5 Profiles:\n%6")
                                          .arg(only_out.length())
                                          .arg(notice_added)
+                                         .arg(changed_old.length())
+                                         .arg(notice_updated)
                                          .arg(only_in.length())
                                          .arg(notice_deleted);
-                if (only_out.length() + only_in.length() == 0) change_text = QObject::tr("Nothing");
+                if (only_out.length() + only_in.length() + changed_old.length() == 0) change_text = QObject::tr("Nothing");
             }
 
             MW_show_log("<<<<<<<< " + QObject::tr("Change of %1:").arg(group->name) + "\n" + change_text);
+            if (showDiff && Configs::dataManager->settingsRepo->sub_show_change_popup) {
+                // Manual refresh: surface the same diff in a popup, not just the log.
+                const auto diffTitle = QObject::tr("Change of %1").arg(group->name);
+                auto diffBody = change_text.trimmed();
+                if (diffBody.isEmpty()) diffBody = QObject::tr("Nothing");
+                runOnUiThread([diffTitle, diffBody] { MessageBoxScrollable(diffTitle, diffBody); });
+            }
             MW_dialog_message(MwMessage::SubscriptionFinished, {MwArg::Quiet});
         } else {
             Configs::dataManager->settingsRepo->imported_count = rawUpdater->updated_order.count();

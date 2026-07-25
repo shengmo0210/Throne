@@ -105,13 +105,6 @@ namespace Configs
         bool needed = false;
         int port = -1;
         QString auth;
-        // When true the sing-box socks inbound for this bridge routes to
-        // `direct` rather than re-entering a sing-box chain hop. Used when
-        // xray is the final egress under TUN, where sing-box's process_path
-        // rule fails to short-circuit xray's outbound and traffic loops back
-        // through TUN. Detouring xray's egress into sing-box `direct` (which
-        // honors auto_detect_interface) breaks the loop.
-        bool loopbackProtect = false;
         // Loopback host (127.x.y.z) used as both listen and dial address for
         // this bridge. Randomizing per-bridge spreads ephemeral source-port
         // allocation across (dst_ip, dst_port) buckets, so a single bridge
@@ -128,6 +121,7 @@ namespace Configs
         bool isResolvedUsed = false;
         bool singToXrayTransitioned = false;
         bool xrayToSingTransitioned = false;
+        bool proxyUsesXray = false;
         std::shared_ptr<Profile> ent = std::make_shared<Profile>(nullptr, nullptr);
         std::shared_ptr<BuildPrerequisities> buildPrerequisities = std::make_shared<BuildPrerequisities>();
         osType os;
@@ -200,12 +194,18 @@ namespace Configs
 
     void buildXrayConfig(std::shared_ptr<BuildSingBoxConfigContext> &ctx);
 
-    std::shared_ptr<BuildConfigResult> BuildSingBoxConfig(const std::shared_ptr<Profile> &ent);
+    std::shared_ptr<BuildConfigResult> BuildSingBoxConfig(const std::shared_ptr<Profile> &ent, bool forExport = false);
 
     class BuildTestConfigResult {
     public:
         QString error;
         QMap<int, QString> fullConfigs;
+        // Opaque, standalone Xray full configs (one entry per xray-full profile).
+        // Their socks outbounds are folded into `coreConfig` and their tags into
+        // `outboundTags` / `tag2entID`, so all xray-full profiles share the single
+        // test box; each entry here still becomes its own Xray instance on the Go
+        // side (TestReq.xray_full_configs). See BuildTestConfig.
+        QStringList xrayFullConfigs;
         QMap<QString, int> tag2entID;
         QJsonObject coreConfig;
         QJsonObject xrayConfig;

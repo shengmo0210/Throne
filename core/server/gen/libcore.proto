@@ -11,11 +11,13 @@ service LibcoreService {
   rpc StopTest(EmptyReq) returns (EmptyResp);
   rpc QueryURLTest(EmptyReq) returns (QueryURLTestResponse);
   rpc QueryStats(EmptyReq) returns (QueryStatsResp);
-  rpc ListConnections(EmptyReq) returns (ListConnectionsResp);
+  rpc QueryConnections(EmptyReq) returns (QueryConnectionsResp);
   //
   rpc SetSystemDNS(SetSystemDNSRequest) returns (EmptyResp);
   //
   rpc IsPrivileged(EmptyReq) returns (IsPrivilegedResponse);
+  //
+  rpc GetDefaultInterface(EmptyReq) returns (GetDefaultInterfaceResponse);
   //
   rpc SpeedTest(SpeedTestRequest) returns(SpeedTestResponse);
   rpc QuerySpeedTest(EmptyReq) returns(QuerySpeedTestResponse);
@@ -45,6 +47,13 @@ message LoadConfigReq {
   optional bool need_xray = 9 [default = false];
   optional string xray_config = 10 [default = ""];
   optional string tun_ipv4_cidr = 11 [default = ""];
+  // Address of sing-box's loopback DNS-in (e.g. "127.0.0.1:15353") used by the
+  // live Xray instance to resolve outbound server domains. Empty => no outbound
+  // DNS wiring (test/validation fallback).
+  optional string xray_outbound_dns_address = 12 [default = ""];
+  // Xray-style domain strategy (e.g. "UseIP", "UseIPv4v6") applied to outbound
+  // domain resolution when xray_outbound_dns_address is set.
+  optional string xray_outbound_dns_strategy = 13 [default = ""];
 }
 
 message URLTestResp {
@@ -63,6 +72,11 @@ message TestReq {
   optional int32 test_timeout_ms = 7 [default = 0];
   optional bool need_xray = 8 [default = false];
   optional string xray_config = 9 [default = ""];
+  // Opaque, standalone Xray full configs, one per profile. Each becomes its own
+  // Xray instance whose socks inbound backs a socks outbound already present in
+  // `config`; unlike `xray_config` (the single merged Xray for regular profiles)
+  // these are not merged. Lets many xray-full profiles share one sing-box box.
+  repeated string xray_full_configs = 10;
 }
 
 message TestResp {
@@ -74,8 +88,13 @@ message QueryStatsResp{
   map<string, int64> downs = 2;
 }
 
-message ListConnectionsResp {
-  repeated ConnectionMetaData connections = 1;
+// active = currently live connections (drives the connection table).
+// closed = the core's recently-closed ring (non-draining); consumers dedup by
+// id. Together they let the client diff per-connection byte counters without
+// losing the tail of a connection that closed between polls.
+message QueryConnectionsResp {
+  repeated ConnectionMetaData active = 1;
+  repeated ConnectionMetaData closed = 2;
 }
 
 message ConnectionMetaData {
@@ -88,7 +107,10 @@ message ConnectionMetaData {
   optional string dest = 7 [default = ""];
   optional string protocol = 8 [default = ""];
   optional string domain = 9 [default = ""];
-  optional string process = 10 [default = ""];
+  optional string process = 10 [default = ""];      // basename, e.g. chrome.exe
+  optional string process_path = 11 [default = ""]; // full path (icon lookup etc.)
+  repeated string chain = 12;                        // outbound chain, for later use
+  optional int64 closed_at = 13 [default = 0];       // 0 while live
 }
 
 message SetSystemDNSRequest {
@@ -97,6 +119,11 @@ message SetSystemDNSRequest {
 
 message IsPrivilegedResponse {
   optional bool has_privilege = 1 [default = false];
+}
+
+message GetDefaultInterfaceResponse {
+  optional string name = 1 [default = ""];
+  optional int32 index = 2 [default = 0];
 }
 
 message SpeedTestRequest {
@@ -113,6 +140,8 @@ message SpeedTestRequest {
   optional int32 country_concurrency = 11 [default = 0];
   optional bool need_xray = 12 [default = false];
   optional string xray_config = 13 [default = ""];
+  // See TestReq.xray_full_configs.
+  repeated string xray_full_configs = 14;
 }
 
 message SpeedTestResult {
@@ -124,6 +153,8 @@ message SpeedTestResult {
   optional string server_name = 6 [default = ""];
   optional string server_country = 7 [default = ""];
   optional bool cancelled = 8 [default = false];
+  optional int64 dl_bytes = 9 [default = 0];  // bytes moved by the test, for traffic stats
+  optional int64 ul_bytes = 10 [default = 0];
 }
 
 message SpeedTestResponse {
@@ -158,6 +189,8 @@ message IPTestRequest {
   optional int32 test_timeout_ms = 5 [default = 0];
   optional bool need_xray = 6 [default = false];
   optional string xray_config = 7 [default = ""];
+  // See TestReq.xray_full_configs.
+  repeated string xray_full_configs = 8;
 }
 
 message IPTestResp {

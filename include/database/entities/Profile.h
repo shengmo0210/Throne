@@ -5,6 +5,7 @@
 
 #include "include/configs/common/Outbound.h"
 #include "include/configs/outbounds/anyTLS.h"
+#include "include/configs/outbounds/mieru.h"
 #include "include/configs/outbounds/direct.h"
 #include "include/configs/outbounds/chain.h"
 #include "include/configs/outbounds/custom.h"
@@ -91,6 +92,10 @@ namespace Configs {
             return dynamic_cast<Configs::anyTLS *>(outbound.get());
         };
 
+        [[nodiscard]] Configs::mieru *Mieru() const {
+            return dynamic_cast<Configs::mieru *>(outbound.get());
+        };
+
         [[nodiscard]] Configs::hysteria *Hysteria() const {
             return dynamic_cast<Configs::hysteria *>(outbound.get());
         };
@@ -171,5 +176,11 @@ namespace Configs {
             const QList<std::shared_ptr<Profile>> &src,
             const QList<std::shared_ptr<Profile>> &dst,
             QList<std::shared_ptr<Profile>> &out);
+
+        static void ChangedByIdentity(
+            QList<std::shared_ptr<Profile>> &src,
+            QList<std::shared_ptr<Profile>> &dst,
+            QList<std::shared_ptr<Profile>> &changedSrc,
+            QList<std::shared_ptr<Profile>> &changedDst);
     };
 } // namespace Configs

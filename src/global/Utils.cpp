@@ -16,6 +16,12 @@
 #include <QRegularExpression>
 #include <QDateTime>
 #include <QLocale>
+#include <QCheckBox>
+#include <QLayout>
+#include <QVBoxLayout>
+#include <QPlainTextEdit>
+#include <QDialogButtonBox>
+#include <QDialog>
 
 #ifdef Q_OS_WIN
 #include "include/sys/windows/guihelper.h"
@@ -180,6 +186,12 @@ QList<QString> QListInt2QListString(const QList<int> &list) {
     return resp;
 }
 
+QList<int> QStringList2QListInt(const QList<QString> &list) {
+    QList<int> resp;
+    for (auto item: list) resp.append(item.toInt());
+    return resp;
+}
+
 QByteArray ReadFile(const QString &path) {
     QFile file(path);
     file.open(QFile::ReadOnly);
@@ -282,6 +294,41 @@ int MessageBoxWarning(const QString &title, const QString &text) {
 
 int MessageBoxInfo(const QString &title, const QString &text) {
     return QMessageBox::information(GetMessageBoxParent(), title, text);
+}
+
+void MessageBoxScrollable(const QString &title, const QString &text) {
+    QDialog dialog(GetMessageBoxParent());
+    dialog.setWindowTitle(title);
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *view = new QPlainTextEdit(&dialog);
+    view->setPlainText(text);
+    view->setReadOnly(true);
+    layout->addWidget(view);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok, &dialog);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    layout->addWidget(buttons);
+    dialog.resize(480, 420);
+    dialog.exec();
+}
+
+int MessageBoxCheck(const QString &title, const QString &text, const QString &checkBoxText, bool &isChecked) {
+    QMessageBox msgBox(GetMessageBoxParent());
+    msgBox.setWindowTitle(title);
+    msgBox.setText(text);
+    msgBox.setIcon(QMessageBox::Question);
+    msgBox.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
+    msgBox.setDefaultButton(QMessageBox::Ok);
+
+    QCheckBox *checkBox = new QCheckBox(checkBoxText);
+    checkBox->setChecked(isChecked);
+
+    dynamic_cast< QGridLayout *>(msgBox.layout())->addWidget(checkBox, 1, 2);
+
+    int result = msgBox.exec();
+
+    isChecked = checkBox->isChecked();
+
+    return result;
 }
 
 void ActivateWindow(QWidget *w) {

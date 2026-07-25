@@ -17,6 +17,7 @@
 #include <include/api/RPC.h>
 
 #include "include/configs/sub/warp.h"
+#include "include/configs/sub/RouteUpdater.hpp"
 #include "include/database/RoutesRepo.h"
 #include "include/ui/setting/RawRouteItem.h"
 
@@ -113,7 +114,6 @@ DialogManageRoutes::DialogManageRoutes(QWidget *parent) : QDialog(parent), ui(ne
             ui->dns_object->setPlainText(QJsonObject2QString(obj, false));
         }
     });
-    ui->sniffing_mode->setCurrentIndex(Configs::dataManager->settingsRepo->sniffing_mode);
     ui->ruleset_mirror->setCurrentIndex(Configs::dataManager->settingsRepo->ruleset_mirror);
     ui->default_domain_strategy->setCurrentText(Configs::dataManager->settingsRepo->default_domain_strategy);
     ui->domainStrategyCombo->setCurrentText(Configs::dataManager->settingsRepo->resolve_domain_strategy);
@@ -199,6 +199,7 @@ DialogManageRoutes::DialogManageRoutes(QWidget *parent) : QDialog(parent), ui(ne
     ui->warp_public_key->setText(Configs::dataManager->settingsRepo->warp_public_key);
     ui->warp_ifc_addrs->setText(Configs::dataManager->settingsRepo->warp_ifc_addrs.join(","));
     ui->warp_ep->setText(Configs::dataManager->settingsRepo->warp_ep);
+    ui->warp_reserved->setText(Configs::dataManager->settingsRepo->warp_reserved.join(","));
     connect(ui->warp_autogen, &QPushButton::clicked, this, [=,this] {
         auto originalText = ui->warp_autogen->text();
         ui->warp_autogen->setText("Getting keypair...");
@@ -225,6 +226,7 @@ DialogManageRoutes::DialogManageRoutes(QWidget *parent) : QDialog(parent), ui(ne
         ui->warp_public_key->setText(conf->publicKey);
         ui->warp_ep->setText(conf->endpoint);
         ui->warp_ifc_addrs->setText(conf->ipv4Address + "/32," + conf->ipv6Address + "/128");
+        ui->warp_reserved->setText(QListInt2QListString(conf->reserved).join(","));
         ui->warp_autogen->setText("Success!");
         setTimeout([=,this] { ui->warp_autogen->setText(originalText); }, this, 2000);
     });
@@ -250,7 +252,6 @@ void DialogManageRoutes::accept() {
         return;
     }
 
-    Configs::dataManager->settingsRepo->sniffing_mode = ui->sniffing_mode->currentIndex();
     Configs::dataManager->settingsRepo->ruleset_mirror = ui->ruleset_mirror->currentIndex();
     Configs::dataManager->settingsRepo->resolve_domain_strategy = ui->domainStrategyCombo->currentText();
     Configs::dataManager->settingsRepo->default_domain_strategy = ui->default_domain_strategy->currentText();
@@ -295,6 +296,7 @@ void DialogManageRoutes::accept() {
     Configs::dataManager->settingsRepo->warp_ifc_addrs = SplitAndTrim(ui->warp_ifc_addrs->text(), ",", false);
     Configs::dataManager->settingsRepo->warp_private_key = ui->warp_private_key->text();
     Configs::dataManager->settingsRepo->warp_public_key = ui->warp_public_key->text();
+    Configs::dataManager->settingsRepo->warp_reserved = SplitAndTrim(ui->warp_reserved->text(), ",", false);
 
     //
     MW_dialog_message(MwMessage::UpdateSettings, {MwArg::Route});
@@ -306,6 +308,7 @@ void DialogManageRoutes::on_new_route_clicked() {
     QMenu menu(this);
     menu.addAction(tr("Structured profile"));
     auto* rawAct = menu.addAction(tr("Raw profile"));
+    auto* remoteAct = menu.addAction(tr("Remote profile"));
     auto* chosen = menu.exec(ui->new_route->mapToGlobal(QPoint(0, ui->new_route->height())));
     if (chosen == nullptr) return;
 
@@ -321,6 +324,9 @@ void DialogManageRoutes::on_new_route_clicked() {
         rawWidget->show();
         connect(rawWidget, &RawRouteItem::settingsChanged, this, onCreated);
     } else {
+        // Remote profiles are structured underneath: reuse the structured editor, which shows
+        // the extra "Remote source" section (URL / auto-update / preview) when isRemote is set.
+        if (chosen == remoteAct) newProfile->isRemote = true;
         routeChainWidget = new RouteItem(this, newProfile);
         routeChainWidget->setWindowModality(Qt::ApplicationModal);
         routeChainWidget->show();
@@ -365,11 +371,43 @@ void DialogManageRoutes::applyImportedProfile(const std::shared_ptr<Configs::Rou
     }
 }
 
+bool DialogManageRoutes::tryImportRemoteRoutesLink(const QString& text)
+{
+    bool wasRemoteRouteLink = false;
+    QString error;
+    auto profiles = Configs::RouteProfile::FromRemoteRoutesLink(text, &wasRemoteRouteLink, &error);
+    if (!wasRemoteRouteLink) return false; // not a remoteRoute link; let the caller try other formats
+
+    if (profiles.isEmpty()) {
+        MessageBoxWarning(tr("Add remote routing profiles"),
+                          error.isEmpty() ? tr("No valid remote routing profiles in the link.") : error);
+        return true;
+    }
+
+    QString prompt = tr("Add these remote routing profiles?") + "\n";
+    for (int i = 0; i < profiles.size(); ++i) {
+        prompt += QString("\n%1. %2  (%3: %4)")
+                      .arg(i + 1)
+                      .arg(profiles[i]->remoteURL, tr("auto update"), profiles[i]->autoUpdate ? tr("On") : tr("Off"));
+    }
+    if (QMessageBox::question(this, tr("Add remote routing profiles"), prompt) != QMessageBox::StandardButton::Yes) {
+        return true; // it was a remoteRoute link; the user declined
+    }
+
+    for (const auto& p : profiles) chainList << p;
+    reloadProfileItems();
+    // Fetch the newly added profiles with the Update-button progress UI; persisted on accept().
+    updateRemoteProfiles(profiles);
+    return true;
+}
+
 void DialogManageRoutes::on_import_route_clicked()
 {
     // Fast path: if the clipboard already holds a usable candidate, just confirm and
     // import it — no need to make the user paste back what they already copied.
     const QString clip = QApplication::clipboard()->text().trimmed();
+    // A throne://remoteRoute deep link adds one or more remote profiles at once.
+    if (tryImportRemoteRoutesLink(clip)) return;
     if (!clip.isEmpty()) {
         QString fatal, warnings;
         bool wasOldArray = false;
@@ -394,13 +432,15 @@ void DialogManageRoutes::on_import_route_clicked()
 
     auto layout = new QGridLayout(w);
     auto tEdit = new QTextEdit(w);
-    tEdit->setPlaceholderText(tr("Paste a Throne route link, a base64 blob, or a JSON rule array"));
+    tEdit->setPlaceholderText(tr("Paste a Throne route link, a remoteRoute link, a base64 blob, or a JSON rule array"));
     layout->addWidget(tEdit, 0, 0);
 
     auto buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, Qt::Horizontal, w);
     layout->addWidget(buttons, 1, 0);
 
     connect(buttons, &QDialogButtonBox::accepted, w, [=, this] {
+        // remoteRoute deep link: add remote profiles and close.
+        if (tryImportRemoteRoutesLink(tEdit->toPlainText())) { w->accept(); return; }
         QString fatal, warnings;
         bool wasOldArray = false;
         auto profile = Configs::RouteProfile::FromShareInput(tEdit->toPlainText(), &fatal, &warnings, &wasOldArray);
@@ -466,4 +506,93 @@ void DialogManageRoutes::on_delete_route_clicked() {
         currentRoute = chainList[0];
     }
     reloadProfileItems();
+}
+
+void DialogManageRoutes::on_update_route_clicked() {
+    // While a batch is running the button shows progress; clicking it offers only Cancel.
+    if (routeUpdateRunning) {
+        QMenu menu(this);
+        auto* cancelAct = menu.addAction(tr("Cancel"));
+        auto* chosen = menu.exec(ui->update_route->mapToGlobal(QPoint(0, ui->update_route->height())));
+        // Guard against the batch having finished while the menu was open.
+        if (chosen == cancelAct && routeUpdateRunning) {
+            routeUpdateCancel = true;
+            ui->update_route->setText(tr("Cancelling..."));
+        }
+        return;
+    }
+
+    const int idx = ui->route_profiles->currentRow();
+    const bool selIsRemote = idx >= 0 && chainList[idx]->isRemote;
+
+    QMenu menu(this);
+    // Only offer "Update selected" when the selection is actually a remote profile, so the
+    // menu never presents an action that would just error out.
+    QAction* updateSelAct = selIsRemote ? menu.addAction(tr("Update selected")) : nullptr;
+    auto* updateAllAct = menu.addAction(tr("Update all"));
+    auto* chosen = menu.exec(ui->update_route->mapToGlobal(QPoint(0, ui->update_route->height())));
+    if (chosen == nullptr) return;
+
+    if (chosen == updateSelAct) {
+        updateRemoteProfiles({chainList[idx]});
+        return;
+    }
+
+    if (chosen == updateAllAct) {
+        QList<std::shared_ptr<Configs::RouteProfile>> remotes;
+        for (const auto& p : chainList) {
+            if (p->isRemote && !p->remoteURL.trimmed().isEmpty()) remotes << p;
+        }
+        if (remotes.isEmpty()) {
+            MessageBoxInfo(tr("No remote profiles"), tr("There are no remote routing profiles to update."));
+            return;
+        }
+        updateRemoteProfiles(remotes);
+    }
+}
+
+void DialogManageRoutes::updateRemoteProfiles(const QList<std::shared_ptr<Configs::RouteProfile>>& profiles) {
+    if (routeUpdateRunning || profiles.isEmpty()) return;
+    routeUpdateRunning = true;
+    routeUpdateCancel = false;
+    const int total = profiles.size();
+
+    // "Updating..." for a single profile; a running "Updating (n / total)" for a batch. The
+    // button stays enabled during the run so its click can offer Cancel (see the slot above).
+    auto progressText = [total](int current) {
+        return total <= 1 ? tr("Updating...") : tr("Updating (%1 / %2)").arg(current).arg(total);
+    };
+    ui->update_route->setText(progressText(1));
+
+    runOnNewThread([=, this] {
+        QStringList failures;
+        int ok = 0;
+        for (int i = 0; i < profiles.size(); ++i) {
+            if (routeUpdateCancel.load()) break;
+            const int current = i + 1;
+            runOnUiThread([=, this] {
+                if (routeUpdateRunning && !routeUpdateCancel.load())
+                    ui->update_route->setText(progressText(current));
+            });
+            QString warnings;
+            const QString err = RouteUpdate::UpdateProfile(profiles[i], &warnings);
+            if (err.isEmpty()) ok++;
+            else failures << (profiles[i]->name + ": " + err);
+        }
+        const bool cancelled = routeUpdateCancel.load();
+        runOnUiThread([=, this] {
+            routeUpdateRunning = false;
+            ui->update_route->setText(tr("Update"));
+            reloadProfileItems();
+            if (cancelled) {
+                MessageBoxInfo(tr("Update cancelled"),
+                               tr("Cancelled: updated %1 of %2, %3 failed.").arg(ok).arg(total).arg(failures.size()));
+            } else if (failures.isEmpty()) {
+                MessageBoxInfo(tr("Update complete"), tr("Updated %1 remote routing profile(s).").arg(ok));
+            } else {
+                MessageBoxWarning(tr("Update finished with errors"),
+                                  tr("Updated %1, failed %2:\n%3").arg(ok).arg(failures.size()).arg(failures.join("\n")));
+            }
+        });
+    });
 }

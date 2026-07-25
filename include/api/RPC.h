@@ -26,25 +26,30 @@ namespace API {
 
         libcore::QueryStatsResp QueryStats();
 
-        libcore::TestResp Test(bool *rpcOK, const libcore::TestReq &request);
+        // coreError (optional): on RPC failure, receives the core's error message
+        // so callers can react to it (e.g. missing Xray geo assets) rather than
+        // silently dropping the failed test.
+        libcore::TestResp Test(bool *rpcOK, const libcore::TestReq &request, QString *coreError = nullptr);
 
         void StopTests(bool *rpcOK);
 
         libcore::QueryURLTestResponse QueryURLTest(bool *rpcOK);
 
-        libcore::IPTestResp IPTest(bool *rpcOK, const libcore::IPTestRequest &request);
+        libcore::IPTestResp IPTest(bool *rpcOK, const libcore::IPTestRequest &request, QString *coreError = nullptr);
 
         libcore::QueryIPTestResponse QueryIPTest(bool *rpcOK);
 
         QString SetSystemDNS(bool *rpcOK, bool clear) const;
 
-        [[nodiscard]] libcore::ListConnectionsResp ListConnections() const;
+        [[nodiscard]] libcore::QueryConnectionsResp QueryConnections() const;
 
-        QString CheckConfig(bool *rpcOK, const QString& config) const;
+        // isXray selects the validating core: false (default) validates a
+        // sing-box config, true validates an Xray-format config.
+        QString CheckConfig(bool *rpcOK, const QString& config, bool isXray = false) const;
 
         bool IsPrivileged(bool *rpcOK) const;
 
-        libcore::SpeedTestResponse SpeedTest(bool *rpcOK, const libcore::SpeedTestRequest &request);
+        libcore::SpeedTestResponse SpeedTest(bool *rpcOK, const libcore::SpeedTestRequest &request, QString *coreError = nullptr);
 
         libcore::QuerySpeedTestResponse QueryCurrentSpeedTests(bool *rpcOK);
 

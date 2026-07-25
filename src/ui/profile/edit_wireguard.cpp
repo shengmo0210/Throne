@@ -42,6 +42,7 @@ EditWireguard::EditWireguard(QWidget *parent) : QWidget(parent), ui(new Ui::Edit
             if (set_edit_text_serverAddress) set_edit_text_serverAddress(conf->endpoint.left(sep));
             if (set_edit_text_serverPort) set_edit_text_serverPort(conf->endpoint.mid(sep + 1));
         }
+        ui->reserved->setText(QListInt2QListString(conf->reserved).join(","));
         ui->warp_autogen->setText(tr("Success!"));
         setTimeout([=, this] {
             ui->warp_autogen->setText(originalText);

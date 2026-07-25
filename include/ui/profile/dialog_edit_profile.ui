@@ -739,13 +739,32 @@
                 <number>0</number>
                </property>
                <item>
-                <widget class="QCheckBox" name="tls_frag">
-                 <property name="toolTip">
-                  <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;May degrade performance, try record fragment first&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
-                 </property>
+                <widget class="QLabel" name="fragment_l">
                  <property name="text">
-                  <string>Enable TLS fragment</string>
+                  <string>Fragment</string>
                  </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QComboBox" name="fragment">
+                 <property name="toolTip">
+                  <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;TLS ClientHello fragmentation. The implementation (built-in / custom) and the &amp;quot;Keep Default&amp;quot; behaviour are configured in Settings &gt; Core.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                 </property>
+                 <item>
+                  <property name="text">
+                   <string>Keep Default</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>On</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>Off</string>
+                  </property>
+                 </item>
                 </widget>
                </item>
                <item>
@@ -769,6 +788,53 @@
               <property name="text">
                <string>Enable TLS Record Fragment</string>
               </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QWidget" name="widget_tls_tricks" native="true">
+              <layout class="QHBoxLayout" name="horizontalLayout_tls_tricks">
+               <property name="leftMargin">
+                <number>0</number>
+               </property>
+               <property name="topMargin">
+                <number>0</number>
+               </property>
+               <property name="rightMargin">
+                <number>0</number>
+               </property>
+               <property name="bottomMargin">
+                <number>0</number>
+               </property>
+               <item>
+                <widget class="QLabel" name="tls_tricks_l">
+                 <property name="text">
+                  <string>TLS Tricks</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QComboBox" name="tls_tricks">
+                 <property name="toolTip">
+                  <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Mixed-case SNI to evade exact-match SNI filtering. The &amp;quot;Keep Default&amp;quot; behaviour is configured in Settings &gt; Core.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                 </property>
+                 <item>
+                  <property name="text">
+                   <string>Keep Default</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>On</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>Off</string>
+                  </property>
+                 </item>
+                </widget>
+               </item>
+              </layout>
              </widget>
             </item>
            </layout>
@@ -1300,33 +1366,53 @@
                 <widget class="QLineEdit" name="xray_session_key"/>
                </item>
                <item row="7" column="0">
+                <widget class="QLabel" name="xray_session_id_table_l">
+                 <property name="text">
+                  <string>sessionIDTable</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="7" column="1">
+                <widget class="QLineEdit" name="xray_session_id_table"/>
+               </item>
+               <item row="7" column="2">
+                <widget class="QLabel" name="xray_session_id_length_l">
+                 <property name="text">
+                  <string>sessionIDLength</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="7" column="3">
+                <widget class="QLineEdit" name="xray_session_id_length"/>
+               </item>
+               <item row="8" column="0">
                 <widget class="QLabel" name="xray_seq_placement_l">
                  <property name="text">
                   <string>seqPlacement</string>
                  </property>
                 </widget>
                </item>
-               <item row="7" column="1">
+               <item row="8" column="1">
                 <widget class="QComboBox" name="xray_seq_placement"/>
                </item>
-               <item row="7" column="2">
+               <item row="8" column="2">
                 <widget class="QLabel" name="xray_seq_key_l">
                  <property name="text">
                   <string>seqKey</string>
                  </property>
                 </widget>
                </item>
-               <item row="7" column="3">
+               <item row="8" column="3">
                 <widget class="QLineEdit" name="xray_seq_key"/>
                </item>
-               <item row="8" column="0">
+               <item row="9" column="0">
                 <widget class="QLabel" name="label_32">
                  <property name="text">
                   <string>Download Settings</string>
                  </property>
                 </widget>
                </item>
-               <item row="8" column="1" colspan="3">
+               <item row="9" column="1" colspan="3">
                 <widget class="QPushButton" name="xray_downloadsettings_edit">
                  <property name="text">
                   <string>Edit</string>

@@ -226,6 +226,10 @@ namespace Configs {
         isRaw = other.isRaw;
         rawRoute = other.rawRoute;
         preventModifications = other.preventModifications;
+        isRemote = other.isRemote;
+        remoteURL = other.remoteURL;
+        autoUpdate = other.autoUpdate;
+        remoteLastUpdate = other.remoteLastUpdate;
     }
 
     static void appendWarning(QString* warnings, const QString& msg) {
@@ -283,8 +287,12 @@ namespace Configs {
                 parseError->append(QString("expected array of json objects but have member of type '%1'").arg(item.type()));
                 return {};
             }
-            auto rule = parse_rule_object(item.toObject(), warnings);
-            rule->name = "imported rule #" + Int2String(ruleID++);
+            const QJsonObject ro = item.toObject();
+            auto rule = parse_rule_object(ro, warnings);
+            // Preserve an explicit name if the array carries one (our exported rules do); plain
+            // sing-box rule arrays have no name, so those still get a stable placeholder.
+            const QString nm = ro.value("name").toString();
+            rule->name = nm.isEmpty() ? ("imported rule #" + Int2String(ruleID++)) : nm;
             rules << rule;
         }
 
@@ -327,7 +335,7 @@ namespace Configs {
     QString RouteProfile::ToShareLink() {
         const auto json = QJsonDocument(ToShareObject()).toJson(QJsonDocument::Compact);
         const auto b64 = json.toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals);
-        return QStringLiteral("throne://route?data=") + QString::fromLatin1(b64);
+        return QStringLiteral("throne://route/") + QString::fromLatin1(b64);
     }
 
     std::shared_ptr<RouteProfile> RouteProfile::FromShareInput(const QString& input, QString* fatalError, QString* warnings, bool* wasOldArray) {
@@ -338,14 +346,14 @@ namespace Configs {
             return nullptr;
         }
 
-        // throne://route?data=<base64> deep link
-        if (text.startsWith("throne://", Qt::CaseInsensitive)) {
+        // throne://route/<base64> deep link
+        if (text.startsWith("throne://route/", Qt::CaseInsensitive)) {
             const QUrl u(text);
-            if (u.host().compare("route", Qt::CaseInsensitive) != 0) {
-                fatalError->append("Unsupported deep link command");
+            if (!u.isValid()) {
+                fatalError->append("Deep link is invalid");
                 return nullptr;
             }
-            text = QUrlQuery(u).queryItemValue("data", QUrl::FullyDecoded).trimmed();
+            text = u.path().mid(1);
             if (text.isEmpty()) {
                 fatalError->append("Deep link has no data");
                 return nullptr;
@@ -416,6 +424,47 @@ namespace Configs {
 
         fatalError->append("Unsupported input");
         return nullptr;
+    }
+
+    QList<std::shared_ptr<RouteProfile>> RouteProfile::FromRemoteRoutesLink(const QString& input, bool* wasRemoteRouteLink, QString* error) {
+        if (wasRemoteRouteLink) *wasRemoteRouteLink = false;
+        const QString text = input.trimmed();
+        if (!text.startsWith("throne://remoteroute/", Qt::CaseInsensitive)) return {};
+        if (wasRemoteRouteLink) *wasRemoteRouteLink = true;
+
+        const QUrl u(text);
+        if (!u.isValid()) {
+            if (error) *error = "Deep link is invalid";
+            return {};
+        }
+        QString base64 = u.path().mid(1);
+        if (base64.isEmpty()) {
+            if (error) *error = "Deep link has no data";
+            return {};
+        }
+        const QString data = DecodeB64IfValid(base64);
+        if (data.isEmpty()) {
+            if (error) *error = "Base64 is invalid.";
+            return {};
+        }
+
+        QList<std::shared_ptr<RouteProfile>> res;
+        for (const auto& v : data.split('\n', Qt::SkipEmptyParts)) {
+            const QString eurl = v.trimmed();
+            if (!eurl.startsWith("http://", Qt::CaseInsensitive) && !eurl.startsWith("https://", Qt::CaseInsensitive)) continue;
+            const QUrl link(eurl);
+            if (!link.isValid()) continue;
+
+            auto profile = std::make_shared<RouteProfile>();
+            profile->id = -1;
+            profile->isRemote = true;
+            profile->remoteURL = link.toString(QUrl::RemoveFragment);
+            profile->name = link.fragment();
+            if (profile->name.isEmpty()) profile->name = QUrl(eurl).host();
+            res << profile;
+        }
+        if (res.isEmpty() && error) *error = "The link did not contain any valid http(s) routing profile URLs.";
+        return res;
     }
 
     QJsonArray RouteProfile::get_route_rules(bool forView, std::map<int, QString> outboundMap) {
@@ -663,7 +712,7 @@ namespace Configs {
 
     void RouteProfile::FilterEmptyRules() {
         QList<std::shared_ptr<RouteRule>> newRules;
-        for (auto rule : Rules) {
+        for (const auto& rule : Rules) {
             if (!rule->isEmpty()) newRules.append(rule);
         }
         Rules = newRules;
@@ -671,7 +720,7 @@ namespace Configs {
 
     bool RouteProfile::add_simple_rule(const QString& content, const std::shared_ptr<RouteRule>& rule, ruleType type)
     {
-        if (type == simpleAddressProxy || type == simpleAddressBypass || type == simpleAddressBlock) return add_simple_address_rule(content, rule);
+        if (type == simpleAddressProxy || type == simpleAddressBypass || type == simpleAddressBlock || type == simpleAddressWarpBypass) return add_simple_address_rule(content, rule);
         else return add_simple_process_rule(content, rule);
     }
 

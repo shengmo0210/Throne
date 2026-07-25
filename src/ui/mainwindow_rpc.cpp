@@ -1,6 +1,7 @@
 #include "include/ui/mainwindow.h"
 
 #include "include/stats/traffic/TrafficLooper.hpp"
+#include "include/stats/traffic/TrafficStatsManager.hpp"
 #include "include/api/RPC.h"
 #include "include/ui/utils//MessageBoxTimer.h"
 #include "3rdparty/qv2ray/v2/proxy/QvProxyConfigurator.hpp"
@@ -10,8 +11,11 @@
 #include <QDesktopServices>
 #include <QMessageBox>
 #include <QJsonDocument>
+#include <QFile>
+#include <QRegularExpression>
 
 #include "include/configs/generate.h"
+#include "include/configs/common/xrayStreamSetting.h"
 #include "include/database/GroupsRepo.h"
 #include "include/database/ProfilesRepo.h"
 
@@ -26,13 +30,9 @@
 using namespace API;
 
 void MainWindow::setup_rpc(QLocalSocket *socket) {
-    // The Client is long-lived and never recreated; on core restart we only
-    // swap the underlying connection so worker threads holding `defaultClient`
-    // never touch freed memory.
-    QMutexLocker lock(&defaultClientMutex);
-    if (defaultClient == nullptr) {
-        defaultClient = new Client();
-    }
+    // The Client is constructed once at startup and never recreated; on core
+    // restart we only swap the underlying connection, so worker threads holding
+    // `defaultClient` never touch freed memory.
     defaultClient->Reconnect(socket);
 
     // Loopers run for the lifetime of the app, start only once
@@ -43,7 +43,7 @@ void MainWindow::setup_rpc(QLocalSocket *socket) {
     }
 }
 
-void MainWindow::runURLTest(const QString& config, const QString& xrayConfig, bool useDefault, const QStringList& outboundTags, const QMap<QString, int>& tag2entID, int entID) {
+void MainWindow::runURLTest(const QString& config, const QString& xrayConfig, const QStringList& xrayFullConfigs, bool useDefault, const QStringList& outboundTags, const QMap<QString, int>& tag2entID, int entID) {
     if (stopSpeedtest.load()) {
         MW_show_log(tr("Profile test aborted"));
         return;
@@ -60,6 +60,7 @@ void MainWindow::runURLTest(const QString& config, const QString& xrayConfig, bo
     req.test_timeout_ms = Configs::dataManager->settingsRepo->url_test_timeout_ms;
     req.xray_config = xrayConfig.toStdString();
     req.need_xray = !xrayConfig.isEmpty();
+    for (const auto &xc : xrayFullConfigs) req.xray_full_configs.push_back(xc.toStdString());
 
     auto done = new QMutex;
     done->lock();
@@ -119,10 +120,23 @@ void MainWindow::runURLTest(const QString& config, const QString& xrayConfig, bo
         delete done;
     });
     bool rpcOK;
-    auto result = defaultClient->Test(&rpcOK, req);
+    QString coreError;
+    auto result = defaultClient->Test(&rpcOK, req, &coreError);
     done->unlock();
     //
-    if (!rpcOK || result.results.empty()) return;
+    if (!rpcOK || result.results.empty()) {
+        // A failed Test RPC (e.g. an Xray full config that needs geoip.dat /
+        // geosite.dat) never yields per-result errors, so inspect the RPC error here
+        // to offer the geo-asset download — the same flow profile start uses.
+        if (!rpcOK) {
+            QString ctxName = tr("a tested profile");
+            if (entID != -1) {
+                if (auto e = Configs::dataManager->profilesRepo->GetProfile(entID)) ctxName = e->outbound->DisplayTypeAndName();
+            }
+            handleXrayGeoAssetError(coreError, ctxName);
+        }
+        return;
+    }
 
     for (const auto &res: result.results) {
         if (!tag2entID.empty()) {
@@ -153,7 +167,7 @@ void MainWindow::runURLTest(const QString& config, const QString& xrayConfig, bo
     }
 }
 
-void MainWindow::runIPTest(const QString& config, const QString& xrayConfig, bool useDefault, const QStringList& outboundTags, const QMap<QString, int>& tag2entID, int entID) {
+void MainWindow::runIPTest(const QString& config, const QString& xrayConfig, const QStringList& xrayFullConfigs, bool useDefault, const QStringList& outboundTags, const QMap<QString, int>& tag2entID, int entID) {
     if (stopSpeedtest.load()) {
         MW_show_log(tr("Profile test aborted"));
         return;
@@ -169,6 +183,7 @@ void MainWindow::runIPTest(const QString& config, const QString& xrayConfig, boo
     req.test_timeout_ms = Configs::dataManager->settingsRepo->url_test_timeout_ms;
     req.xray_config = xrayConfig.toStdString();
     req.need_xray = !xrayConfig.isEmpty();
+    for (const auto &xc : xrayFullConfigs) req.xray_full_configs.push_back(xc.toStdString());
 
     auto done = new QMutex;
     done->lock();
@@ -229,10 +244,21 @@ void MainWindow::runIPTest(const QString& config, const QString& xrayConfig, boo
         delete done;
     });
     bool rpcOK;
-    auto result = defaultClient->IPTest(&rpcOK, req);
+    QString coreError;
+    auto result = defaultClient->IPTest(&rpcOK, req, &coreError);
     done->unlock();
     //
-    if (!rpcOK || result.results.empty()) return;
+    if (!rpcOK || result.results.empty()) {
+        // Detect missing Xray geo assets from a failed IPTest RPC (see runURLTest).
+        if (!rpcOK) {
+            QString ctxName = tr("a tested profile");
+            if (entID != -1) {
+                if (auto e = Configs::dataManager->profilesRepo->GetProfile(entID)) ctxName = e->outbound->DisplayTypeAndName();
+            }
+            handleXrayGeoAssetError(coreError, ctxName);
+        }
+        return;
+    }
 
     for (const auto &res: result.results) {
         if (!tag2entID.empty()) {
@@ -285,11 +311,13 @@ void MainWindow::urltest_current_group(const QList<int>& profileIDs) {
             }
 
             std::atomic<int> counter(0);
+            // xray-full configs are folded into the single outboundTags test box
+            // (their tags live in outboundTags), so they add no separate tests.
             auto testCount = buildObject->fullConfigs.size() + (!buildObject->outboundTags.empty());
             for (const auto &entID: buildObject->fullConfigs.keys()) {
                 auto configStr = buildObject->fullConfigs[entID];
                 auto func = [this, &counter, testCount, configStr, entID]() {
-                    runURLTest(configStr, "", true, {}, {}, entID);
+                    runURLTest(configStr, "", {}, true, {}, {}, entID);
                     ++counter;
                     if (counter.load() == testCount) {
                         speedtestRunning.unlock();
@@ -301,7 +329,7 @@ void MainWindow::urltest_current_group(const QList<int>& profileIDs) {
             if (!buildObject->outboundTags.empty()) {
                 auto func = [this, &buildObject, &counter, testCount]() {
                     auto xrayConf = buildObject->isXrayNeeded ? QJsonObject2QString(buildObject->xrayConfig, false) : "";
-                    runURLTest(QJsonObject2QString(buildObject->coreConfig, false),xrayConf, false, buildObject->outboundTags, buildObject->tag2entID);
+                    runURLTest(QJsonObject2QString(buildObject->coreConfig, false),xrayConf, buildObject->xrayFullConfigs, false, buildObject->outboundTags, buildObject->tag2entID);
                     ++counter;
                     if (counter.load() == testCount) {
                         speedtestRunning.unlock();
@@ -400,11 +428,13 @@ void MainWindow::iptest_current_group(const QList<int>& profileIDs) {
             }
 
             std::atomic<int> counter(0);
+            // xray-full configs are folded into the single outboundTags test box
+            // (their tags live in outboundTags), so they add no separate tests.
             auto testCount = buildObject->fullConfigs.size() + (!buildObject->outboundTags.empty());
             for (const auto &entID: buildObject->fullConfigs.keys()) {
                 auto configStr = buildObject->fullConfigs[entID];
                 auto func = [this, &counter, testCount, configStr, entID]() {
-                    runIPTest(configStr, "", true, {}, {}, entID);
+                    runIPTest(configStr, "", {}, true, {}, {}, entID);
                     ++counter;
                     if (counter.load() == testCount) {
                         speedtestRunning.unlock();
@@ -416,7 +446,7 @@ void MainWindow::iptest_current_group(const QList<int>& profileIDs) {
             if (!buildObject->outboundTags.empty()) {
                 auto func = [this, &buildObject, &counter, testCount]() {
                     auto xrayConf = buildObject->isXrayNeeded ? QJsonObject2QString(buildObject->xrayConfig, false) : "";
-                    runIPTest(QJsonObject2QString(buildObject->coreConfig, false), xrayConf, false, buildObject->outboundTags, buildObject->tag2entID);
+                    runIPTest(QJsonObject2QString(buildObject->coreConfig, false), xrayConf, buildObject->xrayFullConfigs, false, buildObject->outboundTags, buildObject->tag2entID);
                     ++counter;
                     if (counter.load() == testCount) {
                         speedtestRunning.unlock();
@@ -459,6 +489,8 @@ void MainWindow::speedtest_current_group(const QList<int>& profileIDs, bool test
 
     runOnNewThread([this, profileIDs, testCurrent]() {
         stopSpeedtest.store(false);
+        // Fresh per-tag byte baselines for this speed-test session.
+        { QMutexLocker lk(&speedtestCreditMu_); speedtestCredited_.clear(); }
         if (!testCurrent)
         {
             dataViewHtmlGenerator_.seedSpeedTest(profileIDs.size());
@@ -472,12 +504,12 @@ void MainWindow::speedtest_current_group(const QList<int>& profileIDs, bool test
 
                 for (const auto &entID: buildObject->fullConfigs.keys()) {
                     auto configStr = buildObject->fullConfigs[entID];
-                    runSpeedTest(configStr, "", true, false, {}, {}, entID);
+                    runSpeedTest(configStr, "", {}, true, false, {}, {}, entID);
                 }
 
                 if (!buildObject->outboundTags.empty()) {
                     auto xrayConf = buildObject->isXrayNeeded ? QJsonObject2QString(buildObject->xrayConfig, true) : "";
-                    runSpeedTest(QJsonObject2QString(buildObject->coreConfig, false), xrayConf, false, false, buildObject->outboundTags, buildObject->tag2entID, -1);
+                    runSpeedTest(QJsonObject2QString(buildObject->coreConfig, false), xrayConf, buildObject->xrayFullConfigs, false, false, buildObject->outboundTags, buildObject->tag2entID, -1);
                 }
             };
             int stepSize = Configs::dataManager->settingsRepo->speed_test_mode == Configs::TestConfig::COUNTRY ? 100 : 1;
@@ -490,7 +522,7 @@ void MainWindow::speedtest_current_group(const QList<int>& profileIDs, bool test
         } else
         {
             dataViewHtmlGenerator_.seedSpeedTest(1);
-            runSpeedTest("", "", true, true, {}, {}, -1);
+            runSpeedTest("", "", {}, false, true, {}, {}, -1);
             currentUnderTest.store(false);
         }
         dataViewHtmlGenerator_.clearTestSections();
@@ -501,6 +533,25 @@ void MainWindow::speedtest_current_group(const QList<int>& profileIDs, bool test
             MW_show_log(tr("Speedtest finished!"));
         });
     });
+}
+
+void MainWindow::creditSpeedtestTraffic(const std::shared_ptr<Configs::Profile>& profile, const QString& tag, qint64 curUp, qint64 curDown)
+{
+    if (profile == nullptr || tag.isEmpty()) return;
+    if (Configs::dataManager->settingsRepo->disable_traffic_stats) return;
+    QMutexLocker lk(&speedtestCreditMu_);
+    auto& base = speedtestCredited_[tag];
+    const qint64 dUp = curUp >= base.first ? curUp - base.first : curUp;
+    const qint64 dDown = curDown >= base.second ? curDown - base.second : curDown;
+    base = qMakePair(curUp, curDown);
+    if (dUp <= 0 && dDown <= 0) return;
+
+    Stats::trafficStatsManager->AddConfigDelta(profile->id, dUp, dDown);
+    Stats::trafficStatsManager->AddAppDelta(Stats::SPEEDTEST_APP_NAME, "", dUp, dDown);
+
+    profile->traffic_uplink += dUp;
+    profile->traffic_downlink += dDown;
+    Configs::dataManager->profilesRepo->SaveTraffic(profile);
 }
 
 void MainWindow::querySpeedtest(const QMap<QString, int>& tag2entID, bool testCurrent)
@@ -516,6 +567,8 @@ void MainWindow::querySpeedtest(const QMap<QString, int>& tag2entID, bool testCu
     {
         return;
     }
+    creditSpeedtestTraffic(profile, QString::fromStdString(res.result.value().outbound_tag.value()),
+                           res.result.value().ul_bytes.value(), res.result.value().dl_bytes.value());
     runOnUiThread([=, this]
     {
         dataViewHtmlGenerator_.setSpeedtestProgress(profile->outbound->name, res.result.value());
@@ -563,7 +616,7 @@ void MainWindow::queryCountryTest(const QMap<QString, int>& tag2entID, bool test
 }
 
 
-void MainWindow::runSpeedTest(const QString& config, const QString& xrayConfig, bool useDefault, bool testCurrent, const QStringList& outboundTags, const QMap<QString, int>& tag2entID, int entID)
+void MainWindow::runSpeedTest(const QString& config, const QString& xrayConfig, const QStringList& xrayFullConfigs, bool useDefault, bool testCurrent, const QStringList& outboundTags, const QMap<QString, int>& tag2entID, int entID)
 {
     if (stopSpeedtest.load()) {
         MW_show_log(tr("Profile speed test aborted"));
@@ -587,6 +640,7 @@ void MainWindow::runSpeedTest(const QString& config, const QString& xrayConfig, 
     req.country_concurrency = Configs::dataManager->settingsRepo->test_concurrent;
     req.xray_config = xrayConfig.toStdString();
     req.need_xray = !xrayConfig.isEmpty();
+    for (const auto &xc : xrayFullConfigs) req.xray_full_configs.push_back(xc.toStdString());
 
     if (speedtestConf != Configs::TestConfig::COUNTRY) {
         dataViewHtmlGenerator_.addTestProgress();
@@ -616,10 +670,22 @@ void MainWindow::runSpeedTest(const QString& config, const QString& xrayConfig, 
         delete doneMu;
     });
     bool rpcOK;
-    auto result = defaultClient->SpeedTest(&rpcOK, req);
+    QString coreError;
+    auto result = defaultClient->SpeedTest(&rpcOK, req, &coreError);
     doneMu->unlock();
     //
-    if (!rpcOK || result.results.empty()) return;
+    if (!rpcOK || result.results.empty()) {
+        // Detect missing Xray geo assets from a failed SpeedTest RPC (see runURLTest).
+        if (!rpcOK) {
+            QString ctxName = tr("a tested profile");
+            int nameId = testCurrent ? (running ? running->id : -1) : entID;
+            if (nameId != -1) {
+                if (auto e = Configs::dataManager->profilesRepo->GetProfile(nameId)) ctxName = e->outbound->DisplayTypeAndName();
+            }
+            handleXrayGeoAssetError(coreError, ctxName);
+        }
+        return;
+    }
 
     for (const auto &res: result.results) {
         if (testCurrent) entID = running ? running->id : -1;
@@ -636,6 +702,9 @@ void MainWindow::runSpeedTest(const QString& config, const QString& xrayConfig, 
             MW_show_log(tr("Profile manager data is corrupted, try again."));
             continue;
         }
+
+        creditSpeedtestTraffic(ent, QString::fromStdString(res.outbound_tag.value()),
+                               res.ul_bytes.value(), res.dl_bytes.value());
 
         if (res.cancelled.value()) continue;
 
@@ -678,6 +747,119 @@ bool MainWindow::set_system_dns(bool set, bool save_set) {
     return true;
 }
 
+int MainWindow::get_profile_to_start() {
+    auto ents = get_now_selected_list();
+    if (ents.size() == 1) {
+        return ents.first();
+    }
+    if (ents.isEmpty()) {
+        if (last_running_profile_id >= 0 && Configs::dataManager->profilesRepo->GetProfile(last_running_profile_id) != nullptr) {
+            return last_running_profile_id;
+        }
+        int rememberId = Configs::dataManager->settingsRepo->remember_id;
+        if (rememberId >= 0 && Configs::dataManager->profilesRepo->GetProfile(rememberId) != nullptr) {
+            return rememberId;
+        }
+        auto currentGroup = Configs::dataManager->groupsRepo->CurrentGroup();
+        if (currentGroup) {
+            auto profiles = currentGroup->Profiles();
+            if (!profiles.isEmpty()) {
+                int firstId = profiles.first();
+                if (Configs::dataManager->profilesRepo->GetProfile(firstId) != nullptr) {
+                    return firstId;
+                }
+            }
+        }
+    }
+    return -1;
+}
+
+bool MainWindow::handleXrayGeoAssetError(const QString& error, const QString& contextName) {
+    // The Xray config's routing referenced geoip:/geosite: rules. Two distinct
+    // failures surface here (both when starting a profile via an in-band Start
+    // error and when testing one via an RPC error payload). XRAY_LOCATION_ASSET
+    // points at GetBasePath():
+    //   1. The .dat asset isn't installed  -> "failed to open geoip.dat: ..."
+    //   2. The .dat is installed but lacks the referenced category
+    //                                       -> "failed to load code cn from geoip.dat: EOF"
+    const bool refGeoip = error.contains("geoip.dat");
+    const bool refGeosite = error.contains("geosite.dat");
+    if (!refGeoip && !refGeosite) return false;
+
+    runOnUiThread([=, this] {
+        // A batch test can raise this for many profiles at once — only act once.
+        if (m_xrayGeoAssetBusy) return;
+        m_xrayGeoAssetBusy = true;
+        // Small delay so any in-flight UI teardown (e.g. Connecting -> idle)
+        // settles before the modal prompt appears.
+        setTimeout([=, this] {
+            const QString base = Configs::GetBasePath();
+            const bool haveGeoip = QFile::exists(base + "/geoip.dat");
+            const bool haveGeosite = QFile::exists(base + "/geosite.dat");
+
+            const bool geoipLacksCategory = refGeoip && haveGeoip;
+            const bool geositeLacksCategory = refGeosite && haveGeosite;
+            if (geoipLacksCategory || geositeLacksCategory) {
+                const QString whichFile = geositeLacksCategory ? "geosite.dat" : "geoip.dat";
+                const QString ruleType = geositeLacksCategory ? "geosite" : "geoip";
+
+                QString category;
+                QRegularExpression re(QStringLiteral("code\\s+(\\S+)\\s+from"));
+                const auto m = re.match(error);
+                if (m.hasMatch()) category = m.captured(1);
+                const QString needed = category.isEmpty()
+                    ? tr("a required category")
+                    : QStringLiteral("%1:%2").arg(ruleType, category);
+
+                MessageBoxWarning(
+                    tr("Geo asset missing category"),
+                    tr("The Xray config \"%1\" needs \"%2\", but the installed %3 does "
+                       "not contain it.\n\n"
+                       "Re-downloading from the same source will not fix this — the data "
+                       "file does not include that category. Set the GeoIP/GeoSite asset "
+                       "URL in Settings to a source that provides \"%2\", then delete %3 "
+                       "from the app folder and download it again.")
+                        .arg(contextName, needed, whichFile));
+                m_xrayGeoAssetBusy = false;
+                return;
+            }
+
+            // Case 1: the referenced asset file is missing -> offer to download it.
+            if (QMessageBox::question(this, tr("Geo asset files required"),
+                    tr("The Xray config \"%1\" uses geoip/geosite routing rules, but the "
+                       "required data files (geoip.dat / geosite.dat) are not installed.\n\n"
+                       "Download them now?").arg(contextName)) != QMessageBox::Yes) {
+                m_xrayGeoAssetBusy = false;
+                return;
+            }
+
+            runOnNewThread([=, this] {
+                QString dlErr;
+                if (!haveGeoip) {
+                    auto e = NetworkRequestHelper::DownloadAsset(Configs::dataManager->settingsRepo->xray_geoip_url, "geoip.dat");
+                    if (!e.isEmpty()) dlErr += "geoip.dat: " + e + "\n";
+                }
+                if (!haveGeosite) {
+                    auto e = NetworkRequestHelper::DownloadAsset(Configs::dataManager->settingsRepo->xray_geosite_url, "geosite.dat");
+                    if (!e.isEmpty()) dlErr += "geosite.dat: " + e + "\n";
+                }
+                runOnUiThread([=, this] {
+                    m_xrayGeoAssetBusy = false;
+                    if (!dlErr.isEmpty()) {
+                        MessageBoxWarning(tr("Geo asset download failed"), dlErr);
+                    } else {
+                        MW_show_log(tr("Downloaded Xray geo asset files."));
+                        QMessageBox::information(this, tr("Geo assets installed"),
+                            tr("Geo data files were downloaded successfully.\n\n"
+                               "Please try again."));
+                    }
+                });
+            });
+        }, this, 300);
+    });
+    return true;
+}
+
 void MainWindow::profile_start(int _id) {
     if (Configs::dataManager->settingsRepo->prepare_exit) return;
 #ifdef Q_OS_LINUX
@@ -689,9 +871,18 @@ void MainWindow::profile_start(int _id) {
     }
 #endif
 
-    auto ents = get_now_selected_list();
-    auto ent = (_id < 0 && !ents.isEmpty()) ? Configs::dataManager->profilesRepo->GetProfile(ents.first()) : Configs::dataManager->profilesRepo->GetProfile(_id);
+    std::shared_ptr<Configs::Profile> ent = nullptr;
+    if (_id >= 0) {
+        ent = Configs::dataManager->profilesRepo->GetProfile(_id);
+    } else {
+        int startId = get_profile_to_start();
+        if (startId >= 0) {
+            ent = Configs::dataManager->profilesRepo->GetProfile(startId);
+        }
+    }
     if (ent == nullptr) return;
+
+    last_running_profile_id = ent->id;
 
     if (select_mode) {
         emit profile_selected(ent->id);
@@ -716,6 +907,15 @@ void MainWindow::profile_start(int _id) {
         req.disable_stats = Configs::dataManager->settingsRepo->disable_traffic_stats;
         req.xray_config = QJsonObject2QString(result->xrayConfig, true).toStdString();
         req.need_xray = !result->xrayConfig.isEmpty();
+        if (req.need_xray) {
+            // Outbound server-domain resolution for the live Xray instance is
+            // wired in the core (ThroneWiring), not baked into the config: point
+            // it at sing-box's loopback DNS-in with the user's direct-DNS
+            // strategy and let the instance build the resolver internally. Test
+            // instances build their own req and leave these empty.
+            req.xray_outbound_dns_address = ("127.0.0.1:" + QString::number(Configs::dataManager->settingsRepo->core_dns_in_port)).toStdString();
+            req.xray_outbound_dns_strategy = Configs::getXrayOutboundDomainStrategy().toStdString();
+        }
         if (!result->extraCoreData->path.isEmpty())
         {
             req.need_extra_process = true;
@@ -731,6 +931,26 @@ void MainWindow::profile_start(int _id) {
             return false;
         }
         if (!error.isEmpty()) {
+            // The Xray config's routing referenced geoip:/geosite: tags but the .dat
+            // asset(s) aren't installed. Handle this out-of-band: fail this start
+            // attempt right away — blocking here to download would trip the "no
+            // response" restart prompt — while handleXrayGeoAssetError asynchronously
+            // prompts and downloads. We deliberately don't auto-start; the env var is
+            // already set on the live core, so starting the profile again picks the
+            // assets up with no core restart.
+            if (handleXrayGeoAssetError(error, ent->outbound->DisplayTypeAndName())) {
+                return false;
+            }
+            if (error.contains("Fwpm", Qt::CaseInsensitive)) {
+                runOnUiThread([=, this] {
+                    MessageBoxWarning(
+                        tr("Strict routing unavailable"),
+                        tr("Windows could not enable strict routing. Open Tun Settings, "
+                           "disable Strict Route, and start the profile again.\n\n"
+                           "Disabling Strict Route may cause DNS leaks.\n\nError: %1").arg(error));
+                });
+                return false;
+            }
             if (error.contains("configure tun interface")) {
                 runOnUiThread([=, this] {
 
@@ -817,6 +1037,12 @@ void MainWindow::profile_start(int _id) {
     connect(restartMsgbox, &QMessageBox::accepted, this, [=,this] { MW_dialog_message(MwMessage::RestartProgram, {}); });
     auto restartMsgboxTimer = new MessageBoxTimer(this, restartMsgbox, 10000);
 
+    // Show the "Connecting" state until the start resolves below.
+    runOnUiThread([this] {
+        m_profileConnecting = true;
+        refresh_startstop_button();
+    });
+
     runOnNewThread([=, this] {
         // stop current running
         if (running != nullptr) {
@@ -831,10 +1057,13 @@ void MainWindow::profile_start(int _id) {
         }
         mu_starting.unlock();
         // cancel timeout
-        runOnUiThread([=] {
+        runOnUiThread([=, this] {
             restartMsgboxTimer->cancel();
             restartMsgboxTimer->deleteLater();
             restartMsgbox->deleteLater();
+            // Start has resolved (success or failure); leave the Connecting state.
+            m_profileConnecting = false;
+            refresh_startstop_button();
         });
     });
 }
@@ -871,12 +1100,22 @@ void MainWindow::profile_stop(bool crash, bool block, bool manual) {
 
     UpdateConnectionListWithRecreate({});
 
+    // Show a "Disconnecting" spinner immediately; the stop itself can lag.
+    runOnUiThread([this] {
+        m_profileDisconnecting = true;
+        refresh_startstop_button();
+    });
+
     runOnNewThread([=, this] {
         Stats::trafficLooper->loop_enabled = false;
         Stats::connection_lister->suspend = true;
         Stats::trafficLooper->loop_mutex.lock();
         Stats::trafficLooper->UpdateAll();
         Stats::trafficLooper->loop_mutex.unlock();
+        // Flush the final per-profile totals (only persisted every few seconds
+        // during the session) and the partial minute bucket before going down.
+        Stats::trafficLooper->PersistTraffic();
+        Stats::trafficStatsManager->Flush();
 
         QMessageBox* restartMsgbox;
         MessageBoxTimer* restartMsgboxTimer;
@@ -901,6 +1140,7 @@ void MainWindow::profile_stop(bool crash, bool block, bool manual) {
             restartMsgboxTimer->deleteLater();
             restartMsgbox->deleteLater();
 
+            m_profileDisconnecting = false;
             refresh_status();
             refresh_proxy_list({id});
 

@@ -59,6 +59,8 @@ set(PROJECT_SOURCES
         src/main.cpp
         src/global/Configs.cpp
         src/global/Utils.cpp
+        include/global/PeriodicRunner.hpp
+        src/global/PeriodicRunner.cpp
         src/global/HTTPRequestHelper.cpp
         src/global/DeviceDetailsHelper.cpp
         src/global/CountryHelper.cpp
@@ -94,13 +96,20 @@ set(PROJECT_SOURCES
         src/api/RPC.cpp
 
         src/stats/traffic/TrafficLooper.cpp
+        include/stats/traffic/TrafficStatsManager.hpp
+        src/stats/traffic/TrafficStatsManager.cpp
 
         include/configs/sub/GroupUpdater.hpp
         src/configs/sub/GroupUpdater.cpp
+        include/configs/sub/RouteUpdater.hpp
+        src/configs/sub/RouteUpdater.cpp
         src/configs/sub/clash.cpp
 
         include/sys/Process.hpp
         src/sys/Process.cpp
+
+        include/sys/ProcessMetrics.hpp
+        src/sys/ProcessMetrics.cpp
 
         include/sys/UrlScheme.hpp
         src/sys/UrlScheme.cpp
@@ -113,10 +122,16 @@ set(PROJECT_SOURCES
         src/ui/mainwindow.cpp
         include/ui/mainwindow.h
         include/ui/mainwindow.ui
+        include/ui/widget/StartStopButton.hpp
+        src/ui/widget/StartStopButton.cpp
+        include/ui/widget/TrayProfileSelector.hpp
+        src/ui/widget/TrayProfileSelector.cpp
         include/ui/utils/DataViewHtmlGenerator.h
         src/ui/utils/DataViewHtmlGenerator.cpp
         include/ui/utils/ProfilesTableModel.h
         src/ui/utils/ProfilesTableModel.cpp
+        include/ui/utils/ProfilesFilterProxyModel.h
+        src/ui/utils/ProfilesFilterProxyModel.cpp
         include/ui/utils/ProfilesTableView.h
         src/ui/utils/ProfilesTableView.cpp
         include/ui/utils/ProfilesTableVerticalHeader.h
@@ -146,6 +161,9 @@ set(PROJECT_SOURCES
         include/ui/profile/edit_anytls.h
         src/ui/profile/edit_anytls.cpp
         include/ui/profile/edit_anytls.ui
+        include/ui/profile/edit_mieru.h
+        src/ui/profile/edit_mieru.cpp
+        include/ui/profile/edit_mieru.ui
         include/ui/profile/edit_tailscale.h
         src/ui/profile/edit_tailscale.cpp
         include/ui/profile/edit_tailscale.ui
@@ -205,6 +223,18 @@ set(PROJECT_SOURCES
         include/ui/setting/dialog_vpn_settings.h
         include/ui/setting/dialog_vpn_settings.ui
 
+        src/ui/stats/dialog_traffic_stats.cpp
+        include/ui/stats/dialog_traffic_stats.h
+        include/ui/stats/dialog_traffic_stats.ui
+        src/ui/stats/TrafficChartWidget.cpp
+        include/ui/stats/TrafficChartWidget.h
+
+        src/ui/stats/dialog_runtime_stats.cpp
+        include/ui/stats/dialog_runtime_stats.h
+        include/ui/stats/dialog_runtime_stats.ui
+        src/ui/stats/MiniChartWidget.cpp
+        include/ui/stats/MiniChartWidget.h
+
         src/ui/setting/dialog_hotkey.cpp
         include/ui/setting/dialog_hotkey.h
         include/ui/setting/dialog_hotkey.ui
@@ -246,13 +276,15 @@ set(PROJECT_SOURCES
         include/configs/common/multiplex.h
         include/configs/common/transport.h
         include/configs/common/Outbound.h
-        
+        include/configs/common/OutboundFactory.h
+
         # common impl
         src/configs/common/DialFields.cpp
         src/configs/common/TLS.cpp
         src/configs/common/multiplex.cpp
         src/configs/common/transport.cpp
         src/configs/common/Outbound.cpp
+        src/configs/common/OutboundFactory.cpp
         include/configs/outbounds/socks.h
         include/configs/outbounds/http.h
         include/configs/outbounds/shadowsocks.h
@@ -266,10 +298,12 @@ set(PROJECT_SOURCES
         include/configs/outbounds/naive.h
         include/configs/outbounds/shadowtls.h
         include/configs/outbounds/anyTLS.h
+        include/configs/outbounds/mieru.h
         include/configs/outbounds/ssh.h
         
         # outbounds impl
         src/configs/outbounds/anyTLS.cpp
+        src/configs/outbounds/mieru.cpp
         src/configs/outbounds/http.cpp
         src/configs/outbounds/hysteria.cpp
         src/configs/outbounds/shadowsocks.cpp
@@ -285,6 +319,7 @@ set(PROJECT_SOURCES
         src/configs/outbounds/vless.cpp
         src/configs/outbounds/vmess.cpp
         src/configs/outbounds/wireguard.cpp
+        src/configs/outbounds/custom.cpp
         include/configs/generate.h
         src/configs/generate.cpp
         include/configs/common/utils.h
@@ -329,6 +364,7 @@ set(PROJECT_SOURCES
         include/database/GroupsRepo.h
         include/database/RoutesRepo.h
         include/database/SettingsRepo.h
+        include/database/TrafficStatsRepo.h
 
         include/database/entities/Profile.h
         include/database/entities/Group.h
@@ -343,6 +379,7 @@ set(PROJECT_SOURCES
         src/database/ProfilesRepo.cpp
         src/database/GroupsRepo.cpp
         src/database/RoutesRepo.cpp
+        src/database/TrafficStatsRepo.cpp
 
         include/database/DatabaseManager.h
         src/database/DatabaseManager.cpp
@@ -353,6 +390,8 @@ set(PROJECT_SOURCES
         src/sys/linux/systemChecks.cpp
         include/configs/sub/warp.h
         src/configs/sub/warp.cpp
+        include/global/Common.h
+        src/global/Common.cpp
 )
 
 if (NOT APPLE AND Qt6_VERSION VERSION_GREATER_EQUAL 6.9.0)

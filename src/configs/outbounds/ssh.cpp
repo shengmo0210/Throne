@@ -160,4 +160,9 @@ namespace Configs {
     {
         return "SSH";
     }
+
+    SecurityInfo ssh::GetSecurity()
+    {
+        return {QObject::tr("Encrypted"), {}, SecurityLevel::Secure};
+    }
 }

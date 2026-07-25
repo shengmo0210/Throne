@@ -313,6 +313,11 @@ namespace Configs {
         return "WireGuard";
     }
 
+    SecurityInfo wireguard::GetSecurity()
+    {
+        return {QObject::tr("Encrypted"), enable_amnezia ? "AmneziaWG" : QString(), SecurityLevel::Secure};
+    }
+
     bool wireguard::IsEndpoint()
     {
         return true;
