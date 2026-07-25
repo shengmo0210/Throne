@@ -97,7 +97,7 @@
     </message>
     <message>
         <source>Skip confirmation When Deleting Profiles</source>
-        <translation>删除配置档时跳过确认</translation>
+        <translation>删除配置档时跳过确定</translation>
     </message>
     <message>
         <source>Select</source>
@@ -1492,7 +1492,7 @@ Throne will restart to complete the restore.</source>
     <name>DialogManageGroups</name>
     <message>
         <source>Groups</source>
-        <translation>分组</translation>
+        <translation>分组设置</translation>
     </message>
     <message>
         <source>New group</source>
@@ -1504,7 +1504,7 @@ Throne will restart to complete the restore.</source>
     </message>
     <message>
         <source>Confirmation</source>
-        <translation>确认</translation>
+        <translation>确定</translation>
     </message>
     <message>
         <source>Update all subscriptions?</source>
@@ -2164,7 +2164,7 @@ For more information, see the document &quot;Configuration/DNS&quot;.</source>
     </message>
     <message>
         <source>Group</source>
-        <translation>分组</translation>
+        <translation>分组设置</translation>
     </message>
     <message>
         <source>Download</source>
@@ -3105,7 +3105,7 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
     </message>
     <message>
         <source>Confirmation</source>
-        <translation>确认</translation>
+        <translation>确定</translation>
     </message>
     <message>
         <source>Remove %1?</source>
@@ -3443,7 +3443,7 @@ https://matsuridayo.github.io/n-configuration/#vpn-tun</translation>
     </message>
     <message>
         <source>Confirmation</source>
-        <translation>确认</translation>
+        <translation>确定</translation>
     </message>
     <message>
         <source>Type</source>
@@ -3642,6 +3642,10 @@ Please start your profile again.</source>
     <message>
         <source>Cancel</source>
         <translation>取消</translation>
+    </message>
+	<message>
+        <source>Manage Groups</source>
+        <translation>分组管理</translation>
     </message>
     <message>
         <source>Add new Group</source>
@@ -4202,7 +4206,7 @@ Release note:
     <name>ProxyItem</name>
     <message>
         <source>Confirmation</source>
-        <translation>确认</translation>
+        <translation>确定</translation>
     </message>
     <message>
         <source>Remove %1?</source>
