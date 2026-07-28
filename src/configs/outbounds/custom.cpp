@@ -32,6 +32,18 @@ namespace Configs
             return ob->GetSecurity();
         }
 
+        QJsonObject singBoxOutboundIdentity(const QJsonObject& o)
+        {
+            const auto type = o["type"].toString();
+            if (type.isEmpty() || type == "custom" || type == "selector" || type == "urltest"
+                || isSingBoxInfra(type))
+                return {};
+            std::shared_ptr<outbound> ob(NewOutboundByType(type));
+            if (!ob || ob->invalid) return {};
+            ob->ParseFromJson(o);
+            return ob->ExportIdentity();
+        }
+
         // Resolves route.final and selector/urltest indirection (depth-guarded)
         // down to the outbound that actually egresses.
         QJsonObject resolveSingBoxEgress(const QJsonArray& outbounds, const QString& tag, int depth)
@@ -107,6 +119,38 @@ namespace Configs
             return info;
         }
 
+        QJsonObject xrayOutboundIdentity(const QJsonObject& o)
+        {
+            const auto protocol = o["protocol"].toString();
+            if (protocol.isEmpty() || isXrayInfra(protocol)) return {};
+            QJsonObject id;
+            id["protocol"] = protocol;
+            const auto settings = o["settings"].toObject();
+            QJsonObject peer;
+            if (settings.contains("vnext")) peer = settings["vnext"].toArray().first().toObject();
+            else if (settings.contains("servers")) peer = settings["servers"].toArray().first().toObject();
+            if (!peer.isEmpty()) {
+                id["server"] = peer["address"];
+                id["server_port"] = peer["port"];
+            }
+            const auto stream = o["streamSettings"].toObject();
+            QJsonObject sid;
+            if (const auto network = stream["network"].toString(); !network.isEmpty()) sid["network"] = network;
+            const auto security = stream["security"].toString();
+            if (!security.isEmpty()) sid["security"] = security;
+            if (security == "reality") {
+                const auto r = stream["realitySettings"].toObject();
+                if (r.contains("serverName")) sid["sni"] = r["serverName"];
+                if (r.contains("fingerprint")) sid["fingerprint"] = r["fingerprint"];
+            } else if (security == "tls") {
+                const auto t = stream["tlsSettings"].toObject();
+                if (t.contains("serverName")) sid["sni"] = t["serverName"];
+                if (t.contains("fingerprint")) sid["fingerprint"] = t["fingerprint"];
+            }
+            if (!sid.isEmpty()) id["stream"] = sid;
+            return id;
+        }
+
         // Xray routes to the first outbound by default; pick the first real proxy.
         QJsonObject firstXrayEgress(const QJsonArray& outbounds)
         {
@@ -137,5 +181,26 @@ namespace Configs
             return egress.isEmpty() ? SecurityInfo{} : analyzeXrayOutbound(egress);
         }
         return {};
+    }
+
+    QJsonObject Custom::ExportIdentity()
+    {
+        QJsonObject ob;
+        if (type == CustomOutbound) {
+            ob = singBoxOutboundIdentity(QString2QJsonObject(config));
+        } else if (type == CustomFullConfig) {
+            const auto obj = QString2QJsonObject(config);
+            const auto egress = resolveSingBoxEgress(obj["outbounds"].toArray(),
+                                                     obj["route"].toObject()["final"].toString(), 5);
+            if (!egress.isEmpty()) ob = singBoxOutboundIdentity(egress);
+        } else if (type == CustomXrayOutbound) {
+            ob = xrayOutboundIdentity(QString2QJsonObject(config));
+        } else if (type == CustomXrayFullConfig) {
+            const auto obj = QString2QJsonObject(config);
+            const auto egress = firstXrayEgress(obj["outbounds"].toArray());
+            if (!egress.isEmpty()) ob = xrayOutboundIdentity(egress);
+        }
+        if (ob.isEmpty()) return ExportToJson();
+        return QJsonObject{{"subtype", type}, {"ob", ob}};
     }
 }

@@ -214,6 +214,7 @@ namespace Configs {
                         ctx->error = "Chain hops in routing profile cannot use an extra core, a custom full config, or be of type chain";
                         return;
                     }
+                    if (usesXrayCore(hopEnt)) ctx->proxyUsesXray = true;
                     // Collect domains for DNS direct rules
                     if (auto addrs = getEntDomains({hopID}, ctx->error); !addrs.empty()) {
                         if (!ctx->error.isEmpty()) return;
@@ -230,6 +231,7 @@ namespace Configs {
                 suffix += chain->list.size();
             } else {
                 // Single-hop outbound (existing logic)
+                if (usesXrayCore(neededEnt)) ctx->proxyUsesXray = true;
                 if (auto entAddrs = getEntDomains({neededEnt->id}, ctx->error); !entAddrs.empty())
                 {
                     if (!ctx->error.isEmpty()) return;
@@ -304,12 +306,17 @@ namespace Configs {
             QList<int> groupEnts;
             if (auto frontEntID = group->front_proxy_id; frontEntID >= 0) groupEnts << frontEntID;
             if (auto landingEntID = group->landing_proxy_id; landingEntID >= 0) groupEnts << landingEntID;
+            for (const auto &id : groupEnts)
+            {
+                if (auto pe = Configs::dataManager->profilesRepo->GetProfile(id); pe != nullptr && usesXrayCore(pe)) ctx->proxyUsesXray = true;
+            }
             auto addrs = getEntDomains(groupEnts, ctx->error);
             if (!ctx->error.isEmpty()) return;
             for (const auto &addr: addrs)
             {
                 preReqs->dnsDeps->directDomains << addr;
             }
+            if (!addrs.isEmpty()) preReqs->dnsDeps->needDirectDnsRules = true;
         }
 
         // Hijack
@@ -586,6 +593,19 @@ namespace Configs {
                 };
         }
 
+        // Xray bridge hops resolve their own server domains through dns-in
+        // (wired via xray_outbound_dns_address). Those queries bootstrap the
+        // chain itself, so they must never be routed over the proxy — that
+        // deadlocks the chain before it can come up.
+        if (!ctx->forTest && ctx->proxyUsesXray) {
+            rules += QJsonObject{
+                    {"inbound", QJsonArray{"dns-in"}},
+                    {"action", "route"},
+                    {"strategy", dataManager->settingsRepo->direct_dns_strategy},
+                    {"server", "dns-direct"},
+                };
+        }
+
         if (!ctx->forTest && !ctx->buildConfigResult->extraCoreData->path.isEmpty())
         {
             QJsonArray coreProcessPaths;
@@ -605,29 +625,39 @@ namespace Configs {
         // HijackRules
         if (Configs::dataManager->settingsRepo->enable_dns_server && !ctx->forTest)
         {
-            rules += QJsonObject{
-                        {"rule_set", hijackDeps->hijackGeoAssets},
-                        {"domain", hijackDeps->hijackDomains},
-                        {"domain_suffix", hijackDeps->hijackDomainSuffix},
-                        {"domain_regex", hijackDeps->hijackDomainRegex},
-                        {"query_type", "A"},
-                        {"action", "predefined"},
-                        {"rcode", "NOERROR"},
-                        {"answer", QString("* IN A %1").arg(Configs::dataManager->settingsRepo->dns_v4_resp)},
-                    };
+            // Same AND-vs-OR pitfall as the direct/proxy rules below, so the
+            // rule_set gets its own rule. The non-empty guards also keep an empty
+            // rule list from degenerating into a query_type-only rule, which would
+            // hijack every lookup instead of none.
+            auto addHijackRules = [&](const QJsonObject &conditions) {
+                auto v4 = conditions;
+                v4["query_type"] = "A";
+                v4["action"] = "predefined";
+                v4["rcode"] = "NOERROR";
+                v4["answer"] = QString("* IN A %1").arg(Configs::dataManager->settingsRepo->dns_v4_resp);
+                rules += v4;
 
-            if (!Configs::dataManager->settingsRepo->dns_v6_resp.isEmpty())
+                if (Configs::dataManager->settingsRepo->dns_v6_resp.isEmpty()) return;
+                auto v6 = conditions;
+                v6["query_type"] = "AAAA";
+                v6["action"] = "predefined";
+                v6["rcode"] = "NOERROR";
+                v6["answer"] = QString("* IN AAAA %1").arg(Configs::dataManager->settingsRepo->dns_v6_resp);
+                rules += v6;
+            };
+
+            if (!hijackDeps->hijackGeoAssets.isEmpty())
             {
-                rules += QJsonObject{
-                            {"rule_set", hijackDeps->hijackGeoAssets},
+                addHijackRules(QJsonObject{{"rule_set", hijackDeps->hijackGeoAssets}});
+            }
+            if (!hijackDeps->hijackDomains.isEmpty() || !hijackDeps->hijackDomainSuffix.isEmpty() ||
+                !hijackDeps->hijackDomainRegex.isEmpty())
+            {
+                addHijackRules(QJsonObject{
                             {"domain", hijackDeps->hijackDomains},
                             {"domain_suffix", hijackDeps->hijackDomainSuffix},
                             {"domain_regex", hijackDeps->hijackDomainRegex},
-                            {"query_type", "AAAA"},
-                            {"action", "predefined"},
-                            {"rcode", "NOERROR"},
-                            {"answer", QString("* IN AAAA %1").arg(Configs::dataManager->settingsRepo->dns_v6_resp)},
-                        };
+                        });
             }
         }
 
@@ -651,31 +681,57 @@ namespace Configs {
         }
 
         if (dnsDeps->needDirectDnsRules) {
-            rules += QJsonObject{
-                    {"rule_set", dnsDeps->directRuleSets},
-                    {"domain", dnsDeps->directDomains},
-                    {"domain_suffix", dnsDeps->directSuffixes},
-                    {"domain_keyword", dnsDeps->directKeywords},
-                    {"domain_regex", dnsDeps->directRegexes},
-                    {"action", "route"},
-                    {"strategy", dataManager->settingsRepo->direct_dns_strategy},
-                    {"server", "dns-direct"},
-                };
+            // sing-box matches rule_set with AND against the other condition
+            // types (domain/suffix/keyword/regex are OR'd among themselves), so
+            // the rule_set needs its own rule — otherwise plain domains only
+            // match when they also match the rule_set, and proxy server domains
+            // would never reach dns-direct.
+            if (!dnsDeps->directRuleSets.isEmpty()) {
+                rules += QJsonObject{
+                        {"rule_set", dnsDeps->directRuleSets},
+                        {"action", "route"},
+                        {"strategy", dataManager->settingsRepo->direct_dns_strategy},
+                        {"server", "dns-direct"},
+                    };
+            }
+            if (!dnsDeps->directDomains.isEmpty() || !dnsDeps->directSuffixes.isEmpty() ||
+                !dnsDeps->directKeywords.isEmpty() || !dnsDeps->directRegexes.isEmpty()) {
+                rules += QJsonObject{
+                        {"domain", dnsDeps->directDomains},
+                        {"domain_suffix", dnsDeps->directSuffixes},
+                        {"domain_keyword", dnsDeps->directKeywords},
+                        {"domain_regex", dnsDeps->directRegexes},
+                        {"action", "route"},
+                        {"strategy", dataManager->settingsRepo->direct_dns_strategy},
+                        {"server", "dns-direct"},
+                    };
+            }
         }
 
         const bool useDirectFinalDNS = dataManager->settingsRepo->dns_final_out == "direct";
 
         if (dnsDeps->needProxyDnsRules && useDirectFinalDNS) {
-            rules += QJsonObject{
-                    {"rule_set", dnsDeps->proxyRuleSets},
-                    {"domain", dnsDeps->proxyDomains},
-                    {"domain_suffix", dnsDeps->proxySuffixes},
-                    {"domain_keyword", dnsDeps->proxyKeywords},
-                    {"domain_regex", dnsDeps->proxyRegexes},
-                    {"action", "route"},
-                    {"strategy", dataManager->settingsRepo->remote_dns_strategy},
-                    {"server", "dns-remote"},
-                };
+            // Same AND-vs-OR pitfall as the direct rules above.
+            if (!dnsDeps->proxyRuleSets.isEmpty()) {
+                rules += QJsonObject{
+                        {"rule_set", dnsDeps->proxyRuleSets},
+                        {"action", "route"},
+                        {"strategy", dataManager->settingsRepo->remote_dns_strategy},
+                        {"server", "dns-remote"},
+                    };
+            }
+            if (!dnsDeps->proxyDomains.isEmpty() || !dnsDeps->proxySuffixes.isEmpty() ||
+                !dnsDeps->proxyKeywords.isEmpty() || !dnsDeps->proxyRegexes.isEmpty()) {
+                rules += QJsonObject{
+                        {"domain", dnsDeps->proxyDomains},
+                        {"domain_suffix", dnsDeps->proxySuffixes},
+                        {"domain_keyword", dnsDeps->proxyKeywords},
+                        {"domain_regex", dnsDeps->proxyRegexes},
+                        {"action", "route"},
+                        {"strategy", dataManager->settingsRepo->remote_dns_strategy},
+                        {"server", "dns-remote"},
+                    };
+            }
         }
 
         // final rule: proxy

@@ -90,6 +90,8 @@ namespace Configs
         // Analyzes the embedded config's egress outbound; blank when unknown.
         SecurityInfo GetSecurity() override;
 
+        QJsonObject ExportIdentity() override;
+
         bool IsEndpoint() override
         {
             // Only raw sing-box outbound JSON can describe an endpoint; Xray
