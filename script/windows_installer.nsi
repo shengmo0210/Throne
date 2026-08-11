@@ -34,6 +34,8 @@ Var RadioJustMe
 Var IsAllUsers
 Var SkipPages
 Var UninstPath
+Var DeleteUserData
+Var CheckDeleteData
 
 ; =====================================
 ; PAGE SEQUENCE
@@ -56,6 +58,7 @@ Page custom InstallModePageCreate InstallModePageLeave
 
 ; Uninstaller pages
 !insertmacro MUI_UNPAGE_CONFIRM
+UninstPage custom un.DataPageCreate un.DataPageLeave
 !insertmacro MUI_UNPAGE_INSTFILES
 
 !insertmacro MUI_LANGUAGE "English"
@@ -272,6 +275,7 @@ SectionEnd
 ; =====================================
 Function un.onInit
   ClearErrors
+  StrCpy $DeleteUserData 1
 
   ; Grab the folder passed via command-line (if we elevated), otherwise use standard folder
   ${GetParameters} $R0
@@ -308,6 +312,39 @@ Function un.onInit
   StrCpy $INSTDIR $UninstPath
 FunctionEnd
 
+; =====================================
+; USER DATA PAGE
+; =====================================
+Function un.DataPageCreate
+  !insertmacro MUI_HEADER_TEXT "Remove Settings" "Choose what to do with your Throne data."
+
+  nsDialogs::Create 1018
+  Pop $0
+
+  ${NSD_CreateLabel} 0 0 100% 24u "Throne keeps its profiles, settings and logs in the installation folder, or under your user profile when that folder is not writable."
+  Pop $0
+
+  ${NSD_CreateCheckbox} 10u 30u 100% 12u "Delete my profiles, settings and logs"
+  Pop $CheckDeleteData
+  ${If} $DeleteUserData == 1
+    SendMessage $CheckDeleteData ${BM_SETCHECK} ${BST_CHECKED} 0
+  ${EndIf}
+
+  ${NSD_CreateLabel} 10u 48u 100% 20u "Clear this if you plan to reinstall Throne later and want to keep them."
+  Pop $0
+
+  nsDialogs::Show
+FunctionEnd
+
+Function un.DataPageLeave
+  ${NSD_GetState} $CheckDeleteData $0
+  ${If} $0 == ${BST_CHECKED}
+    StrCpy $DeleteUserData 1
+  ${Else}
+    StrCpy $DeleteUserData 0
+  ${EndIf}
+FunctionEnd
+
 Section "Uninstall"
   !insertmacro AbortOnRunningApp "$INSTDIR\Throne.exe"
 
@@ -322,7 +359,8 @@ Section "Uninstall"
   Delete "$INSTDIR\updater.old"
   Delete "$INSTDIR\uninstall.exe"
 
-  ${If} ${FileExists} "$INSTDIR\config\throne.db"
+  ${If} $DeleteUserData == 1
+  ${AndIf} ${FileExists} "$INSTDIR\config\throne.db"
     RMDir /r "$INSTDIR\config"
   ${EndIf}
 
@@ -331,4 +369,13 @@ Section "Uninstall"
   ; Clean up registry!
   DeleteRegKey SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\Throne"
   DeleteRegKey SHCTX "Software\Throne"
+
+  ; Last, because SHCTX follows the shell var context and an all-users uninstall
+  ; would otherwise resolve $APPDATA to ProgramData.
+  ${If} $DeleteUserData == 1
+    SetShellVarContext current
+    ${If} ${FileExists} "$APPDATA\${APP_DIR_NAME}\*.*"
+      RMDir /r "$APPDATA\${APP_DIR_NAME}"
+    ${EndIf}
+  ${EndIf}
 SectionEnd

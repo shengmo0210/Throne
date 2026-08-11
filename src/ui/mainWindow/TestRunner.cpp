@@ -150,9 +150,9 @@ void TestRunner::runUrlProbe(const Target& target) {
     QString coreError;
     libcore::TestResp result;
     {
-        // The core's buffer is global and drains on read, so a poll can take a
-        // sibling batch's results; unknown tags are skipped and it reclaims them below.
-        ResultPoller poller([this, tag2entID = target.tag2entID] {
+        // The core's buffer is global: a poll can take a sibling's results, reclaimed below.
+        ResultPoller poller([this, gen = sessionGen_.load(), tag2entID = target.tag2entID] {
+            if (sessionGen_.load() != gen) return;
             bool ok = false;
             const auto resp = defaultClient->QueryURLTest(&ok);
             if (!ok || resp.results.empty()) return;
@@ -213,7 +213,8 @@ void TestRunner::runIpProbe(const Target& target) {
     QString coreError;
     libcore::IPTestResp result;
     {
-        ResultPoller poller([this, tag2entID = target.tag2entID] {
+        ResultPoller poller([this, gen = sessionGen_.load(), tag2entID = target.tag2entID] {
+            if (sessionGen_.load() != gen) return;
             bool ok = false;
             const auto resp = defaultClient->QueryIPTest(&ok);
             if (!ok || resp.results.empty()) return;
@@ -286,6 +287,7 @@ void TestRunner::runLatencyGroup(LatencyKind kind, const QList<int>& requestedID
         finish();
         return;
     }
+    sessionGen_.fetch_add(1);
 
     runOnNewThread([this, profileIDs, panelKind, isUrl, finish]() {
         stopRequested_.store(false);
@@ -378,6 +380,7 @@ void TestRunner::runSpeedTests(const QList<int>& requestedIDs, bool testCurrent)
         MessageBoxWarning(software_name, MainWindow::tr("The last test did not finish completely, please wait. If it persists, please restart the program."));
         return;
     }
+    sessionGen_.fetch_add(1);
 
     testingCurrent_.store(testCurrent);
 
@@ -557,7 +560,8 @@ void TestRunner::runSpeedProbe(const Target& target)
     QString coreError;
     libcore::SpeedTestResponse result;
     {
-        ResultPoller poller([this, tag2entID = target.tag2entID, testCurrent = target.testCurrent, speedtestConf] {
+        ResultPoller poller([this, gen = sessionGen_.load(), tag2entID = target.tag2entID, testCurrent = target.testCurrent, speedtestConf] {
+            if (sessionGen_.load() != gen) return;
             if (speedtestConf == Configs::TestConfig::COUNTRY) pollCountryTest(tag2entID, testCurrent);
             else pollSpeedTest(tag2entID, testCurrent);
         }, kSpeedPollIntervalMs);

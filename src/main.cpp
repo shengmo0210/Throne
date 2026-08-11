@@ -4,6 +4,8 @@
 #include <QApplication>
 #include <QCryptographicHash>
 #include <QDir>
+#include <QDirIterator>
+#include <QFile>
 #include <QFileInfo>
 #include <QUrl>
 #include <QTranslator>
@@ -101,6 +103,67 @@ void loadTranslate(const QString& locale) {
     }
 }
 
+namespace {
+    constexpr auto FALLBACK_MARKER = "config/.install-dir-unwritable";
+
+    // QFileInfo::isWritable reports the read-only attribute, not what a UAC-filtered
+    // token may actually do under Program Files.
+    bool DirIsWritable(const QDir &dir) {
+        if (!dir.exists() && !QDir().mkpath(dir.absolutePath())) return false;
+        QFile probe(dir.absoluteFilePath(".throne-write-test"));
+        if (!probe.open(QIODevice::WriteOnly)) return false;
+        probe.close();
+        probe.remove();
+        return true;
+    }
+
+    bool ConfigDirIsUsable(const QDir &configDir) {
+        if (!DirIsWritable(configDir)) return false;
+        const QString db = configDir.absoluteFilePath("throne.db");
+        if (!QFile::exists(db)) return true;
+        QFile file(db);
+        return file.open(QIODevice::ReadWrite);
+    }
+
+    void CopyDirContents(const QString &from, const QString &to) {
+        QDir().mkpath(to);
+        QDirIterator it(from, QDir::Files | QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot);
+        while (it.hasNext()) {
+            it.next();
+            const QString target = QDir(to).absoluteFilePath(it.fileName());
+            if (it.fileInfo().isDir()) CopyDirContents(it.filePath(), target);
+            else if (!QFile::exists(target)) QFile::copy(it.filePath(), target);
+        }
+    }
+
+    // An elevated relaunch finds the install dir writable again, so the fallback is
+    // pinned by a marker or the two runs land on different databases.
+    bool AdoptUserConfigDir(const QDir &installWd, const QDir &userWd) {
+        QFile marker(userWd.absoluteFilePath(FALLBACK_MARKER));
+        if (marker.open(QIODevice::ReadOnly)) {
+            const bool pinnedHere = QString::fromUtf8(marker.readAll()).trimmed() == installWd.absolutePath();
+            marker.close();
+            if (pinnedHere) return true;
+        }
+
+        const QString installConfig = installWd.absoluteFilePath("config");
+        if (ConfigDirIsUsable(QDir(installConfig))) return false;
+
+        const QString userConfig = userWd.absoluteFilePath("config");
+        QDir().mkpath(userConfig);
+        if (!QFile::exists(userConfig + "/throne.db") && QFile::exists(installConfig + "/throne.db")) {
+            CopyDirContents(installConfig, userConfig);
+            LOG_WARN(QString("copied existing config from %1").arg(installConfig));
+        }
+        if (marker.open(QIODevice::WriteOnly)) {
+            marker.write(installWd.absolutePath().toUtf8());
+            marker.close();
+        }
+        LOG_WARN(QString("%1 is not writable, using %2").arg(installConfig, userConfig));
+        return true;
+    }
+} // namespace
+
 #define LOCAL_SERVER_PREFIX "throne-"
 
 int main(int argc, char* argv[]) {
@@ -168,12 +231,18 @@ int main(int argc, char* argv[]) {
 #ifdef NKR_CPP_USE_APPDATA
     useAppdata = true; // Example: Package & MacOS
 #endif
+    QApplication::setApplicationName("Throne");
     if(useAppdata) {
-        QApplication::setApplicationName("Throne");
         if (!appdataDir.isEmpty()) {
             wd.setPath(appdataDir);
         } else {
             wd.setPath(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation));
+        }
+    } else {
+        const QDir userWd(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation));
+        if (AdoptUserConfigDir(wd, userWd)) {
+            wd = userWd;
+            useAppdata = true;
         }
     }
     if (!wd.exists()) wd.mkpath(wd.absolutePath());

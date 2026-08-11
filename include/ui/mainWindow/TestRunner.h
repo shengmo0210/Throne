@@ -86,6 +86,8 @@ private:
 
     // Held for a whole sweep, so it must never double as a per-batch latch.
     QMutex session_;
+    // A poll thread is not joined, so a late tick must not drain the next sweep.
+    std::atomic<quint64> sessionGen_ = 0;
     std::atomic<bool> stopRequested_ = false;
     std::atomic<bool> testingCurrent_ = false;
 
