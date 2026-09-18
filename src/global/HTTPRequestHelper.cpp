@@ -18,7 +18,7 @@
 
 namespace Configs_network {
 
-    HTTPResponse NetworkRequestHelper::HttpGet(const QString &url, bool sendHwid, bool useProxy) {
+    HTTPResponse NetworkRequestHelper::HttpGet(const QString &url, bool sendHwid, bool useProxy, qint64 maxBytes) {
         QNetworkRequest request;
         QNetworkAccessManager accessManager;
         accessManager.setTransferTimeout(10000);
@@ -37,7 +37,6 @@ namespace Configs_network {
             }
             accessManager.setProxy(p);
         }
-        // Set attribute
         request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
         request.setHeader(QNetworkRequest::KnownHeaders::UserAgentHeader, Configs::dataManager->settingsRepo->GetUserAgent());
         if (Configs::dataManager->settingsRepo->net_insecure) {
@@ -45,11 +44,9 @@ namespace Configs_network {
             c.setPeerVerifyMode(QSslSocket::PeerVerifyMode::VerifyNone);
             request.setSslConfiguration(c);
         }
-        //Attach HWID and device info headers if enabled in settings
         if (sendHwid) {
             auto details = GetDeviceDetails();
 
-            // Parse custom parameters if provided
             QMap<QString, QString> customParams;
             if (!Configs::dataManager->settingsRepo->sub_custom_hwid_params.isEmpty()) {
                 QStringList pairs = Configs::dataManager->settingsRepo->sub_custom_hwid_params.split(',');
@@ -59,12 +56,10 @@ namespace Configs_network {
                     if (eqPos > 0) {
                         QString key = trimmed.left(eqPos).trimmed();
                         QString value = trimmed.mid(eqPos + 1).trimmed();
-                        // Validate: key must be one of the allowed parameters, value must not contain newlines
                         if (!key.isEmpty() && !value.isEmpty() &&
                             !value.contains('\n') && !value.contains('\r') &&
-                            value.length() < 1000) { // Reasonable length limit
+                            value.length() < 1000) {
                             QString lowerKey = key.toLower();
-                            // Only accept known parameter keys
                             if (lowerKey == "hwid" || lowerKey == "os" ||
                                 lowerKey == "osversion" || lowerKey == "model") {
                                 customParams[lowerKey] = value;
@@ -74,7 +69,6 @@ namespace Configs_network {
                 }
             }
 
-            // Use custom values if provided, otherwise use default values
             QString hwid = customParams.contains("hwid") ? customParams["hwid"] : details.hwid;
             QString os = customParams.contains("os") ? customParams["os"] : details.os;
             QString osVersion = customParams.contains("osversion") ? customParams["osversion"] : details.osVersion;
@@ -85,7 +79,6 @@ namespace Configs_network {
             if (!osVersion.isEmpty()) request.setRawHeader("x-ver-os", osVersion.toUtf8());
             if (!model.isEmpty()) request.setRawHeader("x-device-model", model.toUtf8());
         }
-        //
         auto _reply = accessManager.get(request);
         connect(_reply, &QNetworkReply::sslErrors, _reply, [](const QList<QSslError> &errors) {
             QStringList error_str;
@@ -94,30 +87,50 @@ namespace Configs_network {
             }
             MW_show_log(QString("SSL Errors: %1 %2").arg(error_str.join(","), Configs::dataManager->settingsRepo->net_insecure ? "(Ignored)" : ""));
         });
-        // Wait for response
+        QByteArray body;
+        bool tooLarge = false;
+        connect(_reply, &QNetworkReply::readyRead, _reply, [&] {
+            if (body.isEmpty()) {
+                const auto expected = _reply->header(QNetworkRequest::ContentLengthHeader).toLongLong();
+                const qint64 reserveCap = maxBytes > 0 ? maxBytes : 256LL * 1024 * 1024;
+                if (expected > 0 && expected <= reserveCap) body.reserve(static_cast<qsizetype>(expected));
+            }
+            body += _reply->readAll();
+            if (maxBytes > 0 && body.size() > maxBytes) {
+                tooLarge = true;
+                _reply->abort();
+            }
+        });
         QEventLoop loop;
         connect(_reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
         loop.exec();
+        body += _reply->readAll();
 
-        //
-        auto result = HTTPResponse{_reply->error() == QNetworkReply::NetworkError::NoError ? "" : _reply->errorString(),
-                                       _reply->readAll(), _reply->rawHeaderPairs()};
+        HTTPResponse result;
+        result.header = _reply->rawHeaderPairs();
+        if (tooLarge) {
+            result.error = QObject::tr("Response larger than %1 MB").arg(maxBytes / (1024 * 1024));
+        } else {
+            result.error = _reply->error() == QNetworkReply::NetworkError::NoError ? "" : _reply->errorString();
+            result.data = std::move(body);
+        }
         _reply->deleteLater();
         return result;
     }
 
     QString NetworkRequestHelper::GetHeader(const QList<QPair<QByteArray, QByteArray>> &header, const QString &name) {
+        const QByteArray needle = name.toLatin1();
         for (const auto &p: header) {
-            if (QString(p.first).toLower() == name.toLower()) return p.second;
+            if (p.first.compare(needle, Qt::CaseInsensitive) == 0) return p.second;
         }
-        return "";
+        return {};
     }
 
-    QString NetworkRequestHelper::DownloadAsset(const QString &url, const QString &fileName) {
+    QString NetworkRequestHelper::DownloadAsset(const QString &url, const QString &fileName, bool useProxy) {
         QNetworkRequest request;
         QNetworkAccessManager accessManager;
         request.setUrl(url);
-        if (Configs::dataManager->settingsRepo->net_use_proxy || Configs::dataManager->settingsRepo->spmode_system_proxy) {
+        if (Configs::dataManager->settingsRepo->net_use_proxy || Configs::dataManager->settingsRepo->spmode_system_proxy || useProxy) {
             if (Configs::dataManager->settingsRepo->started_id < 0) {
                 return QObject::tr("Request with proxy but no profile started.");
             }

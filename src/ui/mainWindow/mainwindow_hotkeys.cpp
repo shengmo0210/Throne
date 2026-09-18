@@ -30,7 +30,7 @@ void MainWindow::RegisterHotkey(bool unregister) {
 
     for (const auto &key: regstr) {
         if (key.isEmpty()) continue;
-        if (regstr.count(key) > 1) return; // Conflict hotkey
+        if (regstr.count(key) > 1) return;
     }
     for (const auto &key: regstr) {
         QKeySequence k(key);
@@ -77,8 +77,10 @@ void MainWindow::RegisterHiddenMenuShortcuts(bool unregister) {
 
     if (unregister) return;
 
-    // Menus attached to visible toolButtons already register their actions' shortcuts,
-    // so seed with those to avoid registering them twice.
+    // A native menubar keeps its actions' shortcuts live even while hidden, so a second binding makes both ambiguous and kills them.
+    if (ui->menubar->isNativeMenuBar()) return;
+
+    // Menus on visible toolButtons already register their actions' shortcuts; seed to avoid duplicates.
     QSet<QKeySequence> claimed;
     collectMenuShortcuts(ui->menu_program, claimed);
     collectMenuShortcuts(ui->menu_preferences, claimed);
@@ -92,7 +94,7 @@ void MainWindow::RegisterHiddenMenuShortcuts(bool unregister) {
 
 void MainWindow::setActionsData()
 {
-    // assign ids to menu actions so that we can save and restore them
+    // Ids are the keys shortcuts are saved and restored under.
     ui->menu_add_from_input->setData(QString("m2"));
     ui->menu_clear_test_result->setData(QString("m3"));
     ui->menu_clone->setData(QString("m4"));
@@ -141,11 +143,20 @@ void MainWindow::loadShortcuts()
     for (QList<QAction *> actions = findChildren<QAction *>(); QAction *action : actions)
     {
         if (action->data().isNull() || action->data().toString().isEmpty()) continue;
-        // Only apply saved shortcut if user has defined one; preserve default UI shortcuts otherwise
         if (mp.count(action->data().toString()) > 0) {
             action->setShortcut(mp[action->data().toString()]);
         }
     }
+
+#ifdef Q_OS_MACOS
+    // After the loop: setShortcut above replaces the list.
+    auto hideShortcuts = ui->actionHide_window->shortcuts();
+    const QKeySequence hideSeq(Qt::ControlModifier | Qt::Key_W);
+    if (!hideShortcuts.contains(hideSeq)) {
+        hideShortcuts.append(hideSeq);
+        ui->actionHide_window->setShortcuts(hideShortcuts);
+    }
+#endif
 
     RegisterHiddenMenuShortcuts();
 }

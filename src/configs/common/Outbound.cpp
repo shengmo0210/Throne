@@ -27,7 +27,6 @@ namespace Configs {
                 return info;
             }
             if (tls->enabled || MustTLS()) {
-                // Skipping cert verification opens TLS to MITM, so not secure.
                 if (tls->insecure) {
                     info.label = QObject::tr("Insecure TLS");
                     info.level = SecurityLevel::Weak;
@@ -84,11 +83,12 @@ namespace Configs {
                 return false;
             server_port = 0;
         } else {
-            server_port = url.port();
+            server_port = url.port(0);
         }
 
         if (url.hasFragment()) name = url.fragment(QUrl::FullyDecoded);
-        server = url.host();
+        // FullyEncoded keeps an IDN host in its xn-- form, which is what DNS carries
+        server = url.host(QUrl::FullyEncoded);
         dialFields->ParseFromLink(link);
         return true;
     }
@@ -96,7 +96,7 @@ namespace Configs {
     {
         if (object.isEmpty()) return false;
         if (object.contains("tag")) name = object["tag"].toString();
-        if (object.contains("server")) server = object["server"].toString();
+        if (object.contains("server")) server = toAceHost(object["server"].toString());
         if (object.contains("server_port")) server_port = object["server_port"].toInt();
         dialFields->ParseFromJson(object);
         return true;
@@ -104,7 +104,7 @@ namespace Configs {
     bool outbound::ParseFromClash(const clash::Proxies& object)
     {
         name = QString::fromStdString(object.name);
-        server = QString::fromStdString(object.server);
+        server = toAceHost(QString::fromStdString(object.server));
         server_port = object.port;
         return true;
     }
@@ -149,10 +149,7 @@ namespace Configs {
         if (!server.isEmpty()) object["server"] = server;
         if (server_port > 0) object["server_port"] = server_port;
         mergeJsonObjects(object, dialFields->Build().object);
-        // hiddify: the custom TLS-fragment implementation lives at the dialer level
-        // (a sibling of "tls", not inside it), so emit it here when it is selected,
-        // TLS is enabled, and fragment is effectively on. The built-in implementation
-        // is emitted inside TLS::Build() as tls.fragment instead.
+        // The custom fragment implementation lives at the dialer level, a sibling of "tls", not inside it.
         if (HasTLS()) {
             auto t = GetTLS();
             if (t->enabled && t->FragmentEffectivelyOn() &&

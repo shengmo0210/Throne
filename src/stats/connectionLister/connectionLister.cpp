@@ -1,37 +1,32 @@
 #include <QThread>
 #include <QDateTime>
-#include <core/server/gen/libcore.pb.h>
+#include <core/gen/libcore.pb.h>
 #include <include/api/RPC.h>
 #include "include/ui/mainwindow_interface.h"
 #include <include/stats/connections/connectionLister.hpp>
 #include "include/stats/traffic/TrafficStatsManager.hpp"
+#include "include/global/LocalNetwork.hpp"
+
+#include <algorithm>
 
 
 
 namespace Stats
 {
-    // Ignore samples taken closer together than this when deriving a rate, so
-    // out-of-band ForceUpdate() polls (e.g. on a header click) don't divide a
-    // tiny byte delta by a tiny interval and produce a misleading spike.
+    // Guards out-of-band ForceUpdate() polls: a tiny byte delta over a tiny interval reads as a spike.
     static constexpr qint64 kSpeedSampleMinMs = 500;
 
-    // Poll cadence: 1 Hz while the connections view is visible, relaxed otherwise
-    // (off-view polls only keep the per-app traffic stats sampled).
+    // Off-view polls still run: they keep the per-app traffic stats sampled.
     static constexpr unsigned long kActivePollMs = 1000;
     static constexpr unsigned long kRelaxedPollMs = 5000;
 
     ConnectionLister* connection_lister = new ConnectionLister();
 
-    ConnectionLister::ConnectionLister()
-    {
-        state = std::make_shared<QSet<QString>>();
-    }
-
     void ConnectionLister::ForceUpdate()
     {
-        mu.lock();
-        update();
-        mu.unlock();
+        QMutexLocker wlk(&waitMu_);
+        forced_ = true;
+        waitCond_.wakeAll();
     }
 
 
@@ -41,19 +36,20 @@ namespace Stats
         {
             if (stop) return;
 
+            bool forced = false;
             {
-                // Sleep until the next poll, but wake immediately when the view
-                // opens (SetInView) or we're shutting down (stopLoop). 1 Hz while
-                // visible; relaxed otherwise.
                 QMutexLocker wlk(&waitMu_);
-                waitCond_.wait(&waitMu_, inView_.load() ? kActivePollMs : kRelaxedPollMs);
+                if (!forced_) waitCond_.wait(&waitMu_, inView_.load() ? kActivePollMs : kRelaxedPollMs);
+                forced = forced_;
+                forced_ = false;
             }
 
             if (stop) return;
-            if (suspend || !Configs::dataManager->settingsRepo->enable_stats) continue;
+            // A forced poll is a user action on the table, so it runs even while stats are off.
+            if (!forced && (suspend || !Configs::dataManager->settingsRepo->enable_stats)) continue;
 
             mu.lock();
-            update();
+            update(forced || inView_.load());
             mu.unlock();
         }
     }
@@ -63,15 +59,23 @@ namespace Stats
         const bool was = inView_.exchange(inView);
         if (inView && !was)
         {
-            // Became visible: wake the loop so it switches to 1 Hz and refreshes
-            // now instead of waiting out the remaining relaxed sleep.
             QMutexLocker wlk(&waitMu_);
             waitCond_.wakeAll();
         }
     }
 
-    // Map one wire connection into the in-memory metadata used by the UI table.
-    static ConnectionMetadata metaFromProto(const libcore::ConnectionMetaData& conn)
+    QString EndpointHost(const QString& endpoint)
+    {
+        if (endpoint.startsWith('['))
+        {
+            const auto close = endpoint.indexOf(']');
+            return close > 0 ? endpoint.mid(1, close - 1) : endpoint.mid(1);
+        }
+        const auto colon = endpoint.lastIndexOf(':');
+        return colon < 0 ? endpoint : endpoint.left(colon);
+    }
+
+    static ConnectionMetadata metaFromProto(const libcore::ConnectionMetaData& conn, const QString& localLabel)
     {
         ConnectionMetadata c;
         c.id = QString::fromStdString(conn.id.value());
@@ -86,27 +90,73 @@ namespace Stats
         c.processPath = QString::fromStdString(conn.process_path.value());
         c.protocol = QString::fromStdString(conn.protocol.value());
         c.closedAtMs = conn.closed_at.value();
+        c.source = QString::fromStdString(conn.source.value());
+        // In tun mode our own traffic enters with the tun's (or this machine's LAN) address, so a loopback-only test would label it a LAN client.
+        const QString host = EndpointHost(c.source);
+        c.sourceDisplay = host.isEmpty() || LocalNetwork::IsOwnAddress(host) ? localLabel : host;
         return c;
     }
 
-    void ConnectionLister::update()
+    namespace
+    {
+        // The core iterates a map, so orderings must be total or equal keys reshuffle every poll.
+        template <typename Key>
+        void sortLargestFirst(QList<ConnectionMetadata>& list, bool asc, Key key)
+        {
+            std::sort(list.begin(), list.end(), [&](const ConnectionMetadata& a, const ConnectionMetadata& b)
+            {
+                const auto& ka = key(a);
+                const auto& kb = key(b);
+                if (ka == kb) return asc ? a.id > b.id : a.id < b.id;
+                return asc ? ka < kb : ka > kb;
+            });
+        }
+
+        // Text columns read the other way round: unflipped means A→Z, not Z→A.
+        template <typename Key>
+        void sortSmallestFirst(QList<ConnectionMetadata>& list, bool asc, Key key)
+        {
+            std::sort(list.begin(), list.end(), [&](const ConnectionMetadata& a, const ConnectionMetadata& b)
+            {
+                const auto& ka = key(a);
+                const auto& kb = key(b);
+                if (ka == kb) return asc ? a.id > b.id : a.id < b.id;
+                return asc ? ka > kb : ka < kb;
+            });
+        }
+    }
+
+    bool SortIsDescending(const ConnectionSort sort, const bool ascending)
+    {
+        switch (sort)
+        {
+        case Default:
+            return false;
+        case ByProcess:
+        case ByOutbound:
+        case ByProtocol:
+        case BySource:
+            return ascending;
+        default:
+            return !ascending;
+        }
+    }
+
+    void ConnectionLister::update(const bool pushToUi)
     {
         libcore::QueryConnectionsResp resp = API::defaultClient->QueryConnections();
         const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        const QString localLabel = QObject::tr("Local");
 
-        QMap<QString, ConnectionMetadata> toUpdate;
-        QMap<QString, ConnectionMetadata> toAdd;
-        QSet<QString> newState;
-        QList<ConnectionMetadata> sorted;
+        QList<ConnectionMetadata> rows;
+        rows.reserve(static_cast<qsizetype>(resp.active.size()));
         QHash<QString, SpeedSample> newSamples;
+        newSamples.reserve(static_cast<qsizetype>(resp.active.size()));
+
         for (const auto& conn : resp.active)
         {
-            auto c = metaFromProto(conn);
+            auto c = metaFromProto(conn, localLabel);
 
-            // Derive an instantaneous rate by diffing this connection's
-            // cumulative byte counters against its previous sample. When polls
-            // arrive faster than the sampling window, carry the last rate and
-            // baseline forward unchanged so the number stays stable.
             SpeedSample s;
             if (const auto it = speedSamples_.constFind(c.id); it != speedSamples_.constEnd())
             {
@@ -138,32 +188,11 @@ namespace Stats
             c.uploadSpeed = s.upSpeed;
             c.downloadSpeed = s.downSpeed;
 
-            if (sort == Default)
-            {
-                if (state->contains(c.id))
-                {
-                    toUpdate[c.id] = c;
-                } else
-                {
-                    toAdd[c.id] = c;
-                }
-            } else
-            {
-                sorted.append(c);
-            }
-            newState.insert(c.id);
+            rows.append(std::move(c));
         }
         speedSamples_ = newSamples; // drop ids for connections that have closed
 
-        state->clear();
-        for (const auto& id : newState) state->insert(id);
-
-        // One enriched poll, two consumers: the connection table above, and the
-        // per-app traffic module here. Diff each connection's cumulative byte
-        // counters across the live set plus the recently-closed ring (deduped by
-        // id), so a connection that opened and closed between polls is still
-        // counted. Gated by the traffic-stats toggle; the lister itself already
-        // requires connection stats (enable_stats) to run.
+        // Credits the live set plus the recently-closed ring (deduped by id), so a connection that opened and closed between polls still counts.
         if (!Configs::dataManager->settingsRepo->disable_traffic_stats)
         {
             QHash<QString, QPair<qint64, qint64>> newLast;
@@ -180,7 +209,7 @@ namespace Stats
                 }
                 qint64 dUp = curUp - baseUp;
                 qint64 dDown = curDown - baseDown;
-                if (dUp < 0) dUp = 0; // counters only grow; guard against any reset
+                if (dUp < 0) dUp = 0;
                 if (dDown < 0) dDown = 0;
                 if (dUp == 0 && dDown == 0) return;
                 QString name = QString::fromStdString(cm.process.value());
@@ -206,112 +235,72 @@ namespace Stats
             accountedClosed_ = currentClosed; // everything in the ring is accounted
         }
 
-        if (sort == Default)
+        if (!pushToUi) return;
+
+        switch (sort)
         {
-            runOnUiThread([=,this] {
-                auto m = GetMainWindow();
-                m->UpdateConnectionList(toUpdate, toAdd);
-            });
-        } else
-        {
-            if (sort == ByDownload)
-            {
-                std::sort(sorted.begin(), sorted.end(), [=,this](const ConnectionMetadata& a, const ConnectionMetadata& b)
-                {
-                    if (a.download == b.download) return asc ? a.id > b.id : a.id < b.id;
-                    return asc ? a.download < b.download : a.download > b.download;
-                });
-            }
-            if (sort == ByUpload)
-            {
-                std::sort(sorted.begin(), sorted.end(), [=,this](const ConnectionMetadata& a, const ConnectionMetadata& b)
-                {
-                   if (a.upload == b.upload) return asc ? a.id > b.id : a.id < b.id;
-                   return asc ? a.upload < b.upload : a.upload > b.upload;
-                });
-            }
-            if (sort == ByProcess)
-            {
-                std::sort(sorted.begin(), sorted.end(), [=,this](const ConnectionMetadata& a, const ConnectionMetadata& b)
-                {
-                    if (a.process == b.process) return asc ? a.id > b.id : a.id < b.id;
-                    return asc ? a.process > b.process : a.process < b.process;
-                });
-            }
-            if (sort == ByOutbound)
-            {
-                std::sort(sorted.begin(), sorted.end(), [=,this](const ConnectionMetadata& a, const ConnectionMetadata& b)
-                    {
-                        if (a.outbound == b.outbound) return asc ? a.id > b.id : a.id < b.id;
-                        return asc ? a.outbound > b.outbound : a.outbound < b.outbound;
-                    });
-            }
-            if (sort == ByProtocol)
-            {
-                std::sort(sorted.begin(), sorted.end(), [=,this](const ConnectionMetadata& a, const ConnectionMetadata& b)
-                    {
-                        if (a.protocol == b.protocol) return asc ? a.id > b.id : a.id < b.id;
-                        return asc ? a.protocol > b.protocol : a.protocol < b.protocol;
-                    });
-            }
-            if (sort == ByTraffic)
-            {
-                std::sort(sorted.begin(), sorted.end(), [=,this](const ConnectionMetadata& a, const ConnectionMetadata& b)
-                    {
-                        const long long ta = a.upload + a.download, tb = b.upload + b.download;
-                        if (ta == tb) return asc ? a.id > b.id : a.id < b.id;
-                        return asc ? ta < tb : ta > tb;
-                    });
-            }
-            if (sort == ByDownloadSpeed)
-            {
-                std::sort(sorted.begin(), sorted.end(), [=,this](const ConnectionMetadata& a, const ConnectionMetadata& b)
-                    {
-                        if (a.downloadSpeed == b.downloadSpeed) return asc ? a.id > b.id : a.id < b.id;
-                        return asc ? a.downloadSpeed < b.downloadSpeed : a.downloadSpeed > b.downloadSpeed;
-                    });
-            }
-            if (sort == ByUploadSpeed)
-            {
-                std::sort(sorted.begin(), sorted.end(), [=,this](const ConnectionMetadata& a, const ConnectionMetadata& b)
-                    {
-                        if (a.uploadSpeed == b.uploadSpeed) return asc ? a.id > b.id : a.id < b.id;
-                        return asc ? a.uploadSpeed < b.uploadSpeed : a.uploadSpeed > b.uploadSpeed;
-                    });
-            }
-            if (sort == BySpeed)
-            {
-                std::sort(sorted.begin(), sorted.end(), [=,this](const ConnectionMetadata& a, const ConnectionMetadata& b)
-                    {
-                        const long long sa = a.uploadSpeed + a.downloadSpeed, sb = b.uploadSpeed + b.downloadSpeed;
-                        if (sa == sb) return asc ? a.id > b.id : a.id < b.id;
-                        return asc ? sa < sb : sa > sb;
-                    });
-            }
-            runOnUiThread([=,this] {
-                auto m = GetMainWindow();
-                m->UpdateConnectionListWithRecreate(sorted);
-            });
+        // Oldest first, matching how rows used to accumulate. `asc` is ignored: this means "unsorted".
+        case Default:
+            sortSmallestFirst(rows, false, [](const ConnectionMetadata& c) { return c.createdAtMs; });
+            break;
+        case ByDownload:
+            sortLargestFirst(rows, asc, [](const ConnectionMetadata& c) { return c.download; });
+            break;
+        case ByUpload:
+            sortLargestFirst(rows, asc, [](const ConnectionMetadata& c) { return c.upload; });
+            break;
+        case ByTraffic:
+            sortLargestFirst(rows, asc, [](const ConnectionMetadata& c) { return c.upload + c.download; });
+            break;
+        case ByDownloadSpeed:
+            sortLargestFirst(rows, asc, [](const ConnectionMetadata& c) { return c.downloadSpeed; });
+            break;
+        case ByUploadSpeed:
+            sortLargestFirst(rows, asc, [](const ConnectionMetadata& c) { return c.uploadSpeed; });
+            break;
+        case BySpeed:
+            sortLargestFirst(rows, asc, [](const ConnectionMetadata& c) { return c.uploadSpeed + c.downloadSpeed; });
+            break;
+        case ByProcess:
+            sortSmallestFirst(rows, asc, [](const ConnectionMetadata& c) -> const QString& { return c.process; });
+            break;
+        case ByOutbound:
+            sortSmallestFirst(rows, asc, [](const ConnectionMetadata& c) -> const QString& { return c.outbound; });
+            break;
+        case ByProtocol:
+            sortSmallestFirst(rows, asc, [](const ConnectionMetadata& c) -> const QString& { return c.protocol; });
+            break;
+        case BySource:
+            sortSmallestFirst(rows, asc, [](const ConnectionMetadata& c) -> const QString& { return c.sourceDisplay; });
+            break;
         }
+
+        runOnUiThread([rows = std::move(rows)] {
+            if (auto* m = GetMainWindow()) m->UpdateConnectionList(rows);
+        });
     }
 
     void ConnectionLister::stopLoop()
     {
         stop = true;
         QMutexLocker wlk(&waitMu_);
-        waitCond_.wakeAll(); // break the poll sleep so the loop exits promptly
+        waitCond_.wakeAll();
     }
 
     void ConnectionLister::setSort(const ConnectionSort newSort)
     {
-        // Re-selecting the active field flips its direction; a new field starts
-        // descending (largest / most-recent first).
         if (sort == newSort) asc = !asc;
         else
         {
             sort = newSort;
             asc = false;
         }
+    }
+
+    void ConnectionLister::restoreSort(const ConnectionSort newSort, const bool ascending)
+    {
+        sort = newSort;
+        asc = ascending;
     }
 
 }

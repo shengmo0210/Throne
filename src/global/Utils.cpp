@@ -9,6 +9,7 @@
 #include <QTcpServer>
 #include <QTimer>
 #include <QMessageBox>
+#include <QPointer>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonObject>
@@ -32,19 +33,8 @@
 #endif
 
 QStringList SplitLines(const QString &_string) {
-    return _string.split(QRegularExpression("[\r\n]"), Qt::SplitBehaviorFlags::SkipEmptyParts);
-}
-
-QStringList SplitLinesSkipSharp(const QString &_string, int maxLine) {
-    auto lines = SplitLines(_string);
-    QStringList newLines;
-    int i = 0;
-    for (const auto &line: lines) {
-        if (line.trimmed().startsWith("#")) continue;
-        newLines << line;
-        if (maxLine > 0 && ++i >= maxLine) break;
-    }
-    return newLines;
+    static const QRegularExpression lineSplitRegex("[\r\n]");
+    return _string.split(lineSplitRegex, Qt::SplitBehaviorFlags::SkipEmptyParts);
 }
 
 QByteArray DecodeB64IfValid(const QString &input, QByteArray::Base64Options options) {
@@ -107,40 +97,36 @@ quint64 GetRandomUint64() {
     return dist(mt);
 }
 
-// QString >> QJson
 QJsonObject QString2QJsonObject(const QString &jsonString) {
     QJsonDocument jsonDocument = QJsonDocument::fromJson(jsonString.toUtf8());
     QJsonObject jsonObject = jsonDocument.object();
     return jsonObject;
 }
 
-// QJson >> QString
 QString QJsonObject2QString(const QJsonObject &jsonObject, bool compact) {
     return QJsonDocument(jsonObject).toJson(compact ? QJsonDocument::Compact : QJsonDocument::Indented);
 }
 
 QJsonArray QListStr2QJsonArray(const QList<QString> &list) {
     QVariantList list2;
-    bool isEmpty = true;
-    for (auto &item: list) {
-        if (item.trimmed().isEmpty()) continue;
+    for (const auto &item: list) {
+        if (QStringView(item).trimmed().isEmpty()) continue;
         list2.append(item);
-        isEmpty = false;
     }
 
-    if (isEmpty) return {};
-    else return QJsonArray::fromVariantList(list2);
+    return list2.isEmpty() ? QJsonArray{} : QJsonArray::fromVariantList(list2);
 }
 
 QJsonArray QListInt2QJsonArray(const QList<int> &list) {
-    QVariantList list2;
-    for (auto &item: list)
-        list2.append(item);
-    return QJsonArray::fromVariantList(list2);
+    QJsonArray arr;
+    for (const int item: list)
+        arr.append(item);
+    return arr;
 }
 
 QList<int> QJsonArray2QListInt(const QJsonArray &arr) {
     QList<int> list2;
+    list2.reserve(arr.size());
     for (auto item: arr)
         list2.append(item.toInt());
     return list2;
@@ -163,10 +149,9 @@ QJsonArray QString2QJsonArray(const QString& str) {
 
 QJsonObject QMapString2QJsonObject(const QMap<QString,QString> &mp) {
     QJsonObject res;
-    for (const auto &key: mp.keys()) {
-        res.insert(key, mp[key]);
+    for (auto it = mp.cbegin(); it != mp.cend(); ++it) {
+        res.insert(it.key(), it.value());
     }
-
     return res;
 }
 
@@ -178,7 +163,8 @@ QList<QString> QListInt2QListString(const QList<int> &list) {
 
 QList<int> QStringList2QListInt(const QList<QString> &list) {
     QList<int> resp;
-    for (auto item: list) resp.append(item.toInt());
+    resp.reserve(list.size());
+    for (const auto& item: list) resp.append(item.toInt());
     return resp;
 }
 
@@ -262,17 +248,11 @@ bool IsIpAddress(const QString &str) {
 }
 
 bool IsIpAddressV4(const QString &str) {
-    auto address = QHostAddress(str);
-    if (address.protocol() == QAbstractSocket::IPv4Protocol)
-        return true;
-    return false;
+    return (QHostAddress(str).protocol() == QAbstractSocket::IPv4Protocol);
 }
 
 bool IsIpAddressV6(const QString &str) {
-    auto address = QHostAddress(str);
-    if (address.protocol() == QAbstractSocket::IPv6Protocol)
-        return true;
-    return false;
+    return (QHostAddress(str).protocol() == QAbstractSocket::IPv6Protocol);
 }
 
 QString DisplayTime(long long time, int formatType) {
@@ -282,16 +262,37 @@ QString DisplayTime(long long time, int formatType) {
 }
 
 QWidget *GetMessageBoxParent() {
-    auto activeWindow = QApplication::activeWindow();
-    if (activeWindow == nullptr && mainwindow != nullptr) {
-        if (mainwindow->isVisible()) return mainwindow;
-        return nullptr;
+    auto parent = QApplication::activeWindow();
+    // A child box dies with its parent box, even while it is still running on the caller's stack.
+    while (qobject_cast<QMessageBox *>(parent) != nullptr) {
+        parent = parent->parentWidget() != nullptr ? parent->parentWidget()->window() : nullptr;
     }
-    return activeWindow;
+    if (parent == nullptr && mainwindow != nullptr && mainwindow->isVisible()) return mainwindow;
+    return parent;
 }
 
 int MessageBoxWarning(const QString &title, const QString &text) {
     return QMessageBox::warning(GetMessageBoxParent(), title, text);
+}
+
+void ShowPassiveWarning(const QString &title, const QString &text) {
+    static QPointer<QMessageBox> box;
+    if (box) {
+        box->setWindowTitle(title);
+        box->setText(text);
+        box->raise();
+        return;
+    }
+    box = new QMessageBox(QMessageBox::Warning, title, text, QMessageBox::Ok, GetMessageBoxParent());
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    box->setWindowModality(Qt::NonModal);
+    box->show();
+}
+
+void PostPassiveWarning(const QString &title, const QString &text) {
+    auto *app = QCoreApplication::instance();
+    if (app == nullptr) return;
+    QMetaObject::invokeMethod(app, [title, text] { ShowPassiveWarning(title, text); }, Qt::QueuedConnection);
 }
 
 int MessageBoxInfo(const QString &title, const QString &text) {
@@ -355,16 +356,15 @@ void HideWindow(QWidget *w) {
 }
 
 void runOnUiThread(const std::function<void()> &callback, bool wait) {
-    // any thread. Targets qApp's thread rather than mainwindow's: they are the
-    // same thread, but qApp exists for the whole of main() while mainwindow stays
-    // null until UI_InitMainWindow(). Background work started before that (e.g.
-    // the traffic-stats rollup) can report errors through here, and dereferencing
-    // the null mainwindow crashed the worker thread.
     auto *app = QCoreApplication::instance();
     if (app == nullptr) return;
     auto thread = app->thread();
     if (thread == QThread::currentThread()) {
         callback();
+        return;
+    }
+    if (!wait) {
+        QMetaObject::invokeMethod(app, callback, Qt::QueuedConnection);
         return;
     }
     auto *timer = new QTimer();
@@ -373,7 +373,6 @@ void runOnUiThread(const std::function<void()> &callback, bool wait) {
 
     QEventLoop loop;
     QObject::connect(timer, &QTimer::timeout, [=, &loop]() {
-        // main thread
         callback();
         timer->deleteLater();
 
@@ -418,8 +417,7 @@ static QStringList g_pendingFiles;
 
 QStringList LaunchFiles_ExtractFromArgs(const QStringList &args, const QDir &launchDir) {
     QStringList files;
-    // Skip argv[0], our own flags, and the deeplink. "-appdata" is the only flag
-    // taking a value, and that directory must not be read as a config to import.
+    // "-appdata" is the only flag taking a value, and that directory must not be imported as a config.
     for (int i = 1; i < args.size(); i++) {
         const auto &arg = args[i];
         if (arg.startsWith('-')) {
@@ -428,9 +426,7 @@ QStringList LaunchFiles_ExtractFromArgs(const QStringList &args, const QDir &lau
         }
         if (arg.startsWith("throne://")) continue;
 
-        // Desktop launchers hand over file:// URLs, terminals plain paths, and a
-        // relative path resolves against the directory we were launched from -
-        // which main() abandons early on.
+        // A relative path resolves against the directory we were launched from, which main() abandons early.
         auto path = arg.startsWith("file://") ? QUrl(arg).toLocalFile() : arg;
         if (path.isEmpty()) continue;
         const QFileInfo info(launchDir, path);

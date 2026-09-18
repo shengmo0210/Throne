@@ -12,18 +12,16 @@
 #include <QThread>
 #include <QThreadPool>
 
+#include <limits>
 #include <utility>
 
 using namespace API;
 
 namespace {
-    // A batch shares one core instance, so this bounds config size, not concurrency.
     constexpr int kTestBatchSize = 100;
     constexpr int kLatencyPollIntervalMs = 200;
     constexpr int kSpeedPollIntervalMs = 100;
 
-    // An auto selector has no server of its own: whichever member answers changes
-    // minute to minute, so a stored result would be noise on that row.
     QList<int> withoutAutoSelectors(const QList<int>& profileIDs) {
         const auto selectors = Configs::dataManager->profilesRepo->GetProfileIdsByType("autoselector");
         if (selectors.isEmpty()) return profileIDs;
@@ -36,12 +34,32 @@ namespace {
         return filtered;
     }
 
-    // A cancelled probe is not a verdict on the profile; the row keeps its state.
     bool isTestAborted(const QString& error) {
         return error.contains("test aborted") || error.contains("context canceled");
     }
 
-    // An empty tag map means a single-profile box, so the result must be `fallback`.
+    bool isVpnProfile(const std::shared_ptr<Configs::Profile>& ent) {
+        return ent != nullptr && (ent->type == "openvpn" || ent->type == "openconnect");
+    }
+
+    // Mirror the core's URLTestTimeout, TunnelStartupTimeout, TunnelHandshakeTimeout and normalizeConcurrency.
+    constexpr int kCoreDefaultTimeoutMs = 3000;
+    constexpr int kTunnelStartupMs = 5000;
+    constexpr int kTunnelHandshakeMs = 10000;
+    constexpr int kCoreMaxConcurrency = 100;
+    constexpr int kRpcSlackMs = 30000;
+
+    // Test/IPTest answer only once the whole batch is done, so the deadline covers its worst case.
+    int batchRpcTimeoutMs(qsizetype tagCount, int requestsPerTag) {
+        const auto& settings = Configs::dataManager->settingsRepo;
+        int concurrency = settings->test_concurrent;
+        if (concurrency <= 0 || concurrency >= 500) concurrency = kCoreMaxConcurrency;
+        const qint64 timeoutMs = settings->url_test_timeout_ms > 0 ? settings->url_test_timeout_ms : kCoreDefaultTimeoutMs;
+        const qint64 rounds = (qMax<qsizetype>(tagCount, 1) + concurrency - 1) / concurrency;
+        const qint64 total = rounds * (kTunnelHandshakeMs + requestsPerTag * timeoutMs + kTunnelStartupMs) + kRpcSlackMs;
+        return static_cast<int>(qMin<qint64>(total, std::numeric_limits<int>::max()));
+    }
+
     int resolveEntID(const QMap<QString, int>& tag2entID, const std::string& tag, int fallback) {
         if (tag2entID.isEmpty()) return fallback;
         return tag2entID.value(QString::fromStdString(tag), -1);
@@ -55,11 +73,11 @@ namespace {
         req.use_default_outbound = target.useDefaultOutbound;
         req.xray_config = target.xrayConfig.toStdString();
         req.need_xray = !target.xrayConfig.isEmpty();
+        req.xray_outbound_dns_strategy = target.xrayDnsStrategy.toStdString();
         for (const auto& xc : target.xrayFullConfigs) req.xray_full_configs.push_back(xc.toStdString());
     }
 
-    // Drains partial results while a test RPC blocks. Stopping does not join: the
-    // poll may itself sit in a 30s RPC, and the batch driver must not stall on it.
+    // Stopping does not join: the poll may itself sit in a 30s RPC and must not stall the batch.
     class ResultPoller {
     public:
         ResultPoller(std::function<void()> tick, int intervalMs)
@@ -106,12 +124,16 @@ QString TestRunner::contextName(int entID) const {
     return MainWindow::tr("a tested profile");
 }
 
-void TestRunner::applyUrlResult(const std::shared_ptr<Configs::Profile>& ent, const libcore::URLTestResp& res) {
+void TestRunner::applyUrlResult(const std::shared_ptr<Configs::Profile>& ent, const libcore::URLTestResp& res,
+                                const QHash<QString, bool>* vpnConnected) {
     const auto error = QString::fromStdString(res.error.value());
     if (error.isEmpty()) {
         ent->SetLatency(res.latency_ms.value());
     } else if (isTestAborted(error)) {
         ent->SetLatency(0);
+    } else if (vpnConnected != nullptr && isVpnProfile(ent)
+               && vpnConnected->value(QString::fromStdString(res.outbound_tag.value()), false)) {
+        ent->SetLatency(Configs::kLatencyConnectOnly);
     } else {
         ent->SetLatency(-1);
         MW_show_log(MainWindow::tr("[%1] test error: %2").arg(ent->outbound->DisplayTypeAndName(), error));
@@ -146,15 +168,23 @@ void TestRunner::runUrlProbe(const Target& target) {
     req.max_concurrency = Configs::dataManager->settingsRepo->test_concurrent;
     req.test_timeout_ms = Configs::dataManager->settingsRepo->url_test_timeout_ms;
 
+    // The test box dies with the RPC, so the verdict has to be asked for up front.
+    for (auto it = target.tag2entID.cbegin(); it != target.tag2entID.cend(); ++it) {
+        if (isVpnProfile(Configs::dataManager->profilesRepo->GetProfile(it.value()))) {
+            req.vpn_endpoint_tags.push_back(it.key().toStdString());
+        }
+    }
+
     bool rpcOK = false;
     QString coreError;
     libcore::TestResp result;
     {
-        // The core's buffer is global: a poll can take a sibling's results, reclaimed below.
         ResultPoller poller([this, gen = sessionGen_.load(), tag2entID = target.tag2entID] {
-            if (sessionGen_.load() != gen) return;
+            if (staleGen(gen)) return;
             bool ok = false;
             const auto resp = defaultClient->QueryURLTest(&ok);
+            // Checked again: this poll can sit in the RPC while its batch ends and the tags are reused.
+            if (staleGen(gen)) return;
             if (!ok || resp.results.empty()) return;
 
             QList<int> updated;
@@ -173,14 +203,17 @@ void TestRunner::runUrlProbe(const Target& target) {
             runOnUiThread([=, this] { mw_->refresh_proxy_list(updated); });
         }, kLatencyPollIntervalMs);
 
-        result = defaultClient->Test(&rpcOK, req, &coreError);
+        result = defaultClient->Test(&rpcOK, req, &coreError, batchRpcTimeoutMs(target.outboundTags.size(), 2));
     }
 
     if (!rpcOK || result.results.empty()) {
-        // A failed Test RPC yields no per-result errors, so inspect it here for the
-        // geo-asset prompt - the same flow profile start uses.
         if (!rpcOK) mw_->handleXrayGeoAssetError(coreError, contextName(target.entID));
         return;
+    }
+
+    QHash<QString, bool> vpnConnected;
+    for (const auto& st : result.vpn_status) {
+        vpnConnected.insert(QString::fromStdString(st.tag.value()), st.connected.value());
     }
 
     for (const auto& res : result.results) {
@@ -194,7 +227,7 @@ void TestRunner::runUrlProbe(const Target& target) {
             MW_show_log(MainWindow::tr("Profile manager data is corrupted, try again."));
             continue;
         }
-        applyUrlResult(ent, res);
+        applyUrlResult(ent, res, &vpnConnected);
     }
 }
 
@@ -214,9 +247,10 @@ void TestRunner::runIpProbe(const Target& target) {
     libcore::IPTestResp result;
     {
         ResultPoller poller([this, gen = sessionGen_.load(), tag2entID = target.tag2entID] {
-            if (sessionGen_.load() != gen) return;
+            if (staleGen(gen)) return;
             bool ok = false;
             const auto resp = defaultClient->QueryIPTest(&ok);
+            if (staleGen(gen)) return;
             if (!ok || resp.results.empty()) return;
 
             QList<int> updated;
@@ -235,11 +269,10 @@ void TestRunner::runIpProbe(const Target& target) {
             runOnUiThread([=, this] { mw_->refresh_proxy_list(updated); });
         }, kLatencyPollIntervalMs);
 
-        result = defaultClient->IPTest(&rpcOK, req, &coreError);
+        result = defaultClient->IPTest(&rpcOK, req, &coreError, batchRpcTimeoutMs(target.outboundTags.size(), 1));
     }
 
     if (!rpcOK || result.results.empty()) {
-        // Detect missing Xray geo assets from a failed IPTest RPC (see runUrlProbe).
         if (!rpcOK) mw_->handleXrayGeoAssetError(coreError, contextName(target.entID));
         return;
     }
@@ -295,18 +328,17 @@ void TestRunner::runLatencyGroup(LatencyKind kind, const QList<int>& requestedID
         mw_->UpdateDataView(true);
 
         auto runBatch = [this, isUrl](const QList<std::shared_ptr<Configs::Profile>>& profileSlice, const QList<int>& ids) {
+            // Per batch, not per probe: a batch's probes drain each other's results, and tags restart each batch.
+            sessionGen_.fetch_add(1);
             auto buildObject = Configs::BuildTestConfig(profileSlice);
             if (!buildObject->error.isEmpty()) {
                 MW_show_log(MainWindow::tr("Failed to build test config for batch: ") + buildObject->error);
                 return;
             }
 
-            // xray-full configs are folded into the single outboundTags test box
-            // (their tags live in outboundTags), so they add no separate tests.
             const int testCount = buildObject->fullConfigs.size() + (buildObject->outboundTags.empty() ? 0 : 1);
             if (testCount == 0) return;
 
-            // Its own latch: reusing the session mutex left it unheld between batches.
             QSemaphore batchDone;
             const auto probe = [this, isUrl, &batchDone](const Target& target) {
                 mw_->parallelCoreCallPool->start([this, isUrl, target, &batchDone] {
@@ -330,6 +362,7 @@ void TestRunner::runLatencyGroup(LatencyKind kind, const QList<int>& requestedID
                 target.xrayFullConfigs = buildObject->xrayFullConfigs;
                 target.outboundTags = buildObject->outboundTags;
                 target.tag2entID = buildObject->tag2entID;
+                target.xrayDnsStrategy = buildObject->xrayDnsStrategy;
                 probe(target);
             }
             batchDone.acquire(testCount);
@@ -354,10 +387,8 @@ void TestRunner::runLatencyGroup(LatencyKind kind, const QList<int>& requestedID
         mw_->dataViewHtmlGenerator_.clearTestSections();
         mw_->UpdateDataView(true);
         session_.unlock();
-        // Signalled with the session free so a waiter can start work of its own.
         finish();
 
-        // Auto-clear prunes on latency, so it is a URL-test notion only.
         if (currentGroup != nullptr && currentGroup->auto_clear_unavailable) {
             MW_show_log("URL test finished, clearing unavailable profiles...");
             runOnUiThread([=, this] {
@@ -370,8 +401,7 @@ void TestRunner::runLatencyGroup(LatencyKind kind, const QList<int>& requestedID
 
 void TestRunner::runSpeedTests(const QList<int>& requestedIDs, bool testCurrent)
 {
-    // A live-connection test stays valid for a running selector: it measures
-    // whichever member actually carries traffic.
+    // A live-connection test stays valid for a selector: it measures whichever member carries traffic.
     const auto profileIDs = testCurrent ? requestedIDs : withoutAutoSelectors(requestedIDs);
     if (profileIDs.isEmpty() && !testCurrent) {
         return;
@@ -386,7 +416,6 @@ void TestRunner::runSpeedTests(const QList<int>& requestedIDs, bool testCurrent)
 
     runOnNewThread([this, profileIDs, testCurrent]() {
         stopRequested_.store(false);
-        // Fresh per-tag byte baselines for this speed-test session.
         { QMutexLocker lk(&creditMu_); credited_.clear(); }
         if (!testCurrent)
         {
@@ -399,11 +428,11 @@ void TestRunner::runSpeedTests(const QList<int>& requestedIDs, bool testCurrent)
                     return;
                 }
 
-                for (const auto& entID : buildObject->fullConfigs.keys()) {
+                for (auto it = buildObject->fullConfigs.cbegin(); it != buildObject->fullConfigs.cend(); ++it) {
                     Target target;
-                    target.coreConfig = buildObject->fullConfigs[entID];
+                    target.coreConfig = it.value();
                     target.useDefaultOutbound = true;
-                    target.entID = entID;
+                    target.entID = it.key();
                     runSpeedProbe(target);
                 }
 
@@ -414,10 +443,10 @@ void TestRunner::runSpeedTests(const QList<int>& requestedIDs, bool testCurrent)
                     target.xrayFullConfigs = buildObject->xrayFullConfigs;
                     target.outboundTags = buildObject->outboundTags;
                     target.tag2entID = buildObject->tag2entID;
+                    target.xrayDnsStrategy = buildObject->xrayDnsStrategy;
                     runSpeedProbe(target);
                 }
             };
-            // A speed test saturates the link, so only country probes batch.
             const int stepSize = Configs::dataManager->settingsRepo->speed_test_mode == Configs::TestConfig::COUNTRY ? kTestBatchSize : 1;
             for (int i = 0; i < profileIDs.length(); i += stepSize) {
                 if (stopRequested_.load()) break;
@@ -462,10 +491,11 @@ void TestRunner::creditTraffic(const std::shared_ptr<Configs::Profile>& profile,
     Configs::dataManager->profilesRepo->SaveTraffic(profile);
 }
 
-void TestRunner::pollSpeedTest(const QMap<QString, int>& tag2entID, bool testCurrent)
+void TestRunner::pollSpeedTest(const QMap<QString, int>& tag2entID, bool testCurrent, quint64 gen)
 {
     bool ok = false;
     const auto res = defaultClient->QueryCurrentSpeedTests(&ok);
+    if (staleGen(gen)) return;
     if (!ok || !res.is_running.value())
     {
         return;
@@ -496,10 +526,11 @@ void TestRunner::pollSpeedTest(const QMap<QString, int>& tag2entID, bool testCur
     });
 }
 
-void TestRunner::pollCountryTest(const QMap<QString, int>& tag2entID, bool testCurrent)
+void TestRunner::pollCountryTest(const QMap<QString, int>& tag2entID, bool testCurrent, quint64 gen)
 {
     bool ok = false;
     const auto res = defaultClient->QueryCountryTestResults(&ok);
+    if (staleGen(gen)) return;
     if (!ok || res.results.empty())
     {
         return;
@@ -511,7 +542,6 @@ void TestRunner::pollCountryTest(const QMap<QString, int>& tag2entID, bool testC
         const auto tag = QString::fromStdString(result.outbound_tag.value());
         auto profile = testCurrent ? mw_->running
                                    : Configs::dataManager->profilesRepo->GetProfile(tag2entID.value(tag, -1));
-        // One unknown tag must not drop the rest of the drained batch.
         if (profile == nullptr)
         {
             continue;
@@ -536,6 +566,8 @@ void TestRunner::runSpeedProbe(const Target& target)
         return;
     }
 
+    sessionGen_.fetch_add(1);
+
     const auto speedtestConf = Configs::dataManager->settingsRepo->speed_test_mode;
     libcore::SpeedTestRequest req;
     fillCommonTestReq(req, target);
@@ -548,7 +580,6 @@ void TestRunner::runSpeedProbe(const Target& target)
     req.only_country = speedtestConf == Configs::TestConfig::COUNTRY;
     req.country_concurrency = Configs::dataManager->settingsRepo->test_concurrent;
 
-    // A country sweep ticks per landed result instead; see pollCountryTest.
     if (speedtestConf != Configs::TestConfig::COUNTRY) {
         mw_->dataViewHtmlGenerator_.addTestProgress();
         mw_->UpdateDataView();
@@ -561,22 +592,20 @@ void TestRunner::runSpeedProbe(const Target& target)
     libcore::SpeedTestResponse result;
     {
         ResultPoller poller([this, gen = sessionGen_.load(), tag2entID = target.tag2entID, testCurrent = target.testCurrent, speedtestConf] {
-            if (sessionGen_.load() != gen) return;
-            if (speedtestConf == Configs::TestConfig::COUNTRY) pollCountryTest(tag2entID, testCurrent);
-            else pollSpeedTest(tag2entID, testCurrent);
+            if (staleGen(gen)) return;
+            if (speedtestConf == Configs::TestConfig::COUNTRY) pollCountryTest(tag2entID, testCurrent, gen);
+            else pollSpeedTest(tag2entID, testCurrent, gen);
         }, kSpeedPollIntervalMs);
 
         result = defaultClient->SpeedTest(&rpcOK, req, &coreError);
     }
 
     if (!rpcOK || result.results.empty()) {
-        // Detect missing Xray geo assets from a failed SpeedTest RPC (see runUrlProbe).
         if (!rpcOK) mw_->handleXrayGeoAssetError(coreError, contextName(contextID));
         return;
     }
 
     for (const auto& res : result.results) {
-        // An xray-full config is its own box with no tag map, so it must be entID.
         const int entid = target.testCurrent
                               ? (mw_->running ? mw_->running->id : -1)
                               : resolveEntID(target.tag2entID, res.outbound_tag.value(), target.entID);

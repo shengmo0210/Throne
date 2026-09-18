@@ -9,6 +9,7 @@ namespace Configs {
     class RoutesRepo;
     class GroupsRepo;
     class ProfilesRepo;
+    class OtpProfilesRepo;
     class TrafficStatsRepo;
 
     void initDB(const std::string& dbPath);
@@ -16,19 +17,21 @@ namespace Configs {
     class DatabaseManager {
     private:
         Database db;
-        // Separate database file for the traffic-statistics module, so its
-        // write volume never contends with vital profile/group operations.
         Database statsDb;
 
         static void createEntityIdsTable(Database& db);
-        // Derive the stats database path (throne_stats.db) as a sibling of the
-        // main database file.
+        static bool entityIdsColumnExists(Database& db, const char* columnName);
         static std::string deriveStatsDbPath(const std::string& dbPath);
+        // Quarantines a stats file the previous session flagged, or one that would open read-only or as garbage.
+        static std::string prepareStatsDb(const std::string& path);
+        static QString statsDbUnusableReason(const std::string& path);
+        static void quarantineDbFile(const std::string& path);
         void initializeRepos();
     public:
         std::unique_ptr<ProfilesRepo> profilesRepo;
         std::unique_ptr<GroupsRepo> groupsRepo;
         std::unique_ptr<RoutesRepo> routesRepo;
+        std::unique_ptr<OtpProfilesRepo> otpProfilesRepo;
         std::unique_ptr<SettingsRepo> settingsRepo;
         std::unique_ptr<TrafficStatsRepo> trafficStatsRepo;
 
@@ -38,11 +41,9 @@ namespace Configs {
         // Call once, after the UI is up.
         void RunDeferredMaintenance();
         
-        // Non-copyable
         DatabaseManager(const DatabaseManager&) = delete;
         DatabaseManager& operator=(const DatabaseManager&) = delete;
         
-        // Get the underlying Database reference (for repos to access entity_ids table)
         Database& getDatabase() { return db; }
         const Database& getDatabase() const { return db; }
     };

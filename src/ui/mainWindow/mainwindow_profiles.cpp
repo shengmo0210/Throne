@@ -4,7 +4,6 @@
 #include <QCheckBox>
 #include <QClipboard>
 #include <QDialog>
-#include <QEventLoop>
 #include <QFile>
 #include <QGuiApplication>
 #include <QItemSelectionModel>
@@ -15,24 +14,19 @@
 #include <QMutex>
 #include <QPlainTextEdit>
 #include <QPushButton>
-#include <QScreen>
 #include <QScrollBar>
 #include <QThread>
 #include <QThreadPool>
-#include <QUuid>
 #include <QVBoxLayout>
 
 #include <algorithm>
 #include <atomic>
 #include <ranges>
 
-#ifdef Q_OS_LINUX
-#include <QDBusConnection>
-#include <QDBusInterface>
-#endif
-
 #include "3rdparty/QrDecoder.h"
 #include "3rdparty/qrcodegen.hpp"
+
+#include "include/ui/utils/ScreenQrScanner.h"
 
 #include "include/configs/generate.h"
 #include "include/configs/sub/GroupUpdater.hpp"
@@ -43,7 +37,6 @@
 #include "include/ui/utils/ProfilesTableModel.h"
 
 namespace {
-    // How many profile names a removal confirmation lists before eliding.
     constexpr int removeListPreviewLimit = 20;
 }
 
@@ -83,39 +76,55 @@ void MainWindow::on_menu_clone_triggered() {
         sls << ent->outbound->ExportJsonLink();
     }
 
-    Subscription::groupUpdater->AsyncUpdate(sls.join("\n"));
+    Subscription::updater()->ImportText(sls.join("\n"));
 }
 
 void MainWindow::on_menu_delete_repeat_triggered() {
-    QList<std::shared_ptr<Configs::Profile>> out;
-    QList<std::shared_ptr<Configs::Profile>> out_del;
+    const auto group = Configs::dataManager->groupsRepo->CurrentGroup();
+    if (group == nullptr) return;
 
-    // One batch keeps every profile alive for both calls, which is what makes the
-    // by-pointer difference below identify the duplicates.
-    const auto groupProfiles = Configs::dataManager->profilesRepo->GetProfileBatch(
-        Configs::dataManager->groupsRepo->CurrentGroup()->Profiles());
-    Configs::ProfileFilter::Uniq(groupProfiles, out, false);
-    Configs::ProfileFilter::OnlyInSrc_ByPointer(groupProfiles, out, out_del);
+    // Duplicates are positional: one id can own several rows, and distinct ids can share a config (#1775).
+    const auto groupIds = group->Profiles();
+    const auto groupProfiles = Configs::dataManager->profilesRepo->GetProfileBatch(groupIds);
 
+    QList<std::shared_ptr<Configs::Profile>> uniq;
+    Configs::ProfileFilter::Uniq(groupProfiles, uniq, false);
+    QSet<int> keepIds;
+    for (const auto &ent: uniq) keepIds.insert(ent->id);
+
+    QHash<int, std::shared_ptr<Configs::Profile>> byId;
+    for (const auto &ent: groupProfiles) byId.insert(ent->id, ent);
+
+    QList<int> newOrder;
+    QList<int> del_ids;
+    QSet<int> placed;
     int remove_display_count = 0;
     QString remove_display;
-    for (const auto &ent: out_del) {
-        remove_display += ent->outbound->DisplayTypeAndName() + " \n ";
-        if (++remove_display_count == removeListPreviewLimit) {
-            remove_display += " ... ";
-            break;
+    for (int id: groupIds) {
+        const bool repeatedSlot = placed.contains(id);
+        placed.insert(id);
+        if (!repeatedSlot && keepIds.contains(id)) {
+            newOrder += id;
+            continue;
+        }
+        if (!repeatedSlot) del_ids += id;
+        if (const auto ent = byId.value(id); ent != nullptr && remove_display_count < removeListPreviewLimit) {
+            remove_display += ent->outbound->DisplayTypeAndName() + " \n ";
+            if (++remove_display_count == removeListPreviewLimit) remove_display += " ... ";
         }
     }
 
-    if (!out_del.empty() &&
-        (Configs::dataManager->settingsRepo->skip_delete_confirmation || QMessageBox::question(this, tr("Confirmation"), tr("Remove %1 item(s) ?").arg(out_del.length()) + "\n" + remove_display) == QMessageBox::StandardButton::Yes)) {
-        QList<int> del_ids;
-        for (const auto &ent: out_del) {
-            del_ids += ent->id;
-        }
-        Configs::dataManager->profilesRepo->BatchDeleteProfiles(del_ids, true);
-        refresh_proxy_list({}, true, RefreshAnchor::Removal);
+    const auto removed_rows = groupIds.size() - newOrder.size();
+    if (removed_rows == 0) return;
+    if (!Configs::dataManager->settingsRepo->skip_delete_confirmation &&
+        QMessageBox::question(this, tr("Confirmation"), tr("Remove %1 item(s) ?").arg(removed_rows) + "\n" + remove_display) != QMessageBox::StandardButton::Yes) {
+        return;
     }
+
+    group->profiles = newOrder;
+    Configs::dataManager->groupsRepo->Save(group);
+    if (!del_ids.isEmpty()) Configs::dataManager->profilesRepo->BatchDeleteProfiles(del_ids, true);
+    refresh_proxy_list({}, true, RefreshAnchor::Removal);
 }
 
 void MainWindow::on_menu_delete_triggered() {
@@ -202,8 +211,6 @@ void MainWindow::on_menu_export_config_triggered() {
             MessageBoxWarning("Build Test config error", res->error);
             return;
         }
-        // An Xray full config is tested as its own sing-box+Xray pair rather than joining
-        // the shared batch, so surface that wrapper to keep "Copy test config" meaningful.
         if (!res->xrayFullConfigs.isEmpty()) config_core = res->xrayFullConfigs.first();
         else config_core = QJsonObject2QString(res->coreConfig, true);
         QApplication::clipboard()->setText(config_core);
@@ -218,10 +225,8 @@ void MainWindow::display_qr_link(bool nkrFormat) {
     public:
         QLabel *l = nullptr;
         QCheckBox *cb = nullptr;
-        //
         QPlainTextEdit *l2 = nullptr;
         QImage im;
-        //
         QString link;
         QString link_deep;
 
@@ -236,7 +241,6 @@ void MainWindow::display_qr_link(bool nkrFormat) {
             auto link_display = is_deep ? link_deep : link;
             l2->setPlainText(link_display);
             constexpr qint32 qr_padding = 2;
-            //
             try {
                 qrcodegen::QrCode qr = qrcodegen::QrCode::encodeText(link_display.toUtf8().data(), qrcodegen::QrCode::Ecc::MEDIUM);
                 qint32 sz = qr.getSize();
@@ -254,17 +258,14 @@ void MainWindow::display_qr_link(bool nkrFormat) {
             }
         }
 
-        // `showDeep` picks the encoding to open on; the checkbox still switches.
         W(const QString &link_, const QString &link_deep_, bool showDeep) {
             link = link_;
             link_deep = link_deep_;
-            //
             setLayout(new QVBoxLayout);
             setMinimumSize(256, 256);
             QSizePolicy sizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
             sizePolicy.setHeightForWidth(true);
             setSizePolicy(sizePolicy);
-            //
             l = new QLabel();
             l->setMinimumSize(256, 256);
             l->setMargin(6);
@@ -279,7 +280,6 @@ void MainWindow::display_qr_link(bool nkrFormat) {
             l2 = new QPlainTextEdit();
             l2->setReadOnly(true);
             layout()->addWidget(l2);
-            //
             connect(cb, &QCheckBox::toggled, this, &W::refresh);
             refresh(showDeep);
         }
@@ -292,116 +292,40 @@ void MainWindow::display_qr_link(bool nkrFormat) {
     auto ent = Configs::dataManager->profilesRepo->GetProfile(ents.first());
     auto link = ent->outbound->ExportToLink();
     auto link_deep = ent->outbound->ExportJsonLink();
-    // Some protocols have no share-link form; fall back rather than encode "".
     auto w = new W(link, link_deep, nkrFormat || link.isEmpty());
     w->setWindowTitle(ent->outbound->DisplayTypeAndName());
     w->exec();
     w->deleteLater();
 }
 
-#ifdef Q_OS_LINUX
-OrgFreedesktopPortalRequestInterface::OrgFreedesktopPortalRequestInterface(
-  const QString& service,
-  const QString& path,
-  const QDBusConnection& connection,
-  QObject* parent)
-  : QDBusAbstractInterface(service,
-                           path,
-                           "org.freedesktop.portal.Request",
-                           connection,
-                           parent)
-{}
-
-OrgFreedesktopPortalRequestInterface::~OrgFreedesktopPortalRequestInterface() {}
-#endif
-
-static QPixmap grabScreen(QScreen* screen, bool& ok)
-{
-    QPixmap p;
-    QRect geom = screen->geometry();
-#ifdef Q_OS_LINUX
-    if (qEnvironmentVariable("XDG_SESSION_TYPE") == "wayland" || qEnvironmentVariable("WAYLAND_DISPLAY").contains("wayland", Qt::CaseInsensitive)) {
-        QDBusInterface screenshotInterface(
-          QStringLiteral("org.freedesktop.portal.Desktop"),
-          QStringLiteral("/org/freedesktop/portal/desktop"),
-          QStringLiteral("org.freedesktop.portal.Screenshot"));
-
-        // unique token
-        QString token =
-          QUuid::createUuid().toString().remove('-').remove('{').remove('}');
-
-        // premake interface
-        auto* request = new OrgFreedesktopPortalRequestInterface(
-          QStringLiteral("org.freedesktop.portal.Desktop"),
-          "/org/freedesktop/portal/desktop/request/" +
-            QDBusConnection::sessionBus().baseService().remove(':').replace('.','_') +
-            "/" + token,
-          QDBusConnection::sessionBus());
-
-        QEventLoop loop;
-        const auto gotSignal = [&p, &loop](uint status, const QVariantMap& map) {
-            if (status == 0) {
-                // Parse this as URI to handle unicode properly
-                QUrl uri = map.value("uri").toString();
-                QString uriString = uri.toLocalFile();
-                p = QPixmap(uriString);
-                p.setDevicePixelRatio(qApp->devicePixelRatio());
-                QFile imgFile(uriString);
-                imgFile.remove();
-            }
-            loop.quit();
-        };
-
-        // prevent racy situations and listen before calling screenshot
-        QMetaObject::Connection conn = QObject::connect(
-          request, &org::freedesktop::portal::Request::Response, gotSignal);
-
-        screenshotInterface.call(
-          QStringLiteral("Screenshot"),
-          "",
-          QMap<QString, QVariant>({ { "handle_token", QVariant(token) },
-                                    { "interactive", QVariant(false) } }));
-
-        loop.exec();
-        QObject::disconnect(conn);
-        request->Close().waitForFinished();
-        request->deleteLater();
-
-        if (p.isNull()) {
-            ok = false;
-        }
-        return p;
-    } else
-#endif
-        return screen->grabWindow(0, geom.x(), geom.y(), geom.width(), geom.height());
-}
-
 void MainWindow::parseQrImage(const QPixmap *image)
 {
-    const QVector<QString> texts = QrDecoder().decode(image->toImage().convertToFormat(QImage::Format_Grayscale8));
+    const QVector<QString> texts = QrDecoder().decode(image->toImage());
     if (texts.isEmpty()) {
         MessageBoxInfo(software_name, tr("QR Code not found"));
     } else {
         for (const QString &text : texts) {
             MW_show_log("QR Code Result:\n" + text);
-            Subscription::groupUpdater->AsyncUpdate(text);
+            import_text(text);
         }
     }
 }
 
 void MainWindow::on_menu_scan_qr_triggered() {
-    hide();
-    QThread::sleep(1);
+    bool captured = false;
+    const auto texts = ScreenQr::ScanScreens(this, captured);
 
-    bool ok = true;
-    QPixmap qpx(grabScreen(QGuiApplication::primaryScreen(), ok));
-
-    show();
-    if (ok) {
-        parseQrImage(&qpx);
-    }
-    else {
+    if (!captured) {
         MessageBoxInfo(software_name, tr("Unable to capture screen"));
+        return;
+    }
+    if (texts.isEmpty()) {
+        MessageBoxInfo(software_name, tr("QR Code not found"));
+        return;
+    }
+    for (const QString &text : texts) {
+        MW_show_log("QR Code Result:\n" + text);
+        import_text(text);
     }
 }
 
@@ -432,7 +356,7 @@ void MainWindow::on_menu_update_subscription_triggered() {
     if (group->url.isEmpty()) return;
     if (mw_sub_updating) return;
     mw_sub_updating = true;
-    Subscription::groupUpdater->AsyncUpdate(group->url, group->id, [&] { mw_sub_updating = false; }, true);
+    Subscription::updater()->RefreshGroup(group->id, [&] { mw_sub_updating = false; }, true);
 }
 
 void MainWindow::on_menu_remove_unavailable_triggered() {
@@ -450,8 +374,7 @@ void MainWindow::on_menu_remove_invalid_triggered() {
      QMutex mu;
      QMutex access;
      int profileSize = currentGroup->Profiles().size();
-     // Empty group: no worker is ever queued, so the join-mutex would never be
-     // unlocked and the worker thread would block forever on mu.lock() below.
+     // Empty group: no worker unlocks mu, so the join below would block forever.
      if (profileSize == 0) return;
      mu.lock();
      for (const auto& profileID : currentGroup->Profiles()) {
@@ -505,7 +428,6 @@ void MainWindow::on_menu_remove_insecure_triggered() {
     int remove_display_count = 0;
     for (const auto& profile : profiles) {
         if (!profile || !profile->outbound) continue;
-        // Configs of unknown security (e.g. unparseable custom ones) are spared.
         if (!profile->outbound->GetSecurity().isDangerous()) continue;
         del_ids += profile->id;
         if (remove_display_count < removeListPreviewLimit) {
@@ -604,8 +526,7 @@ void MainWindow::saveProfileFocusState() {
 
     if (!profilesTableModel) return;
 
-    // hasFocus() is false when the header's filter fields hold the caret, which is
-    // what keeps restore from stealing it back mid-keystroke.
+    // hasFocus() is false while the header's filter fields hold the caret.
     m_profilesTableHadFocus = ui->profilesTableView->hasFocus();
     m_profilesScrollValue = ui->profilesTableView->verticalScrollBar()->value();
 
@@ -671,7 +592,6 @@ void MainWindow::focusProfilesTable(bool selectFirst) {
     view->setFocus();
     if (!selectFirst || !profilesFilterModel || profilesFilterModel->rowCount() == 0) return;
     selectProfileRows({0});
-    // selectProfileRows() suppresses auto-scroll; here the move is deliberate.
     view->scrollToTop();
 }
 
@@ -687,7 +607,7 @@ void MainWindow::clearUnavailableProfiles(bool confirm, QList<int> profileIDs) {
 
     auto profiles = Configs::dataManager->profilesRepo->GetProfileBatch(profileIDs);
     for (const auto &profile: profiles) {
-        if (profile->latency < 0) {
+        if (profile->latency < 0 && profile->latency != Configs::kLatencyConnectOnly) {
             del_ids += profile->id;
             if (++remove_display_count == removeListPreviewLimit) {
                 remove_display += "...";

@@ -8,15 +8,20 @@
 #include "include/ui/profile/edit_vless.h"
 #include "include/ui/profile/edit_anytls.h"
 #include "include/ui/profile/edit_mieru.h"
+#include "include/ui/profile/edit_snell.h"
 #include "include/ui/profile/edit_wireguard.h"
+#include "include/ui/profile/edit_masque.h"
+#include "include/ui/profile/edit_openvpn.h"
+#include "include/ui/profile/edit_openconnect.h"
 #include "include/ui/profile/edit_tailscale.h"
 #include "include/ui/profile/edit_ssh.h"
 #include "include/ui/profile/edit_custom.h"
 #include "include/ui/profile/edit_extra_core.h"
 
-#include "3rdparty/qv2ray/v2/ui/widgets/editors/w_JsonEditor.hpp"
+#include "include/ui/widget/json/JsonEditorDialog.h"
 #include "include/global/GuiUtils.hpp"
 #include "include/global/Utils.hpp"
+#include "include/global/RunningProfiles.hpp"
 
 #include <QInputDialog>
 #include <QLabel>
@@ -111,10 +116,8 @@ void DialogEditProfile::toggleXrayWidgets(bool show) {
 
 DialogEditProfile::DialogEditProfile(const QString &_type, int profileOrGroupId, QWidget *parent)
     : QDialog(parent), ui(new Ui::DialogEditProfile) {
-    // setup UI
     ui->setupUi(this);
 
-    // Save current tab order and the insertion point for innerWidget
     outerTabOrder = collectTabOrder(this, nullptr, ui->fake);
     innerTabOrderIndex = outerTabOrder.indexOf(ui->fake);
     if (innerTabOrderIndex >= 0) outerTabOrder.removeAt(innerTabOrderIndex);
@@ -132,7 +135,6 @@ DialogEditProfile::DialogEditProfile(const QString &_type, int profileOrGroupId,
     ui->verticalLayout_5->setAlignment(Qt::AlignTop);
     ui->verticalLayout_8->setAlignment(Qt::AlignTop);
 
-    // Xray init
     ui->xray_security->addItems({"", "tls", "reality"});
     ui->xray_network->addItems(Configs::XrayNetworks);
     ui->xray_fp->addItems(Configs::tlsFingerprints);
@@ -140,7 +142,6 @@ DialogEditProfile::DialogEditProfile(const QString &_type, int profileOrGroupId,
     ui->xray_ed_length->setValidator(new QIntValidator(0, 8192));
     toggleXrayWidgets(false);
 
-    // network changed
     network_title_base = ui->network_box->title();
     connect(ui->network, &QComboBox::currentTextChanged, this, [=,this](const QString &txt) {
         ui->network_box->setTitle(network_title_base.arg(txt));
@@ -209,7 +210,6 @@ DialogEditProfile::DialogEditProfile(const QString &_type, int profileOrGroupId,
     });
     ui->network->removeItem(0);
 
-    // security changed
     connect(ui->security, &QComboBox::currentTextChanged, this, [=,this](const QString &txt) {
         if (txt == "tls") {
             ui->security_box->setVisible(true);
@@ -222,14 +222,11 @@ DialogEditProfile::DialogEditProfile(const QString &_type, int profileOrGroupId,
     });
     emit ui->security->currentTextChanged(ui->security->currentText());
 
-    // for fragment: fallback delay only applies to the built-in implementation,
-    // so disable it when the tri-state is Off (index 2).
-    connect(ui->fragment, &QComboBox::currentIndexChanged, this, [=,this](int index)
+    connect(ui->fragment, &QComboBox::currentIndexChanged, this, [=,this](int)
     {
-        ui->tls_frag_fall_delay->setEnabled(index != 2);
+        updateTlsControlsEnabled();
     });
 
-    // mux setting changed
     connect(ui->multiplex, &QComboBox::currentTextChanged, this, [=,this](const QString &txt) {
         if (txt == "Off") {
             ui->brutal_enable->setCheckState(Qt::CheckState::Unchecked);
@@ -239,13 +236,11 @@ DialogEditProfile::DialogEditProfile(const QString &_type, int profileOrGroupId,
         }
     });
 
-    // Advanced options
     connect(ui->advanced_button, &QPushButton::clicked, this, [=,this]() {
         auto advancedWidget = new EditAdvanced(this, ent);
         advancedWidget->show();
     });
 
-    // Xray
     connect(ui->xray_mode, &QComboBox::currentTextChanged, this, [=,this](const QString &) {
         updateXrayXHTTPControls();
         queueRefreshDialogLayout();
@@ -317,7 +312,6 @@ DialogEditProfile::DialogEditProfile(const QString &_type, int profileOrGroupId,
         this->groupId = profileOrGroupId;
         this->type = _type;
 
-        // load type to combo box
         LOAD_TYPE("autoselector")
         LOAD_TYPE("socks")
         LOAD_TYPE("http")
@@ -333,8 +327,12 @@ DialogEditProfile::DialogEditProfile(const QString &_type, int profileOrGroupId,
         LOAD_TYPE("trusttunnel")
         LOAD_TYPE("anytls")
         LOAD_TYPE("mieru")
+        LOAD_TYPE("snell")
         LOAD_TYPE("shadowtls")
         LOAD_TYPE("wireguard")
+        LOAD_TYPE("masque")
+        LOAD_TYPE("openvpn")
+        LOAD_TYPE("openconnect")
         LOAD_TYPE("tailscale")
         LOAD_TYPE("ssh")
         LOAD_TYPE("direct")
@@ -345,7 +343,6 @@ DialogEditProfile::DialogEditProfile(const QString &_type, int profileOrGroupId,
         ui->type->addItem(tr("Extra Core"), "extracore");
         LOAD_TYPE("chain")
 
-        // type changed
         connect(ui->type, &QComboBox::currentIndexChanged, this, [=,this](int index) {
             typeSelected(ui->type->itemData(index).toString());
         });
@@ -419,10 +416,33 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         auto _innerWidget = new EditHysteria(this);
         innerWidget = _innerWidget;
         innerEditor = _innerWidget;
-        connect(_innerWidget->_protocol_version, &QComboBox::currentTextChanged, _innerWidget, [=,this](const QString &txt)
-        {
-            _innerWidget->editHysteriaLayout(txt);
+
+        auto updateLayout = [_innerWidget, this]() {
+            _innerWidget->editHysteriaLayout(
+                _innerWidget->_protocol_version->currentText(),
+                _innerWidget->_obfuscation_type->currentText()
+            );
+            // A realm profile is reached through the rendezvous service, not an address of its own.
+            const auto realm = _innerWidget->_realm_enabled->isChecked()
+                               && _innerWidget->_protocol_version->currentText() == "2";
+            ui->address->setEnabled(!realm);
+            ui->address_l->setEnabled(!realm);
+            ui->port->setEnabled(!realm);
+            ui->port_l->setEnabled(!realm);
             queueRefreshDialogLayout();
+        };
+
+        connect(_innerWidget->_protocol_version, &QComboBox::currentTextChanged, _innerWidget, [=](const QString &)
+        {
+            updateLayout();
+        });
+        connect(_innerWidget->_obfuscation_type, &QComboBox::currentTextChanged, _innerWidget, [=](const QString &)
+        {
+            updateLayout();
+        });
+        connect(_innerWidget->_realm_enabled, &QCheckBox::toggled, _innerWidget, [=](bool)
+        {
+            updateLayout();
         });
     } else if (type == "tuic") {
         auto _innerWidget = new EditTuic(this);
@@ -436,6 +456,9 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         auto _innerWidget = new EditTrustTunnel(this);
         innerWidget = _innerWidget;
         innerEditor = _innerWidget;
+        connect(_innerWidget->_quic, &QCheckBox::toggled, _innerWidget, [=,this](bool) {
+            updateTlsControlsEnabled();
+        });
     } else if (type == "anytls") {
         auto _innerWidget = new EditAnyTLS(this);
         innerWidget = _innerWidget;
@@ -444,12 +467,28 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         auto _innerWidget = new EditMieru(this);
         innerWidget = _innerWidget;
         innerEditor = _innerWidget;
+    } else if (type == "snell") {
+        auto _innerWidget = new EditSnell(this);
+        innerWidget = _innerWidget;
+        innerEditor = _innerWidget;
     } else if (type == "shadowtls") {
         auto _innerWidget = new EditShadowTLS(this);
         innerWidget = _innerWidget;
         innerEditor = _innerWidget;
     } else if (type == "wireguard") {
         auto _innerWidget = new EditWireguard(this);
+        innerWidget = _innerWidget;
+        innerEditor = _innerWidget;
+    } else if (type == "masque") {
+        auto _innerWidget = new EditMasque(this);
+        innerWidget = _innerWidget;
+        innerEditor = _innerWidget;
+    } else if (type == "openvpn") {
+        auto _innerWidget = new EditOpenVPN(this);
+        innerWidget = _innerWidget;
+        innerEditor = _innerWidget;
+    } else if (type == "openconnect") {
+        auto _innerWidget = new EditOpenConnect(this);
         innerWidget = _innerWidget;
         innerEditor = _innerWidget;
     } else if (type == "tailscale") {
@@ -496,7 +535,6 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         this->ent->gid = groupId;
     }
 
-    // hide some widget
     auto showAddressPort = type != "chain"
                            && type != "autoselector"
                            && type != "direct"
@@ -509,6 +547,14 @@ void DialogEditProfile::typeSelected(const QString &newType) {
     ui->address_l->setVisible(showAddressPort);
     ui->port->setVisible(showAddressPort);
     ui->port_l->setVisible(showAddressPort);
+
+    // A realm carries the endpoint itself; set unconditionally, since switching away must re-enable these.
+    auto hysteria = ent->Hysteria();
+    const bool realmAddress = hysteria != nullptr && hysteria->RealmActive();
+    ui->address->setEnabled(!realmAddress);
+    ui->address_l->setEnabled(!realmAddress);
+    ui->port->setEnabled(!realmAddress);
+    ui->port_l->setEnabled(!realmAddress);
 
     auto showAdvancedDialOption = type != "chain"
     && type != "autoselector"
@@ -536,13 +582,14 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         ui->method->setText(transport->method);
         ui->sni->setText(tls->server_name);
         ui->alpn->setText(tls->alpn.join(","));
-        if (newEnt) {
+        if (!tls->utls->supported || ent->outbound->LimitedTLS()) {
+            ui->utlsFingerprint->setCurrentText("");
+        } else if (newEnt) {
             ui->utlsFingerprint->setCurrentText(Configs::dataManager->settingsRepo->utlsFingerprint);
         } else {
             ui->utlsFingerprint->setCurrentText(tls->utls->fingerPrint);
         }
         ui->fragment->setCurrentIndex(tls->getFragmentState());
-        ui->tls_frag_fall_delay->setEnabled(tls->getFragmentState() != 2);
         ui->tls_frag_fall_delay->setText(tls->fragment_fallback_delay);
         ui->tls_rec_frag->setChecked(tls->record_fragment);
         ui->tls_tricks->setCurrentIndex(tls->getTlsTricksState());
@@ -554,6 +601,7 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         ui->reality_pbk->setText(tls->reality->public_key);
         ui->reality_sid->setText(tls->reality->short_id);
         CACHE.certificate = tls->certificate;
+        updateTlsControlsEnabled();
     } else {
         ui->right_all_w->setVisible(false);
     }
@@ -594,6 +642,7 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         ui->xray_max_reuse_times->setText(xrayStream->xhttp->cMaxReuseTimes);
         ui->xray_keep_alive_period->setText(Int2String(xrayStream->xhttp->hKeepAlivePeriod));
         CACHE.XrayDownloadSettings = xrayStream->xhttp->downloadSettings;
+        CACHE.XrayFinalmask = xrayStream->finalmask;
         ui->xray_downloadsettings_edit->setText(xrayStream->xhttp->downloadSettings.isEmpty() ? "Not Set" : "Already Set");
 
         ui->xray_network->setCurrentText(xrayStream->network);
@@ -624,7 +673,6 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         ui->brutal_u_speed->setText(Int2String(mux->brutal->up_mbps));
     }
 
-    // 左边 bean
     auto old = ui->bean->layout()->itemAt(0)->widget();
     ui->bean->layout()->removeWidget(old);
     innerWidget->layout()->setContentsMargins(0, 0, 0, 0);
@@ -632,7 +680,6 @@ void DialogEditProfile::typeSelected(const QString &newType) {
     ui->bean->setTitle(ent->outbound->DisplayType());
     delete old;
 
-    // Update tab order to include innerWidget
     const auto innerTabOrder = collectTabOrder(this, innerWidget);
     if (!innerTabOrder.isEmpty() && innerTabOrderIndex >= 0 && innerTabOrderIndex <= outerTabOrder.size()) {
         auto completeTabOrder = outerTabOrder.mid(0, innerTabOrderIndex);
@@ -641,7 +688,6 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         rebuildTabOrder(completeTabOrder);
     }
 
-    // 左边 bean inner editor
     innerEditor->get_edit_dialog = [&]() { return static_cast<QWidget*>(this); };
     innerEditor->get_edit_text_name = [&]() { return ui->name->text(); };
     innerEditor->get_edit_text_serverAddress = [&]() { return ui->address->text(); };
@@ -651,13 +697,11 @@ void DialogEditProfile::typeSelected(const QString &newType) {
     innerEditor->editor_cache_updated = [=,this] { editor_cache_updated_impl(); };
     innerEditor->onStart(ent);
 
-    // 左边 common
     ui->name->setText(ent->outbound->name);
     ui->address->setText(ent->outbound->GetAddress());
     ui->port->setText(ent->outbound->GetPort());
     ui->port->setValidator(QRegExpValidator_Number);
 
-    // 星号
     ADD_ASTERISK(this)
     if (ent->outbound->HasTransport()) {
         ui->network_l->setVisible(true);
@@ -709,6 +753,30 @@ void DialogEditProfile::typeSelected(const QString &newType) {
     }, this);
 }
 
+void DialogEditProfile::updateTlsControlsEnabled() {
+    if (!ent) return;
+    const bool limited = ent->outbound->LimitedTLS();
+    const auto trustTunnel = qobject_cast<EditTrustTunnel *>(innerWidget);
+    // QUIC dials through qtls, which cannot use a uTLS or Reality config.
+    const bool quic = trustTunnel != nullptr && trustTunnel->_quic->isChecked();
+    const bool utls = !limited && !quic && ent->outbound->GetTLS()->utls->supported;
+    const bool reality = !limited && !quic && ent->type != "masque";
+    // Limited-TLS outbounds only get the dialer-level ("custom") fragment, which has no fallback delay.
+    const bool fragment = !limited || Configs::dataManager->settingsRepo->fragment_implementation == "custom";
+    for (QWidget *w : std::initializer_list<QWidget *>{ui->alpn, ui->label_8, ui->insecure, ui->tls_rec_frag, ui->tls_tricks, ui->tls_tricks_l, ui->label_3}) {
+        w->setEnabled(!limited);
+    }
+    for (QWidget *w : std::initializer_list<QWidget *>{ui->reality_pbk, ui->reality_pbk_l, ui->reality_sid, ui->reality_sid_l}) {
+        w->setEnabled(reality);
+    }
+    ui->utlsFingerprint->setEnabled(utls);
+    ui->label_2->setEnabled(utls);
+    ui->fragment->setEnabled(fragment);
+    ui->fragment_l->setEnabled(fragment);
+    // Fragment index 2 is Off.
+    ui->tls_frag_fall_delay->setEnabled(!limited && ui->fragment->currentIndex() != 2);
+}
+
 void DialogEditProfile::updateXrayCommons(QString network) {
     if (!ent->outbound->IsXray()) return;
     auto stream = ent->outbound->GetXrayStream();
@@ -741,7 +809,6 @@ bool DialogEditProfile::validateHeaders() {
 }
 
 bool DialogEditProfile::onEnd() {
-    // bean
     if (!innerEditor->onEnd()) {
         return false;
     }
@@ -749,33 +816,33 @@ bool DialogEditProfile::onEnd() {
     if (!validateHeaders()) return false;
     if (!validateXrayXHTTPSettings()) return false;
 
-    ent->outbound->name = ui->name->text();
+    ent->outbound->name = ui->name->text().trimmed();
     ent->outbound->SetAddress(ui->address->text().remove(' '));
-    ent->outbound->SetPort(ui->port->text().toInt());
+    ent->outbound->SetPort(ui->port->text().trimmed().toInt());
 
     if (ent->outbound->HasTLS() || ent->outbound->HasTransport()) {
         auto tls = ent->outbound->GetTLS();
         auto transport = ent->outbound->GetTransport();
-        transport->type = ui->network->currentText();
+        transport->type = ui->network->currentText().trimmed();
         tls->enabled = ui->security->currentText() == "tls";
-        transport->path = ui->path->text();
-        transport->host = ui->host->text();
-        tls->server_name = ui->sni->text();
+        transport->path = ui->path->text().trimmed();
+        transport->host = ui->host->text().trimmed();
+        tls->server_name = ui->sni->text().trimmed();
         tls->alpn = SplitAndTrim(ui->alpn->text(), ",", false);
-        tls->utls->fingerPrint = ui->utlsFingerprint->currentText();
+        tls->utls->fingerPrint = ui->utlsFingerprint->currentText().trimmed();
         tls->utls->enabled = !tls->utls->fingerPrint.isEmpty();
         tls->saveFragmentState(ui->fragment->currentIndex());
-        tls->fragment_fallback_delay = ui->tls_frag_fall_delay->text();
+        tls->fragment_fallback_delay = ui->tls_frag_fall_delay->text().trimmed();
         tls->record_fragment = ui->tls_rec_frag->isChecked();
         tls->saveTlsTricksState(ui->tls_tricks->currentIndex());
         tls->insecure = ui->insecure->isChecked();
         transport->headers = Configs::parseHeaderPairs(ui->headers->text());
-        transport->method = ui->method->text();
-        transport->service_name = ui->service_name->text();
-        transport->early_data_header_name = ui->ws_early_data_name->text();
-        transport->max_early_data = ui->ws_early_data_length->text().toInt();
-        tls->reality->public_key = ui->reality_pbk->text();
-        tls->reality->short_id = ui->reality_sid->text();
+        transport->method = ui->method->text().trimmed();
+        transport->service_name = ui->service_name->text().trimmed();
+        transport->early_data_header_name = ui->ws_early_data_name->text().trimmed();
+        transport->max_early_data = ui->ws_early_data_length->text().trimmed().toInt();
+        tls->reality->public_key = ui->reality_pbk->text().trimmed();
+        tls->reality->short_id = ui->reality_sid->text().trimmed();
         tls->reality->enabled = !tls->reality->public_key.isEmpty();
         tls->certificate = CACHE.certificate;
     }
@@ -783,80 +850,81 @@ bool DialogEditProfile::onEnd() {
         auto mux = ent->outbound->GetMux();
         mux->saveMuxState(ui->multiplex->currentIndex());
         mux->brutal->enabled = ui->brutal_enable->isChecked();
-        mux->brutal->down_mbps = ui->brutal_d_speed->text().toInt();
-        mux->brutal->up_mbps = ui->brutal_u_speed->text().toInt();
+        mux->brutal->down_mbps = ui->brutal_d_speed->text().trimmed().toInt();
+        mux->brutal->up_mbps = ui->brutal_u_speed->text().trimmed().toInt();
     }
     if (ent->outbound->IsXray()) {
         auto xrayStream = ent->outbound->GetXrayStream();
         auto xrayMux = ent->outbound->GetXrayMultiplex();
 
-        xrayStream->network = ui->xray_network->currentText();
-        xrayStream->security = ui->xray_security->currentText();
+        xrayStream->network = ui->xray_network->currentText().trimmed();
+        xrayStream->security = ui->xray_security->currentText().trimmed();
+        xrayStream->finalmask = CACHE.XrayFinalmask;
         xrayMux->saveMuxState(ui->xray_mux->currentIndex());
 
-        auto sni = ui->xray_sni->text();
+        auto sni = ui->xray_sni->text().trimmed();
         if (xrayStream->security == "tls") xrayStream->TLS->serverName = sni;
         else if (xrayStream->security == "reality") xrayStream->reality->serverName = sni;
 
-        auto fp = ui->xray_fp->currentText();
+        auto fp = ui->xray_fp->currentText().trimmed();
         if (xrayStream->security == "tls") xrayStream->TLS->fingerprint = fp;
         else if (xrayStream->security == "reality") xrayStream->reality->fingerprint = fp;
 
         xrayStream->TLS->alpn = SplitAndTrim(ui->xray_alpn->text(), ",", false);;
-        xrayStream->TLS->pinnedPeerCertSha256 = ui->xray_pinned_peer_cert_sha256->text();
-        xrayStream->TLS->verifyPeerCertByName = ui->xray_verify_peer_cert_by_name->text();
-        xrayStream->reality->password = ui->xray_reality_pbk->text();
-        xrayStream->reality->shortId = ui->xray_reality_sid->text();
-        xrayStream->reality->spiderX = ui->xray_reality_spiderx->text();
+        xrayStream->TLS->pinnedPeerCertSha256 = ui->xray_pinned_peer_cert_sha256->text().trimmed();
+        xrayStream->TLS->verifyPeerCertByName = ui->xray_verify_peer_cert_by_name->text().trimmed();
+        xrayStream->reality->password = ui->xray_reality_pbk->text().trimmed();
+        xrayStream->reality->shortId = ui->xray_reality_sid->text().trimmed();
+        xrayStream->reality->spiderX = ui->xray_reality_spiderx->text().trimmed();
 
         if (xrayStream->network == "xhttp") {
-            xrayStream->xhttp->host = ui->xray_host->text();
-            xrayStream->xhttp->path = ui->xray_path->text();
-            xrayStream->xhttp->mode = ui->xray_mode->currentText();
+            xrayStream->xhttp->host = ui->xray_host->text().trimmed();
+            xrayStream->xhttp->path = ui->xray_path->text().trimmed();
+            xrayStream->xhttp->mode = ui->xray_mode->currentText().trimmed();
             xrayStream->xhttp->headers = Configs::parseHeaderPairs(ui->xray_headers->text());
-            xrayStream->xhttp->xPaddingBytes = ui->xray_xpaddingbytes->text();
+            xrayStream->xhttp->xPaddingBytes = ui->xray_xpaddingbytes->text().trimmed();
             xrayStream->xhttp->xPaddingObfsMode = ui->xray_xpadding_obfs_mode->isChecked();
-            xrayStream->xhttp->xPaddingKey = ui->xray_xpadding_key->text();
-            xrayStream->xhttp->xPaddingHeader = ui->xray_xpadding_header->text();
-            xrayStream->xhttp->xPaddingPlacement = ui->xray_xpadding_placement->currentText();
-            xrayStream->xhttp->xPaddingMethod = ui->xray_xpadding_method->currentText();
-            xrayStream->xhttp->uplinkHTTPMethod = ui->xray_uplink_http_method->currentText();
-            xrayStream->xhttp->sessionIDPlacement = ui->xray_session_placement->currentText();
-            xrayStream->xhttp->sessionIDKey = ui->xray_session_key->text();
-            xrayStream->xhttp->sessionIDTable = ui->xray_session_id_table->text();
-            xrayStream->xhttp->sessionIDLength = ui->xray_session_id_length->text();
-            xrayStream->xhttp->seqPlacement = ui->xray_seq_placement->currentText();
-            xrayStream->xhttp->seqKey = ui->xray_seq_key->text();
-            xrayStream->xhttp->uplinkDataPlacement = ui->xray_uplink_data_placement->currentText();
-            xrayStream->xhttp->uplinkDataKey = ui->xray_uplink_data_key->text();
-            xrayStream->xhttp->uplinkChunkSize = ui->xray_uplink_chunk_size->text();
+            xrayStream->xhttp->xPaddingKey = ui->xray_xpadding_key->text().trimmed();
+            xrayStream->xhttp->xPaddingHeader = ui->xray_xpadding_header->text().trimmed();
+            xrayStream->xhttp->xPaddingPlacement = ui->xray_xpadding_placement->currentText().trimmed();
+            xrayStream->xhttp->xPaddingMethod = ui->xray_xpadding_method->currentText().trimmed();
+            xrayStream->xhttp->uplinkHTTPMethod = ui->xray_uplink_http_method->currentText().trimmed();
+            xrayStream->xhttp->sessionIDPlacement = ui->xray_session_placement->currentText().trimmed();
+            xrayStream->xhttp->sessionIDKey = ui->xray_session_key->text().trimmed();
+            xrayStream->xhttp->sessionIDTable = ui->xray_session_id_table->text().trimmed();
+            xrayStream->xhttp->sessionIDLength = ui->xray_session_id_length->text().trimmed();
+            xrayStream->xhttp->seqPlacement = ui->xray_seq_placement->currentText().trimmed();
+            xrayStream->xhttp->seqKey = ui->xray_seq_key->text().trimmed();
+            xrayStream->xhttp->uplinkDataPlacement = ui->xray_uplink_data_placement->currentText().trimmed();
+            xrayStream->xhttp->uplinkDataKey = ui->xray_uplink_data_key->text().trimmed();
+            xrayStream->xhttp->uplinkChunkSize = ui->xray_uplink_chunk_size->text().trimmed();
             xrayStream->xhttp->noGRPCHeader = ui->xray_no_grpc->isChecked();
             xrayStream->xhttp->noSSEHeader = ui->xray_no_sse->isChecked();
-            xrayStream->xhttp->scMaxEachPostBytes = ui->xray_scMaxEachPostBytes->text();
-            xrayStream->xhttp->scMinPostsIntervalMs = ui->xray_scMinPostsIntervalMs->text();
-            xrayStream->xhttp->scMaxBufferedPosts = ui->xray_scMaxBufferedPosts->text().toLongLong();
-            xrayStream->xhttp->scStreamUpServerSecs = ui->xray_scStreamUpServerSecs->text();
-            xrayStream->xhttp->serverMaxHeaderBytes = ui->xray_serverMaxHeaderBytes->text().toInt();
-            xrayStream->xhttp->maxConcurrency = ui->xray_max_concurrency->text();
-            xrayStream->xhttp->maxConnections = ui->xray_max_connections->text();
-            xrayStream->xhttp->hMaxRequestTimes = ui->xray_hMaxRequestTimes->text();
-            xrayStream->xhttp->hMaxReusableSecs = ui->xray_hMaxReusableSecs->text();
-            xrayStream->xhttp->cMaxReuseTimes = ui->xray_max_reuse_times->text();
-            xrayStream->xhttp->hKeepAlivePeriod = ui->xray_keep_alive_period->text().toLongLong();
+            xrayStream->xhttp->scMaxEachPostBytes = ui->xray_scMaxEachPostBytes->text().trimmed();
+            xrayStream->xhttp->scMinPostsIntervalMs = ui->xray_scMinPostsIntervalMs->text().trimmed();
+            xrayStream->xhttp->scMaxBufferedPosts = ui->xray_scMaxBufferedPosts->text().trimmed().toLongLong();
+            xrayStream->xhttp->scStreamUpServerSecs = ui->xray_scStreamUpServerSecs->text().trimmed();
+            xrayStream->xhttp->serverMaxHeaderBytes = ui->xray_serverMaxHeaderBytes->text().trimmed().toInt();
+            xrayStream->xhttp->maxConcurrency = ui->xray_max_concurrency->text().trimmed();
+            xrayStream->xhttp->maxConnections = ui->xray_max_connections->text().trimmed();
+            xrayStream->xhttp->hMaxRequestTimes = ui->xray_hMaxRequestTimes->text().trimmed();
+            xrayStream->xhttp->hMaxReusableSecs = ui->xray_hMaxReusableSecs->text().trimmed();
+            xrayStream->xhttp->cMaxReuseTimes = ui->xray_max_reuse_times->text().trimmed();
+            xrayStream->xhttp->hKeepAlivePeriod = ui->xray_keep_alive_period->text().trimmed().toLongLong();
             xrayStream->xhttp->downloadSettings = xrayStream->xhttp->mode == "stream-one" ? QString() : CACHE.XrayDownloadSettings;
         } else if (xrayStream->network == "grpc") {
-            xrayStream->grpc->authority = ui->xray_host->text();
-            xrayStream->grpc->serviceName = ui->xray_path->text();
+            xrayStream->grpc->authority = ui->xray_host->text().trimmed();
+            xrayStream->grpc->serviceName = ui->xray_path->text().trimmed();
             xrayStream->grpc->multiMode = ui->xray_multi_mode->isChecked();
         } else if (xrayStream->network == "ws") {
-            xrayStream->ws->host = ui->xray_host->text();
-            xrayStream->ws->path = ui->xray_path->text();
-            xrayStream->ws->ed = ui->xray_ed_length->text().toInt();
+            xrayStream->ws->host = ui->xray_host->text().trimmed();
+            xrayStream->ws->path = ui->xray_path->text().trimmed();
+            xrayStream->ws->ed = ui->xray_ed_length->text().trimmed().toInt();
             xrayStream->ws->headers = Configs::parseHeaderPairs(ui->xray_headers->text());
         } else if (xrayStream->network == "httpupgrade") {
-            xrayStream->httpupgrade->host = ui->xray_host->text();
-            xrayStream->httpupgrade->path = ui->xray_path->text();
-            xrayStream->httpupgrade->ed = ui->xray_ed_length->text().toInt();
+            xrayStream->httpupgrade->host = ui->xray_host->text().trimmed();
+            xrayStream->httpupgrade->path = ui->xray_path->text().trimmed();
+            xrayStream->httpupgrade->ed = ui->xray_ed_length->text().trimmed().toInt();
             xrayStream->httpupgrade->headers = Configs::parseHeaderPairs(ui->xray_headers->text());
         }
     }
@@ -865,12 +933,10 @@ bool DialogEditProfile::onEnd() {
 }
 
 void DialogEditProfile::accept() {
-    // save to ent
     if (!onEnd()) {
         return;
     }
 
-    // finish
     QStringList args;
 
     if (newEnt) {
@@ -880,14 +946,13 @@ void DialogEditProfile::accept() {
         }
     } else {
         auto changed = Configs::dataManager->profilesRepo->Save(ent);
-        if (changed && Configs::dataManager->settingsRepo->started_id == ent->id) args << MwArg::RestartProxy;
+        if (changed && (Configs::dataManager->settingsRepo->started_id == ent->id ||
+                        Configs::RunningUsesProfile(ent->id))) args << MwArg::RestartProxy;
     }
 
     MW_dialog_message(MwMessage::ProfileChanged, args);
     QDialog::accept();
 }
-
-// cached editor (dialog)
 
 void DialogEditProfile::editor_cache_updated_impl() {
     if (CACHE.certificate.isEmpty()) {
@@ -897,8 +962,8 @@ void DialogEditProfile::editor_cache_updated_impl() {
     }
     if (ent->outbound->IsXray()) {
         ui->xray_downloadsettings_edit->setText(CACHE.XrayDownloadSettings.isEmpty() ? "Not Set" : "Already Set");
+        ui->xray_finalmask_edit->setText(CACHE.XrayFinalmask.isEmpty() ? "Not Set" : "Already Set");
     }
-    // CACHE macro
     for (auto a: innerEditor->get_editor_cached()) {
         if (a.second.isEmpty()) {
             a.first->setText(tr("Not set"));
@@ -918,10 +983,19 @@ void DialogEditProfile::on_certificate_edit_clicked() {
 }
 
 void DialogEditProfile::on_xray_downloadsettings_edit_clicked() {
-    auto editor = new JsonEditor(QString2QJsonObject(CACHE.XrayDownloadSettings), this);
+    auto editor = new JsonEdit::JsonEditorDialog(QString2QJsonObject(CACHE.XrayDownloadSettings), this);
     auto result = editor->OpenEditor();
     if (!result.isEmpty()) CACHE.XrayDownloadSettings = QJsonObject2QString(result, true);
     else CACHE.XrayDownloadSettings.clear();
+    editor->deleteLater();
+
+    editor_cache_updated_impl();
+}
+
+void DialogEditProfile::on_xray_finalmask_edit_clicked() {
+    auto editor = new JsonEdit::JsonEditorDialog(CACHE.XrayFinalmask, this);
+    auto result = editor->OpenEditor();
+    CACHE.XrayFinalmask = result;
     editor->deleteLater();
 
     editor_cache_updated_impl();

@@ -31,11 +31,15 @@ void AutoRun_SetEnabled(bool enable) {
     QString desktopFileLocation = userAutoStartPath + appName + QLatin1String(".desktop");
     QStringList appCmdList;
 
+#ifdef NKR_DESKTOP_EXEC
+    appCmdList << NKR_DESKTOP_EXEC;
+#else
     if (QProcessEnvironment::systemEnvironment().contains("APPIMAGE")) {
         appCmdList << QProcessEnvironment::systemEnvironment().value("APPIMAGE");
     } else {
         appCmdList << QApplication::applicationFilePath();
     }
+#endif
 
     appCmdList << "-tray";
 
@@ -45,16 +49,12 @@ void AutoRun_SetEnabled(bool enable) {
 
     if (enable) {
         if (!QDir().exists(userAutoStartPath) && !QDir().mkpath(userAutoStartPath)) {
-            // qCWarning(lcUtility) << "Could not create autostart folder"
-            // << userAutoStartPath;
             return;
         }
 
         QFile iniFile(desktopFileLocation);
 
         if (!iniFile.open(QIODevice::WriteOnly)) {
-            // qCWarning(lcUtility) << "Could not write auto start entry" <<
-            // desktopFileLocation;
             return;
         }
 

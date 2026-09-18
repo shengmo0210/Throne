@@ -1,8 +1,91 @@
 #include "include/database/Database.h"
+#include "include/global/Logger.hpp"
 #include <3rdparty/SQLiteCpp/include/Backup.h>
+#include <3rdparty/SQLiteCpp/include/sqlite3.h>
+#include <QDateTime>
+#include <QObject>
+#include <algorithm>
+#include <mutex>
 #include <set>
+#include <unordered_map>
 
 namespace Configs {
+    namespace {
+        constexpr int DB_ERROR_LOG_FIRST = 3;
+        constexpr qint64 DB_ERROR_LOG_EVERY_MS = 60 * 1000;
+        constexpr qint64 DB_ERROR_NOTICE_EVERY_MS = 10 * 60 * 1000;
+
+        struct DbErrorTally {
+            int count = 0;
+            int suppressed = 0;
+            qint64 lastLogMs = 0;
+            qint64 lastNoticeMs = 0;
+        };
+
+        std::mutex g_dbErrorMu;
+        std::unordered_map<std::string, DbErrorTally> g_dbErrorTallies;
+    }
+
+    DbError DescribeDbError(const std::exception& e) {
+        DbError err;
+        err.what = e.what();
+        if (const auto* s = dynamic_cast<const SQLite::Exception*>(&e)) {
+            err.code = s->getErrorCode();
+            err.extended = s->getExtendedErrorCode();
+        }
+        return err;
+    }
+
+    bool IsFatalDbError(const DbError& err) {
+        const int code = err.extended > 0 ? err.extended : err.code;
+        if (code < 0) return false;
+        const int primary = code & 0xff;
+        return primary == SQLITE_READONLY || primary == SQLITE_CORRUPT || primary == SQLITE_NOTADB;
+    }
+
+    std::string DbRebuildMarkerPath(const std::string& dbPath) {
+        return dbPath + ".rebuild";
+    }
+
+    void NotifyError(const std::string& query, const DbError& err) {
+        const std::string key = query.length() > 200 ? query.substr(0, 200) : query;
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        bool logIt = false;
+        bool noticeIt = false;
+        int count = 0;
+        int suppressed = 0;
+        {
+            std::lock_guard<std::mutex> lk(g_dbErrorMu);
+            auto& t = g_dbErrorTallies[key];
+            count = ++t.count;
+            if (t.count <= DB_ERROR_LOG_FIRST || now - t.lastLogMs >= DB_ERROR_LOG_EVERY_MS) {
+                logIt = true;
+                suppressed = t.suppressed;
+                t.suppressed = 0;
+                t.lastLogMs = now;
+            } else {
+                ++t.suppressed;
+            }
+            if (t.lastNoticeMs == 0 || now - t.lastNoticeMs >= DB_ERROR_NOTICE_EVERY_MS) {
+                noticeIt = true;
+                t.lastNoticeMs = now;
+            }
+        }
+
+        QString detail = QString::fromStdString(err.what);
+        if (err.code >= 0) detail += QString(" [sqlite %1/%2]").arg(err.code).arg(err.extended);
+        if (logIt) {
+            QString line = QString("DB error in %1: %2 (occurrence %3").arg(QString::fromStdString(key), detail).arg(count);
+            if (suppressed > 0) line += QString(", %1 suppressed").arg(suppressed);
+            line += ")";
+            LOG_ERROR(line);
+        }
+        if (noticeIt) {
+            PostPassiveWarning(QObject::tr("Database error"),
+                               QObject::tr("%1 failed: %2. Details are in the log file.").arg(QString::fromStdString(key), detail));
+        }
+    }
+
     void Database::maybeCheckpoint(int count) {
         if (writeCount.fetch_add(count) >= WAL_CHECKPOINT_AFTER_WRITES) {
             writeCount = 0;
@@ -14,7 +97,7 @@ namespace Configs {
         try {
             db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
         } catch (std::exception& e) {
-            std::cerr << "DB WAL checkpoint error: " << e.what() << std::endl;
+            LOG_WARN(QString("DB WAL checkpoint skipped: ") + e.what());
         }
     }
 
@@ -43,7 +126,7 @@ namespace Configs {
             checkpointWal();
         } catch (std::exception& e) {
             // A concurrent transaction on this connection fails VACUUM; next launch retries.
-            std::cerr << "DB VACUUM check error: " << e.what() << std::endl;
+            LOG_WARN(QString("DB VACUUM check skipped: ") + e.what());
         }
     }
 
@@ -59,7 +142,7 @@ namespace Configs {
             db.exec(sql);
             maybeCheckpoint(ids.size());
         } catch (std::exception& e) {
-            std::cerr << "DB Error: " << e.what() << std::endl;
+            NotifyError("execDeleteByIdIn for " + table, e);
         }
     }
 
@@ -79,7 +162,7 @@ namespace Configs {
             stmt.exec();
             maybeCheckpoint(1);
         } catch (std::exception& e) {
-            std::cerr << "DB Error: " << e.what() << std::endl;
+            NotifyError("execBatchSettingsReplace", e);
         }
     }
 
@@ -100,7 +183,7 @@ namespace Configs {
             stmt.exec();
             maybeCheckpoint(pairs.size() / 2);
         } catch (std::exception& e) {
-            std::cerr << "DB Error: " << e.what() << std::endl;
+            NotifyError("execBatchInsertIntPairs for " + table, e);
         }
     }
 
@@ -133,7 +216,7 @@ namespace Configs {
             stmt.exec();
             maybeCheckpoint(static_cast<int>(rows.size()));
         } catch (std::exception& e) {
-            std::cerr << "DB Error: " << e.what() << std::endl;
+            NotifyError("execBatchInsertProfiles", e);
         }
     }
 
@@ -166,7 +249,7 @@ namespace Configs {
             stmt.exec();
             maybeCheckpoint(static_cast<int>(rows.size()));
         } catch (std::exception& e) {
-            std::cerr << "DB Error: " << e.what() << std::endl;
+            NotifyError("execBatchReplaceProfiles", e);
         }
     }
 
@@ -183,12 +266,11 @@ namespace Configs {
     }
 
     namespace {
-        // Tables that make up each logical category. Delete order matters when
-        // foreign keys are on; we copy with them off, but keep child-first order
-        // for clarity and so re-enabling FK checks afterwards stays consistent.
+        // Child-first order: delete order matters once foreign keys are re-enabled.
         const std::vector<std::string> kProfileTables = {"profiles", "groups_order", "groups"};
         const std::vector<std::string> kRouteTables = {"route_rules", "route_profiles"};
         const std::vector<std::string> kSettingsTables = {"settings"};
+        const std::vector<std::string> kOtpTables = {"otp_profiles"};
 
         std::vector<std::string> tableColumns(SQLite::Database& d, const std::string& schema, const std::string& table) {
             std::vector<std::string> cols;
@@ -204,8 +286,13 @@ namespace Configs {
             return q.executeStep();
         }
 
-        // Replace every row of main.<table> with the rows from bak.<table>,
-        // copying only the columns that exist in both schemas.
+        bool columnExists(SQLite::Database& d, const std::string& schema, const std::string& table,
+                          const std::string& column) {
+            if (!tableExists(d, schema, table)) return false;
+            const auto cols = tableColumns(d, schema, table);
+            return std::find(cols.begin(), cols.end(), column) != cols.end();
+        }
+
         void copyTable(SQLite::Database& d, const std::string& table) {
             if (!tableExists(d, "main", table) || !tableExists(d, "bak", table)) return;
 
@@ -227,9 +314,7 @@ namespace Configs {
     }
 
     void Database::backupSelective(const std::string& destPath, const BackupParts& parts) {
-        // Take a full, WAL-safe snapshot first (same mechanism as backupTo),
-        // then strip the categories the user did not select. entity_ids is
-        // always kept so profile/route IDs stay consistent on restore.
+        // Full snapshot first (WAL-safe, unlike a file copy), then strip the unselected categories.
         {
             SQLite::Database destDb(destPath, SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
             SQLite::Backup backup(destDb, db);
@@ -247,6 +332,7 @@ namespace Configs {
         if (!parts.profiles) wipe(kProfileTables);
         if (!parts.routes) wipe(kRouteTables);
         if (!parts.settings) wipe(kSettingsTables);
+        if (!parts.otp) wipe(kOtpTables);
         try { dest.exec("VACUUM"); } catch (...) {}
     }
 
@@ -267,9 +353,9 @@ namespace Configs {
             if (parts.profiles) for (const auto& t : kProfileTables) copyTable(db, t);
             if (parts.routes) for (const auto& t : kRouteTables) copyTable(db, t);
             if (parts.settings) for (const auto& t : kSettingsTables) copyTable(db, t);
+            if (parts.otp) for (const auto& t : kOtpTables) copyTable(db, t);
 
-            // Keep the ID counters ahead of any restored data so freshly created
-            // profiles/groups/routes never collide with restored ones.
+            // Keep the ID counters ahead of restored data so newly created IDs never collide.
             if (parts.profiles || parts.routes) {
                 const bool bakIds = tableExists(db, "bak", "entity_ids");
                 db.exec(
@@ -283,6 +369,14 @@ namespace Configs {
                     "route_profile_last_id = MAX(route_profile_last_id,"
                     "(SELECT COALESCE(MAX(id),0) FROM route_profiles)" +
                     std::string(bakIds ? ",(SELECT COALESCE(MAX(route_profile_last_id),0) FROM bak.entity_ids)" : "") + ")");
+            }
+
+            if (parts.otp) {
+                const bool bakOtpIds = columnExists(db, "bak", "entity_ids", "otp_profile_last_id");
+                db.exec(
+                    "UPDATE entity_ids SET otp_profile_last_id = MAX(otp_profile_last_id,"
+                    "(SELECT COALESCE(MAX(id),0) FROM otp_profiles)" +
+                    std::string(bakOtpIds ? ",(SELECT COALESCE(MAX(otp_profile_last_id),0) FROM bak.entity_ids)" : "") + ")");
             }
 
             db.exec("COMMIT");

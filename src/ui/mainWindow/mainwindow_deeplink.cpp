@@ -5,6 +5,7 @@
 #include <QBuffer>
 #include <QFileInfo>
 #include <QImageReader>
+#include <QInputDialog>
 #include <QMessageBox>
 #include <QStringConverter>
 #include <QUrl>
@@ -17,14 +18,14 @@
 #include "include/global/PeriodicRunner.hpp"
 #include "include/sys/AutoRun.hpp"
 #include "include/ui/mainWindow/MainWindowInternal.h"
+#include "include/ui/setting/Icon.hpp"
 #include "include/ui/utils/ProfilesTableModel.h"
 
 namespace {
 
 constexpr qint64 kMaxImportFileSize = 50 * 1024 * 1024;
 
-// Content-sniffs text vs binary: the name promises nothing (.json/.conf/.txt/none).
-// A BOM also pins the encoding and is dropped - Qt's json parser rejects it.
+// A BOM is dropped here: Qt's json parser rejects it.
 bool decodeImportedText(const QByteArray &bytes, QString &out) {
     if (const auto encoding = QStringConverter::encodingForData(bytes)) {
         QStringDecoder decoder(*encoding);
@@ -32,8 +33,6 @@ bool decodeImportedText(const QByteArray &bytes, QString &out) {
         return !decoder.hasError();
     }
 
-    // No BOM: reject NUL bytes or a heavy control-character share, then decode leniently
-    // so a legacy 8-bit config still parses with only its names garbled.
     const qsizetype sample = std::min<qsizetype>(bytes.size(), 8192);
     qsizetype control = 0;
     for (qsizetype i = 0; i < sample; i++) {
@@ -69,8 +68,6 @@ void MainWindow::importFromFiles(const QStringList &paths)
         const auto bytes = file.readAll();
         file.close();
 
-        // Decide the type from the bytes rather than the suffix, so a QR code
-        // screenshot saved without one still reaches the decoder.
         QBuffer buffer;
         buffer.setData(bytes);
         buffer.open(QIODevice::ReadOnly);
@@ -102,17 +99,15 @@ void MainWindow::importFromFiles(const QStringList &paths)
 
     for (const QString &problem : problems) MW_show_log(problem);
 
-    // A payload that is itself a url keeps the single item path: that one asks
-    // whether to make a subscription group out of it, which a batch cannot.
     QStringList batch;
     for (const QString &payload : payloads) {
         if (payload.startsWith("http://") || payload.startsWith("https://")) {
-            Subscription::groupUpdater->AsyncUpdate(payload);
+            import_text(payload);
         } else {
             batch << payload;
         }
     }
-    if (!batch.isEmpty()) Subscription::groupUpdater->AsyncImportBatch(batch);
+    if (!batch.isEmpty()) Subscription::updater()->ImportBatch(batch);
 
     if (payloads.isEmpty() && !problems.isEmpty()) {
         MessageBoxWarning(software_name, tr("Nothing could be imported:") + "\n" + problems.join("\n"));
@@ -125,7 +120,7 @@ void MainWindow::handle_deeplink_impl(const QString &url) {
     const QString cmd = u.host();
 
     if (cmd.compare("add", Qt::CaseInsensitive) == 0) {
-        Subscription::groupUpdater->AsyncUpdate(url);
+        import_text(url);
         return;
     }
 
@@ -209,8 +204,6 @@ void MainWindow::handle_add_remote_routes(const QString &url) {
         Configs::dataManager->routesRepo->AddRouteProfile(profile);
     }
 
-    // Fetch the freshly added profiles so they have rules right away. Runs off the UI thread and
-    // persists each result; a failed fetch just leaves an empty, updatable profile.
     const auto added = profiles;
     runOnNewThread([added] {
         int ok = 0;
@@ -247,7 +240,7 @@ void MainWindow::handle_addsub(const QString &url, const QString &name) {
     group->skip_auto_update = !autoUpdate;
     Configs::dataManager->groupsRepo->AddGroup(group);
     refresh_groups();
-    Subscription::groupUpdater->AsyncUpdate(url, group->id);
+    Subscription::updater()->RefreshGroup(group->id);
 }
 
 void MainWindow::import_or_handle_deeplink(const QString &text) {
@@ -255,7 +248,33 @@ void MainWindow::import_or_handle_deeplink(const QString &text) {
         handle_deeplink_impl(trimmed);
         return;
     }
-    Subscription::groupUpdater->AsyncUpdate(text);
+    import_text(text);
+}
+
+void MainWindow::import_text(const QString &text) {
+    const auto content = text.trimmed();
+    if (content.startsWith("http://") || content.startsWith("https://")) {
+        const QStringList items{
+            QObject::tr("Add profiles to this group"),
+            QObject::tr("Create new subscription group"),
+            QObject::tr("Import HTTP proxy profile"),
+        };
+        bool ok = false;
+        const auto choice = QInputDialog::getItem(nullptr, QObject::tr("url detected"),
+                                                  QObject::tr("%1\nHow to update?").arg(content), items, 0, false, &ok);
+        if (!ok) return;
+        switch (items.indexOf(choice)) {
+            case 0:
+                Subscription::updater()->ImportUrl(content);
+                return;
+            case 1:
+                Subscription::updater()->SubscribeUrl(content);
+                return;
+            default:
+                break;
+        }
+    }
+    Subscription::updater()->ImportText(content);
 }
 
 void MainWindow::dialog_message_impl(MwMessage cmd, const QStringList &args) {
@@ -267,7 +286,8 @@ void MainWindow::dialog_message_impl(MwMessage cmd, const QStringList &args) {
         updateLogFilterFields();
         ui->actionTraffic_Stats->setVisible(!settings->disable_traffic_aggregation);
         if (changed(MwArg::TrayIcon)) {
-            icon_status = -1;
+            Icon::InvalidateTrayIconCache();
+            icon_status.reset();
         }
         if (changed(MwArg::MaxLogLines)) {
             qvLogDocument->setMaximumBlockCount(settings->max_log_line);
@@ -290,16 +310,12 @@ void MainWindow::dialog_message_impl(MwMessage cmd, const QStringList &args) {
             AutoRun_FixTaskIfNeeded();
         }
         if (changed(MwArg::ProfileListDisplay)) {
-            // The security suffix changes the Type column's width; drop its
-            // cached auto-width so ResizeToContents re-measures.
             if (auto group = Configs::dataManager->groupsRepo->CurrentGroup();
                 group && group->calculated_column_width.size() > ProfilesTableModel::ColType)
                 group->calculated_column_width[ProfilesTableModel::ColType] = 0;
             refresh_proxy_list({}, true);
         }
         auto suggestRestartProxy = settings->Save();
-        // Pick up any changed auto-update interval immediately instead of waiting for the
-        // next poll (e.g. the user just enabled or shortened a job).
         Throne::PeriodicRunner::instance()->CheckNow();
         if (changed(MwArg::Route)) {
             settings->Save();
@@ -311,9 +327,8 @@ void MainWindow::dialog_message_impl(MwMessage cmd, const QStringList &args) {
         if (changed(MwArg::Vpn) && settings->spmode_vpn) {
             MessageBoxWarning(tr("Tun Settings changed"), tr("Restart Tun to take effect."));
         }
-        if ((changed(MwArg::ChoosePort) || suggestRestartProxy) && settings->started_id >= 0 &&
-            QMessageBox::question(GetMessageBoxParent(), tr("Confirmation"), tr("Settings changed, restart proxy?")) == QMessageBox::StandardButton::Yes) {
-            profile_start(settings->started_id);
+        if (changed(MwArg::ChoosePort) || suggestRestartProxy) {
+            noteRestartNeeded(changed(MwArg::Route) ? tr("Routing") : tr("Settings"));
         }
         refresh_status();
         if (changed(MwArg::NeedRestart) &&
@@ -335,10 +350,7 @@ void MainWindow::dialog_message_impl(MwMessage cmd, const QStringList &args) {
         break;
     case MwMessage::ProfileChanged:
         refresh_proxy_list({}, true);
-        if (changed(MwArg::RestartProxy) &&
-            QMessageBox::question(GetMessageBoxParent(), tr("Confirmation"), tr("Settings changed, restart proxy?")) == QMessageBox::StandardButton::Yes) {
-            profile_start(settings->started_id);
-        }
+        if (changed(MwArg::RestartProxy)) noteRestartNeeded(tr("Profile"));
         break;
     case MwMessage::GroupsChanged:
         refresh_groups();
@@ -363,11 +375,12 @@ void MainWindow::dialog_message_impl(MwMessage cmd, const QStringList &args) {
         break;
     case MwMessage::CoreStarted:
         Configs::IsAdmin(true);
-        if (settings->remember_system_proxy) {
+        if (settings->remember_enable && settings->remember_system_proxy) {
             set_spmode_system_proxy(true, false);
         }
-        if (settings->remember_tun || settings->flag_restart_tun_on) {
-            set_spmode_vpn(true, false);
+        if ((settings->remember_enable && settings->remember_tun) || settings->flag_restart_tun_on) {
+            set_spmode_vpn(true, settings->flag_restart_tun_on);
+            settings->flag_restart_tun_on = false;
         }
         if (settings->flag_dns_set) {
             set_system_dns(true);

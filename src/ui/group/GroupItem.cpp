@@ -13,35 +13,40 @@
 QString ParseSubInfo(const QString &info) {
     if (info.trimmed().isEmpty()) return "";
 
-    QString result;
-
     long long used = 0;
     long long total = 0;
     long long expire = 0;
 
-    auto re0m = QRegularExpression("total=([0-9]+)").match(info);
-    if (re0m.lastCapturedIndex() >= 1) {
-        total = re0m.captured(1).toLongLong();
-    } else {
-        return "";
-    }
-    auto re1m = QRegularExpression("upload=([0-9]+)").match(info);
-    if (re1m.lastCapturedIndex() >= 1) {
-        used += re1m.captured(1).toLongLong();
-    }
-    auto re2m = QRegularExpression("download=([0-9]+)").match(info);
-    if (re2m.lastCapturedIndex() >= 1) {
-        used += re2m.captured(1).toLongLong();
-    }
-    auto re3m = QRegularExpression("expire=([0-9]+)").match(info);
-    if (re3m.lastCapturedIndex() >= 1) {
-        expire = re3m.captured(1).toLongLong();
+    static const QRegularExpression re(
+        R"((total|upload|download|expire)=([0-9]+))");
+
+    auto it = re.globalMatch(info);
+
+    bool hasTotal = false;
+
+    while (it.hasNext()) {
+        const auto match = it.next();
+        const QStringView key = match.capturedView(1);
+        const long long value = match.capturedView(2).toLongLong();
+
+        if (key == u"total") {
+            total = value;
+            hasTotal = true;
+        } else if (key == u"upload" || key == u"download") {
+            used += value;
+        } else if (key == u"expire") {
+            expire = value;
+        }
     }
 
-    result = QObject::tr("Used: %1 Remain: %2 Expire: %3")
-                         .arg(ReadableSize(used), (total == 0) ? QString::fromUtf8("\u221E") : ReadableSize(total - used), DisplayTime(expire, QLocale::ShortFormat));
+    if (!hasTotal)
+        return {};
 
-    return result;
+    return QObject::tr("Used: %1 Remain: %2 Expire: %3")
+        .arg(ReadableSize(used),
+             total == 0 ? QString::fromUtf8("\u221E")
+                        : ReadableSize(total - used),
+             DisplayTime(expire, QLocale::ShortFormat));
 }
 
 GroupItem::GroupItem(QWidget *parent, const std::shared_ptr<Configs::Group> &ent, QListWidgetItem *item) : QWidget(parent), ui(new Ui::GroupItem) {
@@ -54,7 +59,7 @@ GroupItem::GroupItem(QWidget *parent, const std::shared_ptr<Configs::Group> &ent
     if (ent == nullptr) return;
 
     connect(this, &GroupItem::edit_clicked, this, &GroupItem::on_edit_clicked);
-    connect(Subscription::groupUpdater, &Subscription::GroupUpdater::asyncUpdateCallback, this, [=,this](int gid) { if (gid == this->ent->id) refresh_data(); });
+    connect(Subscription::updater(), &Subscription::GroupUpdater::asyncUpdateCallback, this, [=,this](int gid) { if (gid == this->ent->id) refresh_data(); });
 
     refresh_data();
 }
@@ -102,7 +107,7 @@ void GroupItem::refresh_data() {
 }
 
 void GroupItem::on_update_sub_clicked() {
-    Subscription::groupUpdater->AsyncUpdate(ent->url, ent->id, nullptr, true);
+    Subscription::updater()->RefreshGroup(ent->id, nullptr, true);
 }
 
 void GroupItem::on_edit_clicked() {

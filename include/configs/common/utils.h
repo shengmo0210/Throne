@@ -14,7 +14,9 @@ namespace Configs
 
     bool useXrayVless(const QString& link);
 
-    QString getHeadersString(QStringList headers);
+    QString toAceHost(const QString& host);
+
+    QString getHeadersString(const QStringList& headers);
 
     QStringList parseHeaderPairs(const QString& rawHeader);
 }

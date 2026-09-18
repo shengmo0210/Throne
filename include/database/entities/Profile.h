@@ -6,6 +6,7 @@
 #include "include/configs/common/Outbound.h"
 #include "include/configs/outbounds/anyTLS.h"
 #include "include/configs/outbounds/mieru.h"
+#include "include/configs/outbounds/snell.h"
 #include "include/configs/outbounds/direct.h"
 #include "include/configs/outbounds/chain.h"
 #include "include/configs/outbounds/autoselector.h"
@@ -14,6 +15,7 @@
 #include "include/configs/outbounds/socks.h"
 #include "include/configs/outbounds/http.h"
 #include "include/configs/outbounds/hysteria.h"
+#include "include/configs/outbounds/masque.h"
 #include "include/configs/outbounds/shadowsocks.h"
 #include "include/configs/outbounds/ssh.h"
 #include "include/configs/outbounds/trojan.h"
@@ -21,6 +23,8 @@
 #include "include/configs/outbounds/juicity.h"
 #include "include/configs/outbounds/trusttunnel.h"
 #include "include/configs/outbounds/naive.h"
+#include "include/configs/outbounds/openvpn.h"
+#include "include/configs/outbounds/openconnect.h"
 #include "include/configs/outbounds/shadowtls.h"
 #include "include/configs/outbounds/vless.h"
 #include "include/configs/outbounds/vmess.h"
@@ -29,6 +33,9 @@
 #include "include/global/CountryHelper.hpp"
 
 namespace Configs {
+    // `latency` sentinel: egress probe failed, but the core reports the tunnel up.
+    constexpr int kLatencyConnectOnly = -2;
+
     class Profile {
     public:
         QString type;
@@ -37,8 +44,7 @@ namespace Configs {
         int id = -1;
         int gid = 0;
         int latency = 0;
-        // Unix seconds when `latency` was measured; 0 = unknown/never. Lets a
-        // consumer decide whether a stored result is still worth trusting.
+        // Unix seconds when `latency` was measured; 0 = never.
         qint64 latency_at = 0;
         QString dl_speed;
         QString ul_speed;
@@ -57,8 +63,7 @@ namespace Configs {
 
         void ClearTestResults();
 
-        // Always set latency through here: it stamps latency_at, which is what
-        // lets consumers judge whether a stored result is still fresh.
+        // Always set latency through here: it also stamps latency_at.
         void SetLatency(int ms);
 
         [[nodiscard]] QString DisplayTestResult() const;
@@ -104,6 +109,10 @@ namespace Configs {
             return dynamic_cast<Configs::mieru *>(outbound.get());
         };
 
+        [[nodiscard]] Configs::snell *Snell() const {
+            return dynamic_cast<Configs::snell *>(outbound.get());
+        };
+
         [[nodiscard]] Configs::hysteria *Hysteria() const {
             return dynamic_cast<Configs::hysteria *>(outbound.get());
         };
@@ -138,6 +147,18 @@ namespace Configs {
 
         [[nodiscard]] Configs::wireguard *Wireguard() const {
             return dynamic_cast<Configs::wireguard *>(outbound.get());
+        };
+
+        [[nodiscard]] Configs::masque *Masque() const {
+            return dynamic_cast<Configs::masque *>(outbound.get());
+        };
+
+        [[nodiscard]] Configs::openvpn *OpenVPN() const {
+            return dynamic_cast<Configs::openvpn *>(outbound.get());
+        };
+
+        [[nodiscard]] Configs::openconnect *OpenConnect() const {
+            return dynamic_cast<Configs::openconnect *>(outbound.get());
         };
 
         [[nodiscard]] Configs::Custom *Custom() const {

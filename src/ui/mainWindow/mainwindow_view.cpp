@@ -9,7 +9,10 @@
 
 #include "include/api/RPC.h"
 #include "include/database/GroupsRepo.h"
+#include "include/database/ProfilesRepo.h"
 #include "include/database/RoutesRepo.h"
+#include "include/database/SettingsRepo.h"
+#include "include/global/LocalNetwork.hpp"
 #include "include/stats/autoselector/AutoSelectorMonitor.hpp"
 #include "include/ui/setting/Icon.hpp"
 #include "include/ui/stats/dialog_auto_selector.h"
@@ -17,28 +20,34 @@
 #include "include/ui/utils/ProfilesTableModel.h"
 #include "include/ui/widget/StartStopButton.hpp"
 
+// Mirrors the language switch in main.cpp; QLocale() alone follows the system, not an explicit setting.
+bool MainWindow::usesTightLabels() const {
+    static const QStringList byLanguageSetting = {"", "en", "zh_CN", "fa_IR", "ru_RU"};
+    const int language = Configs::dataManager->settingsRepo->language;
+    const QString locale = language == 0 ? QLocale().name() : byLanguageSetting.value(language);
+    return locale.startsWith("zh") || locale.startsWith("ru");
+}
+
 void MainWindow::applyTopBarMetrics() {
-    // Give the menu toolButtons a uniform width (the widest one's) so the top
-    // bar reads as an even row. The start/stop button keeps its own square size.
     const QList<QToolButton*> menuButtons = {
         ui->toolButton_program, ui->toolButton_preferences, ui->toolButton_testing,
         ui->toolButton_routing, ui->toolButton_tools,
     };
-    // Drop the previous run's floor first: a stale minimum would otherwise be
-    // baked into minimumSizeHint() below and never shrink back.
+    // Drop the previous run's floor: a stale minimum gets baked into minimumSizeHint() below.
     for (auto* b : menuButtons) b->setMinimumWidth(0);
 
-    // Content width only: the chevron already clears the label via ::menu-indicator, so
-    // reserving arrow padding would widen all five for a gap only the widest needs.
     int uniformButtonWidth = 0;
     for (auto* b : menuButtons) {
         b->ensurePolished();
         uniformButtonWidth = qMax(uniformButtonWidth, b->sizeHint().width());
     }
+
+    // CJK glyphs and long RU labels fill QToolButton's one-space slack and run into the chevron (#1665, #1829).
+    if (usesTightLabels()) {
+        uniformButtonWidth += 2 * fontMetrics().horizontalAdvance(' ');
+    }
     for (auto* b : menuButtons) b->setMinimumWidth(uniformButtonWidth);
 
-    // Translated labels (RU runs ~2x English) outgrow the designed 800x600 floor and
-    // clip the widgets after it, so follow what the layout actually needs (#1665).
     const QSize contentMin = minimumSizeHint();
     setMinimumSize(qMax(designMinimumSize.width(), contentMin.width()),
                    qMax(designMinimumSize.height(), contentMin.height()));
@@ -58,6 +67,20 @@ void MainWindow::UpdateDataView(bool force)
     lastUpdatedMs.store(QDateTime::currentMSecsSinceEpoch());
 }
 
+void MainWindow::noteRestartNeeded(const QString& reason)
+{
+    if (Configs::dataManager->settingsRepo->started_id < 0) return;
+    dataViewHtmlGenerator_.addPendingRestartReason(reason);
+    UpdateDataView(true);
+}
+
+void MainWindow::clearRestartNeeded()
+{
+    if (!dataViewHtmlGenerator_.hasPendingRestart()) return;
+    dataViewHtmlGenerator_.clearPendingRestart();
+    UpdateDataView(true);
+}
+
 void MainWindow::setDownloadReport(const DownloadProgressReport& report, bool show)
 {
     dataViewHtmlGenerator_.setDownloadReport(report, show);
@@ -68,7 +91,6 @@ void MainWindow::refresh_auto_selector_view()
     const auto view = Stats::autoSelectorMonitor->Snapshot();
     dataViewHtmlGenerator_.setAutoSelectorStatus(view.valid ? view.summary() : QString(),
                                                  view.valid ? view.detail() : QString());
-    // The Tools entry only makes sense while a selector is actually running.
     ui->actionAuto_Selector->setVisible(view.valid);
     UpdateDataView();
     if (m_autoSelectorDialog != nullptr) m_autoSelectorDialog->refresh();
@@ -107,7 +129,6 @@ void MainWindow::refresh_status(const QString &traffic_update) {
         }
     };
 
-    // From TrafficLooper
     if (!traffic_update.isEmpty() && !settings->disable_traffic_stats) {
         traffic_update_cache = traffic_update;
         if (traffic_update == "STOP") {
@@ -120,31 +141,40 @@ void MainWindow::refresh_status(const QString &traffic_update) {
 
     refresh_speed_label();
 
-    // From UI
     QString group_name;
     if (running != nullptr) {
         auto group = Configs::dataManager->groupsRepo->GetGroup(running->gid);
         if (group != nullptr) group_name = group->name;
     }
 
+    const QString runningDetail = m_vpnEndpointState.isEmpty()
+                                      ? (running ? running->runningCountryInfo : QString())
+                                      : m_vpnEndpointState;
+
     if (QDateTime::currentSecsSinceEpoch() - last_test_time > 2) {
         QString runningLabelText;
         if (running) {
             runningLabelText = QString("[%1] %2").arg(group_name, running->outbound->DisplayName());
-            if (!running->runningCountryInfo.isEmpty()) {
-                runningLabelText += "\n" + running->runningCountryInfo;
+            if (!runningDetail.isEmpty()) {
+                runningLabelText += "\n" + runningDetail;
             }
         } else {
             runningLabelText = tr("Not Running");
         }
         ui->label_running->setText(runningLabelText);
     }
-    //
-    const auto display_socks = DisplayAddress(settings->inbound_address, settings->inbound_socks_port);
     const auto inbound_disabled = settings->disable_mixed_inbound;
-    const auto inbound_txt = QString("Mixed: %1").arg(inbound_disabled ? "Disabled" : display_socks);
-    ui->label_inbound->setText(inbound_txt);
-    //
+    auto display_socks = DisplayAddress(settings->inbound_address, settings->inbound_socks_port);
+    QString inbound_tip;
+    if (!inbound_disabled && LocalNetwork::LanInboundIsWildcard()) {
+        if (const auto lan = LocalNetwork::LanAddress(); !lan.isEmpty()) {
+            inbound_tip = tr("Listening on all interfaces (%1)").arg(display_socks);
+            display_socks = DisplayAddress(lan, settings->inbound_socks_port);
+        }
+    }
+    ui->label_inbound->setText(QString("Mixed: %1").arg(inbound_disabled ? "Disabled" : display_socks));
+    ui->label_inbound->setToolTip(inbound_tip);
+    syncConnectionSourceColumn();
     ui->checkBox_VPN->setChecked(settings->spmode_vpn);
     ui->checkBox_SystemProxy->setChecked(settings->spmode_system_proxy);
     if (select_mode) {
@@ -172,34 +202,32 @@ void MainWindow::refresh_status(const QString &traffic_update) {
         }
         if (running != nullptr) {
             tt << running->outbound->DisplayTypeAndName() + "@" + group_name;
-            if (!running->runningCountryInfo.isEmpty()) {
-                tt << running->runningCountryInfo;
+            if (!runningDetail.isEmpty()) {
+                tt << runningDetail;
             }
         }
         return tt.join(isTray ? "\n" : " ");
     };
 
-    auto icon_status_new = Icon::NONE;
+    auto icon_status_new = Icon::TrayIconStatus::None;
 
     if (running != nullptr) {
         if (settings->spmode_vpn) {
-            icon_status_new = Icon::VPN;
+            icon_status_new = Icon::TrayIconStatus::Vpn;
         } else if (settings->system_dns_set && settings->spmode_system_proxy) {
-            icon_status_new = Icon::SYSTEM_PROXY_DNS;
+            icon_status_new = Icon::TrayIconStatus::SystemProxyDns;
         } else if (settings->system_dns_set) {
-            icon_status_new = Icon::DNS;
+            icon_status_new = Icon::TrayIconStatus::Dns;
         } else if (settings->spmode_system_proxy) {
-            icon_status_new = Icon::SYSTEM_PROXY;
+            icon_status_new = Icon::TrayIconStatus::SystemProxy;
         } else {
-            icon_status_new = Icon::RUNNING;
+            icon_status_new = Icon::TrayIconStatus::Running;
         }
     }
 
-    // refresh title & window icon
     setWindowTitle(make_title(false));
-    if (icon_status_new != icon_status) QApplication::setWindowIcon(GetTrayIcon(icon_status_new));
+    if (icon_status_new != icon_status) QApplication::setWindowIcon(GetTaskbarIcon(icon_status_new));
 
-    // refresh tray
     if (tray != nullptr) {
         tray->setToolTip(make_title(true));
         if (icon_status_new != icon_status) tray->setIcon(Icon::GetTrayIcon(icon_status_new));
@@ -216,8 +244,6 @@ void MainWindow::refresh_startstop_button() {
 
     const auto &settings = Configs::dataManager->settingsRepo;
 
-    // Ring colour reflects the active proxy mode (mirrors the tray-icon logic
-    // above); it only shows while running.
     auto mode = StartStopButton::Mode::Off;
     if (running != nullptr) {
         if (settings->spmode_vpn) mode = StartStopButton::Mode::Tun;
@@ -256,16 +282,13 @@ void MainWindow::refresh_proxy_list_column_size() {
 
     auto *hHeader = dynamic_cast<ProfilesTableFilterHeader*>(ui->profilesTableView->horizontalHeader());
     QTimer::singleShot(0, ui->profilesTableView, [=, this]() {
-        // Stop the resizeSection / scrollbar-policy changes below from re-entering
-        // this routine via the vertical scrollbar's valueChanged signal.
+        // The resizeSection / scrollbar-policy changes below re-enter here via valueChanged.
         if (m_adjustingColumns) return;
         m_adjustingColumns = true;
         QScrollBar *vBar = ui->profilesTableView->verticalScrollBar();
         const bool vBarBlocked = vBar->blockSignals(true);
         hHeader->blockSignals(true);
         constexpr int columnCount = ProfilesTableModel::ColumnCount;
-        // Widths saved before the column set last changed no longer line up with
-        // the header, so fall back to auto-sizing instead of indexing past the end.
         if (!group->column_width.isEmpty() && group->column_width.size() != columnCount) {
             group->column_width.clear();
         }
@@ -275,8 +298,7 @@ void MainWindow::refresh_proxy_list_column_size() {
             hHeader->setSectionResizeMode(ProfilesTableModel::ColName, QHeaderView::Stretch);
             hHeader->setSectionResizeMode(ProfilesTableModel::ColTestResult, QHeaderView::ResizeToContents);
             hHeader->setSectionResizeMode(ProfilesTableModel::ColTraffic, QHeaderView::ResizeToContents);
-            // ResizeToContents only measures on-screen rows, so pin these columns to the
-            // widest seen for this group or they jitter while scrolling.
+            // ResizeToContents only measures on-screen rows, so pin these or they jitter while scrolling.
             for (int col : {ProfilesTableModel::ColType,
                             ProfilesTableModel::ColTestResult, ProfilesTableModel::ColTraffic}) {
                 if (group->calculated_column_width.size() > col &&
@@ -321,16 +343,13 @@ void MainWindow::refresh_proxy_list_impl(const QList<int>& ids, bool mayNeedRese
         MW_show_log("Could not find current group!");
         return;
     }
-    // refresh data
     refresh_proxy_list_impl_refresh_data(ids, mayNeedReset);
-    // now refresh column sizes
     refresh_proxy_list_column_size();
 }
 
 void MainWindow::refresh_proxy_list_impl_refresh_data(const QList<int>& ids, bool mayNeedReset) {
     const auto currentGroup = Configs::dataManager->groupsRepo->CurrentGroup();
     if (currentGroup == nullptr) return;
-    // The model holds the group in full; the proxy decides what is on screen.
     if (!ids.isEmpty()) {
         for (auto id:ids) profilesTableModel->refreshProfileId(id);
     } else {
@@ -338,7 +357,51 @@ void MainWindow::refresh_proxy_list_impl_refresh_data(const QList<int>& ids, boo
     }
 }
 
-// Owns no test session, so unlike the group sweeps it stays out of TestRunner.
+std::shared_ptr<Configs::Profile> MainWindow::vpn_exit_endpoint(const std::shared_ptr<Configs::Profile> &ent) {
+    auto hop = ent;
+    // The "proxy" tag lands on the exit hop, and the stored list runs in to out.
+    if (hop != nullptr && hop->type == "chain") {
+        const auto *chain = hop->Chain();
+        if (chain == nullptr || chain->list.isEmpty()) return nullptr;
+        hop = Configs::dataManager->profilesRepo->GetProfile(chain->list.back());
+    }
+    if (hop == nullptr) return nullptr;
+    if (hop->type != "openvpn" && hop->type != "openconnect") return nullptr;
+    return hop;
+}
+
+QString MainWindow::vpn_state_text(const QString &state, const QString &error) {
+    if (state == "connected") return MainWindow::tr("Connect OK");
+    if (state == "connecting") return MainWindow::tr("Connecting");
+    if (state == "auth-pending") return MainWindow::tr("Waiting for authentication");
+    if (state == "error") {
+        return error.isEmpty() ? MainWindow::tr("Tunnel error")
+                               : MainWindow::tr("Tunnel error") + ": " + error;
+    }
+    return state;
+}
+
+QString MainWindow::liveVpnStateText(bool *connected) {
+    if (connected != nullptr) *connected = false;
+    const int startedID = Configs::dataManager->settingsRepo->started_id;
+    if (startedID < 0) return {};
+    if (vpn_exit_endpoint(Configs::dataManager->profilesRepo->GetProfile(startedID)) == nullptr) return {};
+
+    bool ok = false;
+    const auto status = API::defaultClient->QueryVPNStatus(&ok, {"proxy"});
+    if (!ok || status.results.empty()) return {};
+    const auto &res = status.results.front();
+    if (connected != nullptr) *connected = res.connected.value();
+    return vpn_state_text(QString::fromStdString(res.state.value()),
+                          QString::fromStdString(res.error.value()));
+}
+
+QString MainWindow::liveVpnConnectOkText() {
+    bool connected = false;
+    const auto text = liveVpnStateText(&connected);
+    return connected ? text : QString();
+}
+
 void MainWindow::url_test_current() {
     last_test_time = QDateTime::currentSecsSinceEpoch();
     ui->label_running->setText(tr("Testing"));
@@ -354,13 +417,15 @@ void MainWindow::url_test_current() {
 
         auto latency = result.results[0].latency_ms.value();
         last_test_time = QDateTime::currentSecsSinceEpoch();
+        // Blocking RPC, so it has to resolve here rather than on the UI thread.
+        const auto vpnText = latency <= 0 ? liveVpnStateText() : QString();
 
         runOnUiThread([=,this] {
             if (!result.results[0].error.value().empty()) {
                 MW_show_log(QString("UrlTest error: %1").arg(QString::fromStdString(result.results[0].error.value())));
             }
             if (latency <= 0) {
-                ui->label_running->setText(tr("Test Result") + ": " + tr("Unavailable"));
+                ui->label_running->setText(tr("Test Result") + ": " + (vpnText.isEmpty() ? tr("Unavailable") : vpnText));
             } else if (latency > 0) {
                 ui->label_running->setText(tr("Test Result") + ": " + QString("%1 ms").arg(latency));
             }

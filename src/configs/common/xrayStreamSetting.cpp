@@ -1,6 +1,7 @@
 #include "include/configs/common/xrayStreamSetting.h"
 #include <QUrlQuery>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include "include/configs/common/utils.h"
 
 namespace Configs {
@@ -11,6 +12,14 @@ namespace Configs {
 
         bool hasText(const std::string& value) {
             return !value.empty();
+        }
+
+        QStringList splitList(const QString& value) {
+            QStringList result;
+            for (const auto& part : value.split(',', Qt::SkipEmptyParts)) {
+                if (const auto trimmed = part.trimmed(); !trimmed.isEmpty()) result << trimmed;
+            }
+            return result;
         }
 
         void addXmuxField(QJsonObject& xmux, const QString& key, const std::string& value) {
@@ -50,7 +59,7 @@ namespace Configs {
                 object["security"] = "reality";
                 QJsonObject reality;
                 reality["show"] = false;
-                if (hasText(settings.servername)) reality["serverName"] = qs(settings.servername);
+                if (hasText(settings.servername)) reality["serverName"] = toAceHost(qs(settings.servername));
                 if (hasText(settings.client_fingerprint)) reality["fingerprint"] = qs(settings.client_fingerprint);
                 reality["publicKey"] = qs(settings.reality_opts.public_key);
                 if (hasText(settings.reality_opts.short_id)) reality["shortId"] = qs(settings.reality_opts.short_id);
@@ -58,7 +67,7 @@ namespace Configs {
             } else if (settings.tls) {
                 object["security"] = "tls";
                 QJsonObject tls;
-                if (hasText(settings.servername)) tls["serverName"] = qs(settings.servername);
+                if (hasText(settings.servername)) tls["serverName"] = toAceHost(qs(settings.servername));
                 if (!settings.alpn.empty()) {
                     QJsonArray alpn;
                     for (const auto& item : settings.alpn) alpn.append(qs(item));
@@ -69,7 +78,7 @@ namespace Configs {
             }
 
             QJsonObject xhttp;
-            if (hasText(settings.host)) xhttp["host"] = qs(settings.host);
+            if (hasText(settings.host)) xhttp["host"] = toAceHost(qs(settings.host));
             if (hasText(settings.path)) xhttp["path"] = qs(settings.path);
             xhttp["mode"] = hasText(settings.mode) ? qs(settings.mode) : "auto";
 
@@ -288,7 +297,7 @@ namespace Configs {
 
     QJsonObject xrayTLS::ExportToJson() {
         QJsonObject object;
-        object["serverName"] = serverName;
+        object["serverName"] = toAceHost(serverName);
         if (!pinnedPeerCertSha256.isEmpty()) object["pinnedPeerCertSha256"] = pinnedPeerCertSha256;
         if (!verifyPeerCertByName.isEmpty()) object["verifyPeerCertByName"] = verifyPeerCertByName;
         if (!alpn.isEmpty()) {
@@ -355,7 +364,7 @@ namespace Configs {
 
     QJsonObject xrayReality::ExportToJson() {
         QJsonObject object;
-        object["serverName"] = serverName;
+        object["serverName"] = toAceHost(serverName);
         if (!fingerprint.isEmpty()) object["fingerprint"] = fingerprint;
         if (!password.isEmpty()) object["password"] = password;
         if (!shortId.isEmpty()) object["shortId"] = shortId;
@@ -480,7 +489,7 @@ namespace Configs {
 
     QJsonObject xrayXHTTP::ExportToJson() {
         QJsonObject obj;
-        if (!host.isEmpty()) obj["host"] = host;
+        if (!host.isEmpty()) obj["host"] = toAceHost(host);
         if (!path.isEmpty()) obj["path"] = path;
         if (!mode.isEmpty()) obj["mode"] = mode;
 
@@ -611,7 +620,7 @@ namespace Configs {
             if (ed > 0) fullPath += "?ed=" + QString::number(ed);
             obj["path"] = fullPath;
         }
-        if (!host.isEmpty()) obj["host"] = host;
+        if (!host.isEmpty()) obj["host"] = toAceHost(host);
         if (!headers.isEmpty()) obj["headers"] = qStringListToJsonObject(headers);
         if (heartbeatPeriod > 0) obj["heartbeatPeriod"] = heartbeatPeriod;
         return obj;
@@ -690,7 +699,7 @@ namespace Configs {
             if (ed > 0) fullPath += "?ed=" + QString::number(ed);
             obj["path"] = fullPath;
         }
-        if (!host.isEmpty()) obj["host"] = host;
+        if (!host.isEmpty()) obj["host"] = toAceHost(host);
         if (!headers.isEmpty()) obj["headers"] = qStringListToJsonObject(headers);
         return obj;
     }
@@ -732,7 +741,7 @@ namespace Configs {
 
     QJsonObject xrayGRPC::ExportToJson() {
         QJsonObject obj;
-        if (!authority.isEmpty()) obj["authority"] = authority;
+        if (!authority.isEmpty()) obj["authority"] = toAceHost(authority);
         if (!serviceName.isEmpty()) obj["serviceName"] = serviceName;
         if (multiMode) obj["multiMode"] = multiMode;
         return obj;
@@ -747,8 +756,33 @@ namespace Configs {
         if (!url.isValid()) return false;
         auto query = QUrlQuery(url.query());
 
+        if (query.hasQueryItem("fm") || query.hasQueryItem("finalmask")) {
+            auto key = query.hasQueryItem("fm") ? "fm" : "finalmask";
+            auto fmRaw = query.queryItemValue(key, QUrl::FullyDecoded);
+            QJsonParseError err;
+            auto doc = QJsonDocument::fromJson(fmRaw.toUtf8(), &err);
+            if (err.error == QJsonParseError::NoError && doc.isObject()) {
+                finalmask = doc.object();
+            } else if (err.error != QJsonParseError::NoError) {
+                MW_show_log("Failed to parse FinalMask JSON: " + err.errorString());
+            }
+        }
+
         if (query.hasQueryItem("type")) network = query.queryItemValue("type").replace("tcp", "raw");
         if (!Configs::XrayNetworks.contains(network)) return false;
+        if (network == "raw" && query.queryItemValue("headerType") == "http") {
+            QJsonObject request;
+            if (const auto paths = splitList(query.queryItemValue("path", QUrl::FullyDecoded)); !paths.isEmpty()) {
+                request["path"] = QListStr2QJsonArray(paths);
+            }
+            if (auto hosts = splitList(query.queryItemValue("host", QUrl::FullyDecoded)); !hosts.isEmpty()) {
+                for (auto& item : hosts) item = toAceHost(item);
+                request["headers"] = QJsonObject{{"Host", QListStr2QJsonArray(hosts)}};
+            }
+            QJsonObject header{{"type", "http"}};
+            if (!request.isEmpty()) header["request"] = request;
+            rawSettings = QJsonObject{{"header", header}};
+        }
         if (query.hasQueryItem("security")) security = query.queryItemValue("security");
         if (security == "tls") TLS->ParseFromLink(link);
         else if (security == "reality") reality->ParseFromLink(link);
@@ -763,8 +797,16 @@ namespace Configs {
     bool xrayStreamSetting::ParseFromJson(const QJsonObject &object) {
         if (object.isEmpty()) return false;
 
-        if (object.contains("network")) network = object.value("network").toString();
+        if (object.contains("finalmask") && object["finalmask"].isObject()) finalmask = object["finalmask"].toObject();
+
+        if (object.contains("method")) network = object.value("method").toString();
+        else if (object.contains("network")) network = object.value("network").toString();
+        if (network == "tcp") network = "raw";
         if (!Configs::XrayNetworks.contains(network)) return false;
+        if (network == "raw") {
+            if (object["rawSettings"].isObject()) rawSettings = object["rawSettings"].toObject();
+            else if (object["tcpSettings"].isObject()) rawSettings = object["tcpSettings"].toObject();
+        }
         if (object.contains("security")) security = object.value("security").toString();
         if (security == "tls" && object["tlsSettings"].isObject()) TLS->ParseFromJson(object["tlsSettings"].toObject());
         else if (security == "reality" && object["realitySettings"].isObject()) reality->ParseFromJson(object["realitySettings"].toObject());
@@ -802,7 +844,20 @@ namespace Configs {
 
     QString xrayStreamSetting::ExportToLink() {
         QUrlQuery query;
-        if (!network.isEmpty()) query.addQueryItem("type", network);
+        if (!network.isEmpty()) query.addQueryItem("type", network == "raw" ? "tcp" : network);
+        if (!finalmask.isEmpty()) query.addQueryItem("fm", QJsonObject2QString(finalmask, true));
+        // value(), never operator[]: the mutable operator[] inserts a null entry for a missing key.
+        if (const auto header = rawSettings.value("header").toObject();
+            network == "raw" && header.value("type").toString() == "http") {
+            query.addQueryItem("headerType", "http");
+            const auto request = header.value("request").toObject();
+            if (const auto paths = request.value("path").toArray(); !paths.isEmpty()) {
+                query.addQueryItem("path", QJsonArray2QListString(paths).join(','));
+            }
+            if (const auto hosts = request.value("headers").toObject().value("Host").toArray(); !hosts.isEmpty()) {
+                query.addQueryItem("host", QJsonArray2QListString(hosts).join(','));
+            }
+        }
         if (!security.isEmpty()) query.addQueryItem("security", security);
         if (security == "tls") mergeUrlQuery(query, TLS->ExportToLink());
         if (security == "reality") mergeUrlQuery(query, reality->ExportToLink());
@@ -817,6 +872,8 @@ namespace Configs {
         QJsonObject object;
         object["network"] = network;
         object["security"] = security;
+        if (!finalmask.isEmpty()) object["finalmask"] = finalmask;
+        if (network == "raw" && !rawSettings.isEmpty()) object["rawSettings"] = rawSettings;
         if (security == "tls") object["tlsSettings"] = TLS->ExportToJson();
         else if (security == "reality") object["realitySettings"] = reality->ExportToJson();
         if (network == "xhttp") object["xhttpSettings"] = xhttp->ExportToJson();
@@ -830,30 +887,39 @@ namespace Configs {
         QJsonObject object;
         object["network"] = network;
         object["security"] = security;
+        // No rawSettings: identity must not carry values a subscription rotates (Host header, paths).
         if (security == "reality") {
-            if (!reality->serverName.isEmpty()) object["sni"] = reality->serverName;
+            if (!reality->serverName.isEmpty()) object["sni"] = toAceHost(reality->serverName);
             if (!reality->fingerprint.isEmpty()) object["fingerprint"] = reality->fingerprint;
         } else if (security == "tls") {
-            if (!TLS->serverName.isEmpty()) object["sni"] = TLS->serverName;
+            if (!TLS->serverName.isEmpty()) object["sni"] = toAceHost(TLS->serverName);
             if (!TLS->fingerprint.isEmpty()) object["fingerprint"] = TLS->fingerprint;
         }
         return object;
     }
 
 
+    QString getDirectDomainStrategy() {
+        const auto &settings = *Configs::dataManager->settingsRepo;
+        // No DNS rule blanks AAAA for these lookups any more, so the switch caps the strategy instead.
+        if (settings.direct_dns_disable_ipv6 && !settings.use_dns_object) return "ipv4_only";
+        return settings.default_domain_strategy;
+    }
+
     QString getXrayOutboundDomainStrategy() {
-        auto strategy = Configs::dataManager->settingsRepo->direct_dns_strategy;
+        const auto strategy = getDirectDomainStrategy();
         if (strategy == "prefer_ipv4") return "UseIPv4v6";
         if (strategy == "prefer_ipv6") return "UseIPv6v4";
-        if (strategy == "ipv4_only") return "ForceIPv4";
         if (strategy == "ipv6_only") return "ForceIPv6";
+        // The cap narrows the family; it must not also make resolution mandatory.
+        if (strategy == "ipv4_only") {
+            return Configs::dataManager->settingsRepo->default_domain_strategy == "ipv4_only" ? "ForceIPv4" : "UseIPv4";
+        }
         return "UseIP";
     }
 
     BuildResult xrayStreamSetting::Build() {
-        // Egress interface binding and outbound domain resolution are wired onto
-        // the Xray instance after creation (ThroneWiring), not baked into the
-        // config, so no sockopt is emitted here.
+        // Interface binding and domain resolution are wired on at instance creation (ThroneWiring), not here.
         return {ExportToJson(), ""};
     }
 }

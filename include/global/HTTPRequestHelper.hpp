@@ -26,11 +26,12 @@ namespace Configs_network {
         ;
 
     public:
-        static HTTPResponse HttpGet(const QString &url, bool sendHwid = false, bool useProxy = false);
+        // maxBytes > 0 aborts the transfer once the body exceeds it and reports an error.
+        static HTTPResponse HttpGet(const QString &url, bool sendHwid = false, bool useProxy = false, qint64 maxBytes = 0);
 
         static QString GetHeader(const QList<QPair<QByteArray, QByteArray>> &header, const QString &name);
 
-        static QString DownloadAsset(const QString &url, const QString &fileName);
+        static QString DownloadAsset(const QString &url, const QString &fileName, bool useProxy = false);
     };
 } // namespace Configs_network
 

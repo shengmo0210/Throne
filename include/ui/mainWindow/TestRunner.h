@@ -13,15 +13,14 @@
 #include <memory>
 
 #ifndef Q_MOC_RUN
-#include <core/server/gen/libcore.pb.h>
+#include <core/gen/libcore.pb.h>
 #endif
 
 #include "include/database/entities/Profile.h"
 
 class MainWindow;
 
-// Owns profile measuring: URL latency, egress IP and speed. Not a QObject: queued
-// signals would reorder the synchronous progress path, and tr() would change context.
+// Not a QObject: queued signals would reorder the synchronous progress path.
 class TestRunner {
 public:
     explicit TestRunner(MainWindow* mw) : mw_(mw) {}
@@ -29,7 +28,6 @@ public:
     TestRunner(const TestRunner&) = delete;
     TestRunner& operator=(const TestRunner&) = delete;
 
-    // `onFinished` fires on every exit path, so a caller may block on it.
     void runUrlTests(const QList<int>& profileIDs, const std::function<void()>& onFinished = {});
 
     void runIpTests(const QList<int>& profileIDs);
@@ -40,7 +38,6 @@ public:
 
     bool isRunning();
 
-    // A profile stop has to cancel the test before tearing the instance down.
     bool isTestingCurrent() const { return testingCurrent_.load(); }
 
 private:
@@ -52,9 +49,9 @@ private:
         QStringList xrayFullConfigs;
         QStringList outboundTags;
         QMap<QString, int> tag2entID;
+        QString xrayDnsStrategy;
         int entID = -1;
-        // Not derivable from an empty outboundTags: a test-current run leaves
-        // both empty but must let the core pick "proxy" over the config default.
+        // Not derivable from an empty outboundTags: a test-current run leaves both empty but wants "proxy".
         bool useDefaultOutbound = false;
         bool testCurrent = false;
     };
@@ -68,16 +65,18 @@ private:
 
     void runSpeedProbe(const Target& target);
 
-    // Shared by the live progress poll and the final pass, which must not drift.
-    void applyUrlResult(const std::shared_ptr<Configs::Profile>& ent, const libcore::URLTestResp& res);
+    void applyUrlResult(const std::shared_ptr<Configs::Profile>& ent, const libcore::URLTestResp& res,
+                        const QHash<QString, bool>* vpnConnected = nullptr);
 
     void applyIpResult(const std::shared_ptr<Configs::Profile>& ent, const libcore::IPTestRes& res);
 
     QString contextName(int entID) const;
 
-    void pollSpeedTest(const QMap<QString, int>& tag2entID, bool testCurrent);
+    bool staleGen(quint64 gen) const { return sessionGen_.load() != gen; }
 
-    void pollCountryTest(const QMap<QString, int>& tag2entID, bool testCurrent);
+    void pollSpeedTest(const QMap<QString, int>& tag2entID, bool testCurrent, quint64 gen);
+
+    void pollCountryTest(const QMap<QString, int>& tag2entID, bool testCurrent, quint64 gen);
 
     void creditTraffic(const std::shared_ptr<Configs::Profile>& profile, const QString& tag,
                        qint64 curUp, qint64 curDown);
@@ -86,13 +85,12 @@ private:
 
     // Held for a whole sweep, so it must never double as a per-batch latch.
     QMutex session_;
-    // A poll thread is not joined, so a late tick must not drain the next sweep.
+    // A poll thread is not joined, so a late tick must not drain the next batch.
     std::atomic<quint64> sessionGen_ = 0;
     std::atomic<bool> stopRequested_ = false;
     std::atomic<bool> testingCurrent_ = false;
 
-    // Tests dial the outbound directly and bypass the clash tracker, so their
-    // bytes are counted only here, diffed per tag against the last report.
+    // Tests bypass the clash tracker, so their bytes are counted only here, diffed per tag.
     QMutex creditMu_;
     QHash<QString, QPair<qint64, qint64>> credited_;
 };

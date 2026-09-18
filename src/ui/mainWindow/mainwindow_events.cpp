@@ -6,6 +6,7 @@
 #include <QMimeData>
 #include <QTimer>
 
+#include "include/ui/widget/TrayOtpCodes.hpp"
 #include "include/ui/widget/TrayProfileSelector.hpp"
 
 void MainWindow::trayClickEvent() {
@@ -34,11 +35,7 @@ void MainWindow::changeEvent(QEvent *event) {
     const QEvent::Type type = event->type();
 
     if (type == QEvent::FontChange) {
-        // masterLogBrowser keeps its monospace family but follows the user's point size
-        applyLogBrowserFont();
-
-        // QStyleSheetStyle caches font-dependent metrics and does not invalidate them on
-        // FontChange; toggling the stylesheet through "" forces a repolish.
+        // QStyleSheetStyle caches font metrics and ignores FontChange; toggling the stylesheet repolishes.
         auto refreshStylesheetCache = [](QWidget *w) {
             const QString ss = w->styleSheet();
             if (ss.isEmpty()) return;
@@ -49,9 +46,15 @@ void MainWindow::changeEvent(QEvent *event) {
         for (QWidget *w : allChildren) {
             refreshStylesheetCache(w);
         }
+        // Never clear the app sheet first: that runs setStyle() and refills Qt's per-class font table over the new font (#1829).
+        const QString appSheet = qApp->styleSheet();
+        if (!appSheet.isEmpty()) {
+            qApp->setStyleSheet(appSheet);
+        }
+        // After the repolish: with no font rule, QStyleSheetStyle resets a setFont() font to the parent's.
+        applyLogBrowserFont();
 
-        // No per-widget stylesheet here, so force a real FontChange via a different point
-        // size (Qt skips setFont when unchanged), then return to inheriting from qApp.
+        // Qt skips setFont when unchanged, so bump the point size to force a real FontChange.
         auto forceFontReapply = [](QWidget *w) {
             if (!w) return;
             const QFont currentFont = QApplication::font();
@@ -63,21 +66,19 @@ void MainWindow::changeEvent(QEvent *event) {
         };
         forceFontReapply(ui->profilesTableView);
 
-        // The toolButton widths and the window floor were derived from the old
-        // font; redo them now that the stylesheet caches above are clean.
         applyTopBarMetrics();
     }
     if (type == QEvent::FontChange ||
         type == QEvent::PaletteChange ||
         type == QEvent::StyleChange) {
         scheduleProxyListRefresh();
+        refreshConnectionIcons();
     }
     if (type == QEvent::WindowStateChange) {
         syncConnectionViewState();
     }
     if (type == QEvent::ActivationChange) {
-        // Stamped here, not from WindowDeactivate in eventFilter(): that only reaches
-        // visible filtered children, so state-dependent widgets could drop it.
+        // Not stamped from WindowDeactivate in eventFilter(): that only reaches visible filtered children.
         if (isActiveWindow()) sinceWindowDeactivated.invalidate();
         else sinceWindowDeactivated.start();
     }
@@ -129,8 +130,6 @@ void MainWindow::dropEvent(QDropEvent* event)
         for (const QUrl &url : mimeData->urls()) {
             if (url.isLocalFile()) paths << url.toLocalFile();
         }
-        // Remote urls (a link dragged out of a browser) carry no file and fall
-        // through to the text handler below.
         if (!paths.isEmpty()) {
             importFromFiles(paths);
             event->acceptProposedAction();
@@ -148,8 +147,7 @@ void MainWindow::dropEvent(QDropEvent* event)
 }
 
 void MainWindow::openTraySelector(bool routing) {
-    // Recreate on each open so it always shows fresh data. A previous one (if the user
-    // reopened quickly) closes itself; WA_DeleteOnClose frees it and the QPointer clears.
+    // Recreated on each open; WA_DeleteOnClose frees the old one and clears the QPointer.
     if (traySelector) traySelector->close();
 
     TrayProfileSelector::Callbacks cb;
@@ -169,6 +167,12 @@ void MainWindow::openTraySelector(bool routing) {
     traySelector = new TrayProfileSelector(
         routing ? TrayProfileSelector::Routing : TrayProfileSelector::Server, cb, this);
     traySelector->popupAt(QCursor::pos());
+}
+
+void MainWindow::openTrayOtpCodes() {
+    if (trayOtpCodes) trayOtpCodes->close();
+    trayOtpCodes = new TrayOtpCodes(this);
+    trayOtpCodes->popupAt(QCursor::pos());
 }
 
 void MainWindow::keyPressEvent(QKeyEvent *event) {
@@ -197,9 +201,6 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event) {
             return true;
         } else if (obj == ui->label_inbound && mouseEvent->button() == Qt::LeftButton) {
             on_menu_basic_settings_triggered();
-            return true;
-        } else if (obj == ui->tabWidget && mouseEvent->button() == Qt::RightButton) {
-            on_tabWidget_customContextMenuRequested(mouseEvent->position().toPoint());
             return true;
         }
     } else if (type == QEvent::MouseButtonDblClick) {
